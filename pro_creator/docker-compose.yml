@@ -173,7 +173,9 @@ services:
     build:
       context: ./frontend
     environment:
-      NEXT_PUBLIC_API_BASE: http://localhost:8000
+      # Use IPv4 loopback explicitly; some environments resolve localhost -> ::1 which
+      # won't connect if Docker is bound only on 127.0.0.1.
+      NEXT_PUBLIC_API_BASE: http://127.0.0.1:8000
       NEXT_PUBLIC_PROJECTS_BASE: ${S3_PUBLIC_URL:-http://127.0.0.1:9000/${S3_BUCKET:-pro-creator}}
     ports:
       - "127.0.0.1:3000:3000"

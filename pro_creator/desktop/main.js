@@ -2,7 +2,8 @@ const { app, BrowserWindow, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 
-const DEFAULT_URL = process.env.PRO_CREATOR_URL || "http://localhost:3000";
+// Prefer IPv4 loopback to avoid localhost -> ::1 resolution issues.
+const DEFAULT_URL = process.env.PRO_CREATOR_URL || "http://127.0.0.1:3000";
 
 function createWindow() {
   const win = new BrowserWindow({
