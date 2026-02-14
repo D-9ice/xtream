@@ -120,6 +120,7 @@ IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "local").lower()  # local | replica
 VOICE_PROVIDER_DEFAULT = os.getenv("VOICE_PROVIDER_DEFAULT", TTS_PROVIDER).lower()
 
 # Script model tiers
+OPENAI_API_KEY = _env_file_or_aws("OPENAI_API_KEY", "").strip()
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 OPENAI_MODEL_DRAFT = os.getenv("OPENAI_MODEL_DRAFT", "gpt-4o-mini")
 OPENAI_MODEL_STANDARD = os.getenv("OPENAI_MODEL_STANDARD", "gpt-4o-mini")

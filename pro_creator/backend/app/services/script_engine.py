@@ -6,7 +6,7 @@ import os
 
 import requests
 
-from app.config import OPENAI_BASE_URL, SCRIPT_PROVIDER
+from app.config import OPENAI_API_KEY, OPENAI_BASE_URL, SCRIPT_PROVIDER
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -285,7 +285,7 @@ def _generate_script_llm(
     *,
     model_name: str,
 ) -> Dict | None:
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    api_key = OPENAI_API_KEY.strip()
     if not api_key:
         return None
 

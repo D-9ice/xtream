@@ -41,6 +41,8 @@ docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --profile
 - `/metrics` is blocked at the edge by default in production.
 - Asset URLs should be stored in Spaces (`S3_PUBLIC_URL`).
 - Set `TTS_PROVIDER` to `xtts` or `elevenlabs` and provide the matching env vars.
+- To enable the humanized script generator, set `OPENAI_API_KEY` and optionally `SCRIPT_PROVIDER=openai`.
+- To enable billing/credit purchases, set Stripe variables (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRICE_ID_*`).
 - The production compose file includes an `xtts` service running on port `8020` (override `XTTS_IMAGE` if needed).
 - Postgres is included in the production override and used via `DATABASE_URL`.
 - Use `deploy/BACKUP_RESTORE.md` for backup and recovery procedures.
