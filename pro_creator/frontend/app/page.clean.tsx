@@ -1534,9 +1534,23 @@ export default function HomePage() {
               placeholder="Narrate the project in a calm, professional tone."
             />
             {voiceResult ? (
-              <p className="text-xs text-slate-400">
-                Voice ready: {voiceResult.audio_path}
-              </p>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+                <p className="font-semibold text-slate-200">Voice ready</p>
+                <audio
+                  className="mt-2 w-full"
+                  controls
+                  preload="none"
+                  src={resolveMediaUrl(voiceResult.audio_path) ?? undefined}
+                />
+                <a
+                  className="mt-2 inline-flex text-[11px] text-aurora hover:underline"
+                  href={resolveMediaUrl(voiceResult.audio_path) ?? voiceResult.audio_path}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open audio file
+                </a>
+              </div>
             ) : null}
           </div>
           <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/40 p-4">
