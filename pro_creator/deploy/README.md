@@ -53,3 +53,15 @@ docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --profile
   - Prometheus: `127.0.0.1:9090`
   - Alertmanager: `127.0.0.1:9093`
   - Grafana: `127.0.0.1:3001`
+
+## Admin Access
+
+The subscriptions management dashboard (`/admin`) is protected by two layers:
+
+1. Owner gate: the caller must be an admin user, and in production their email must be listed in `OWNER_EMAIL_ALLOWLIST`.
+2. Dashboard gate: enter `ADMIN_DASHBOARD_PASSWORD` on the Admin Access screen to receive a short-lived access token used for admin endpoints.
+
+Operational notes:
+
+- If `AUTH_REQUIRED=true` (production default), you must sign in first (store JWT in `pc_token`) before admin actions will work.
+- If you rotate `JWT_SECRET`, existing browser tokens become invalid; sign out (or clear `pc_token`) and sign in again.

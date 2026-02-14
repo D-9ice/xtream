@@ -15,6 +15,7 @@ export default function AdminPage() {
   const [gateLoading, setGateLoading] = useState(true);
   const [gateError, setGateError] = useState<string | null>(null);
   const [dashboardPassword, setDashboardPassword] = useState("");
+  const [showDashboardPassword, setShowDashboardPassword] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [twoFaDetail, setTwoFaDetail] = useState<string | null>(null);
   const [twoFaEnabled, setTwoFaEnabled] = useState(false);
@@ -190,14 +191,63 @@ export default function AdminPage() {
                 <label className="text-xs uppercase tracking-wide text-slate-400" htmlFor="dashboard-password">
                   Dashboard password
                 </label>
-                <input
-                  id="dashboard-password"
-                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
-                  type="password"
-                  value={dashboardPassword}
-                  onChange={(event) => setDashboardPassword(event.target.value)}
-                  placeholder="Enter the admin dashboard password."
-                />
+                <div className="relative mt-2">
+                  <input
+                    id="dashboard-password"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 pr-11 text-sm text-white"
+                    type={showDashboardPassword ? "text" : "password"}
+                    value={dashboardPassword}
+                    onChange={(event) => setDashboardPassword(event.target.value)}
+                    placeholder="Enter the admin dashboard password."
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-3 flex items-center text-slate-400 transition hover:text-slate-200"
+                    aria-label={showDashboardPassword ? "Hide dashboard password" : "Show dashboard password"}
+                    onClick={() => setShowDashboardPassword((value) => !value)}
+                  >
+                    {showDashboardPassword ? (
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.584 10.584a2 2 0 002.832 2.832" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M7.5 7.5C5.018 9.086 3.56 11.2 3 12c1.35 1.95 4.838 6 9 6 1.545 0 2.96-.474 4.125-1.178"
+                        />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.12 14.12A3 3 0 009.88 9.88" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M9.35 5.85A8.497 8.497 0 0112 5c4.162 0 7.65 4.05 9 6-.51.737-1.528 2.097-2.975 3.357"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M2.458 12C3.732 9.057 7.2 5.5 12 5.5c4.8 0 8.268 3.557 9.542 6-1.274 2.943-4.742 6.5-9.542 6.5-4.8 0-8.268-3.557-9.542-6z"
+                        />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="text-xs uppercase tracking-wide text-slate-400" htmlFor="otp-code">
