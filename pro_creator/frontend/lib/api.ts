@@ -196,6 +196,35 @@ export async function changePassword(payload: {
   return response.json();
 }
 
+export type AuthGateStatus = {
+  enabled: boolean;
+  source: "env" | "db";
+};
+
+export async function fetchAuthGateStatus(): Promise<AuthGateStatus> {
+  const response = await fetch(`${API_BASE}/auth/gate/status`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to load password gate status");
+  }
+  return response.json();
+}
+
+export async function updateAuthGateStatus(enabled: boolean): Promise<AuthGateStatus> {
+  const response = await fetch(`${API_BASE}/auth/gate`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    const message = detail?.detail ?? "Failed to update password gate";
+    throw new Error(message);
+  }
+  return response.json();
+}
+
 export async function enqueueOrchestrationJob(payload: {
   project_id: string;
   kind: string;

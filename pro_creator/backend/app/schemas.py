@@ -359,3 +359,12 @@ class Admin2FAStatusResponse(BaseModel):
     enabled: bool
     method: str = "totp"
     detail: str
+
+
+class AuthGateStatusResponse(BaseModel):
+    enabled: bool
+    source: str  # env | db
+
+
+class AuthGateUpdateRequest(BaseModel):
+    enabled: bool

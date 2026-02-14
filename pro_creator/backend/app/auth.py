@@ -19,6 +19,7 @@ from app.config import (
 )
 from app.database import get_session
 from app.models import User
+from app.services.app_settings import get_or_create_settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -51,14 +52,22 @@ def authenticate_user(session: Session, email: str, password: str) -> Optional[U
 
 
 def _auth_disabled() -> bool:
+    # Kept for compatibility; prefer _auth_is_required(session) in request paths.
     return not AUTH_REQUIRED
+
+
+def _auth_is_required(session: Session) -> bool:
+    if AUTH_REQUIRED:
+        return True
+    settings = get_or_create_settings(session)
+    return bool(settings.auth_required)
 
 
 def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     session: Session = Depends(get_session),
 ) -> User:
-    if _auth_disabled():
+    if not _auth_is_required(session):
         user = session.exec(select(User).limit(1)).first()
         if not user:
             user = User(

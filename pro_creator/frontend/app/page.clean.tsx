@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import ProjectCard from "../components/ProjectCard";
 import type {
+  AuthGateStatus,
   CreditPlan,
   ExportStatusEntry,
   ImageResponse,
@@ -31,6 +32,7 @@ import {
   fetchArtifact,
   fetchCreditPlans,
   fetchExportStatus,
+  fetchAuthGateStatus,
   fetchOrchestrationQueue,
   fetchOrchestrationRunnerStatus,
   fetchOrchestrationSchedules,
@@ -50,6 +52,7 @@ import {
   startOrchestrationRunner,
   stopOrchestrationRunner,
   triggerFeature,
+  updateAuthGateStatus,
   updateLiveScript,
   uploadVoiceProfile,
 } from "../lib/api";
@@ -106,6 +109,11 @@ export default function HomePage() {
   const [signedIn, setSignedIn] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
   const [showAccountPanel, setShowAccountPanel] = useState(false);
+  const [accountTab, setAccountTab] = useState<"plans" | "access">("plans");
+  const [authGateStatus, setAuthGateStatus] = useState<AuthGateStatus | null>(null);
+  const [authGateLoading, setAuthGateLoading] = useState(true);
+  const [authGateUpdating, setAuthGateUpdating] = useState(false);
+  const [authGateError, setAuthGateError] = useState<string | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -240,6 +248,9 @@ export default function HomePage() {
     return `${PROJECTS_BASE}/${selectedProjectId}/video/final.mp4`;
   }, [selectedProjectId]);
 
+  const accessAllowed = signedIn || authGateStatus?.enabled === false;
+  const authGateLocked = authGateStatus?.source === "env";
+
   useEffect(() => {
     setHasMounted(true);
   }, []);
@@ -261,6 +272,38 @@ export default function HomePage() {
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    setAuthGateLoading(true);
+    setAuthGateError(null);
+    fetchAuthGateStatus()
+      .then((status) => {
+        if (active) {
+          setAuthGateStatus(status);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setAuthGateStatus(null);
+          setAuthGateError(err instanceof Error ? err.message : "Failed to load password gate");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setAuthGateLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authGateStatus?.enabled === false && !signedIn) {
+      setAccountTab("access");
+    }
+  }, [authGateStatus?.enabled, signedIn]);
+
   const refreshCredits = useCallback(async () => {
     try {
       const credits = await fetchMyCredits();
@@ -275,17 +318,17 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (!signedIn) {
+    if (!accessAllowed) {
       setCreditsRemaining(null);
       setCreditsUsed(null);
       setCreditsTotal(null);
       return;
     }
     refreshCredits();
-  }, [signedIn, refreshCredits]);
+  }, [accessAllowed, refreshCredits]);
 
   useEffect(() => {
-    if (!signedIn || typeof window === "undefined") {
+    if (!accessAllowed || typeof window === "undefined") {
       return;
     }
     const params = new URLSearchParams(window.location.search);
@@ -303,10 +346,10 @@ export default function HomePage() {
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
     window.history.replaceState({}, "", nextUrl);
-  }, [signedIn, refreshCredits]);
+  }, [accessAllowed, refreshCredits]);
 
   useEffect(() => {
-    if (!signedIn) {
+    if (!accessAllowed) {
       setCreditPlans([]);
       return;
     }
@@ -332,7 +375,7 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, [signedIn]);
+  }, [accessAllowed]);
 
   useEffect(() => {
     if (!signedIn || typeof window === "undefined") {
@@ -368,6 +411,10 @@ export default function HomePage() {
       window.close();
       return;
     }
+    if (authGateStatus?.enabled === false) {
+      window.location.href = "/";
+      return;
+    }
     window.location.href = "/login";
   };
 
@@ -392,8 +439,13 @@ export default function HomePage() {
     event.preventDefault();
     setPasswordError(null);
     setPasswordStatus(null);
-    if (!currentPassword || !newPassword) {
-      setPasswordError("Enter your current and new password.");
+    const requireCurrentPassword = authGateStatus?.enabled !== false;
+    if (requireCurrentPassword && !currentPassword) {
+      setPasswordError("Enter your current password.");
+      return;
+    }
+    if (!newPassword) {
+      setPasswordError("Enter your new password.");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -403,7 +455,7 @@ export default function HomePage() {
     setPasswordLoading(true);
     try {
       await changePassword({
-        current_password: currentPassword,
+        current_password: currentPassword || "",
         new_password: newPassword,
       });
       setPasswordStatus("Password updated.");
@@ -414,6 +466,45 @@ export default function HomePage() {
       setPasswordError(err instanceof Error ? err.message : "Update failed");
     } finally {
       setPasswordLoading(false);
+    }
+  };
+
+  const handlePasswordGateToggle = async (nextEnabled: boolean) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (authGateLocked) {
+      return;
+    }
+    const message = nextEnabled
+      ? "Enable the password gate? You'll need to sign in after this. Set your password first if you haven't already."
+      : "Disable the password gate? Anyone with access to this machine/network will be able to use the app without signing in.";
+    const confirmed = window.confirm(message);
+    if (!confirmed) {
+      return;
+    }
+
+    setAuthGateError(null);
+    setAuthGateUpdating(true);
+    try {
+      const updated = await updateAuthGateStatus(nextEnabled);
+      setAuthGateStatus(updated);
+
+      // If enabling, force a clean sign-in flow.
+      if (nextEnabled) {
+        window.localStorage.removeItem("pc_token");
+        setSignedIn(false);
+        setShowAccountPanel(false);
+        window.location.href = "/login";
+        return;
+      }
+
+      // If disabling, return to the app in "open" mode.
+      window.location.href = "/";
+    } catch (err) {
+      setAuthGateError(err instanceof Error ? err.message : "Failed to update password gate");
+    } finally {
+      setAuthGateUpdating(false);
     }
   };
 
@@ -2056,7 +2147,7 @@ export default function HomePage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {signedIn ? (
+            {accessAllowed ? (
               <button
                 type="button"
                 className="rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-xs font-semibold text-aurora"
@@ -2082,7 +2173,7 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-        {signedIn && showAccountPanel ? (
+        {accessAllowed && showAccountPanel ? (
           <div className="mx-auto flex max-w-6xl justify-end px-6 pb-4">
             <div className="w-full max-w-xl rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
               <div className="flex items-center justify-between">
@@ -2093,13 +2184,15 @@ export default function HomePage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    className="rounded-full border border-slate-700 px-3 py-1 text-[11px] text-slate-200"
-                    onClick={handleSignOut}
-                  >
-                    Sign out
-                  </button>
+                  {signedIn ? (
+                    <button
+                      type="button"
+                      className="rounded-full border border-slate-700 px-3 py-1 text-[11px] text-slate-200"
+                      onClick={handleSignOut}
+                    >
+                      Sign out
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="text-xs text-slate-400 hover:text-slate-200"
@@ -2109,290 +2202,388 @@ export default function HomePage() {
                   </button>
                 </div>
               </div>
-              <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/50 p-3">
-                <p className="text-xs text-slate-300" suppressHydrationWarning>
-                  {hasMounted
-                    ? `Balance: ${creditsRemaining ?? "--"} left • used ${creditsUsed ?? "--"} / ${creditsTotal ?? "--"}`
-                    : "Balance: -- / --"}
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  {plansLoading ? (
-                    <p className="text-xs text-slate-400">Loading plans...</p>
-                  ) : (
-                    creditPlans.map((plan) => (
-                      <div
-                        key={plan.id}
-                        className={`rounded-lg border p-3 ${
-                          plan.popular
-                            ? "border-aurora/60 bg-aurora/10"
-                            : "border-slate-700 bg-slate-950/60"
-                        }`}
-                      >
-                        <p className="text-sm font-semibold text-white">{plan.name}</p>
-                        <p className="mt-1 text-xs text-slate-300">
-                          {plan.credits.toLocaleString()} credits
+              <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-1">
+                <button
+                  type="button"
+                  className={`flex-1 rounded-lg px-3 py-2 text-[11px] font-semibold transition ${
+                    accountTab === "plans"
+                      ? "bg-slate-950/80 text-white"
+                      : "text-slate-300 hover:text-white"
+                  }`}
+                  onClick={() => setAccountTab("plans")}
+                >
+                  Plans
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 rounded-lg px-3 py-2 text-[11px] font-semibold transition ${
+                    accountTab === "access"
+                      ? "bg-slate-950/80 text-white"
+                      : "text-slate-300 hover:text-white"
+                  }`}
+                  onClick={() => setAccountTab("access")}
+                >
+                  Access
+                </button>
+              </div>
+
+              {accountTab === "plans" ? (
+                <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/50 p-3">
+                  <p className="text-xs text-slate-300" suppressHydrationWarning>
+                    {hasMounted
+                      ? `Balance: ${creditsRemaining ?? "--"} left • used ${creditsUsed ?? "--"} / ${creditsTotal ?? "--"}`
+                      : "Balance: -- / --"}
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    {plansLoading ? (
+                      <p className="text-xs text-slate-400">Loading plans...</p>
+                    ) : (
+                      creditPlans.map((plan) => (
+                        <div
+                          key={plan.id}
+                          className={`rounded-lg border p-3 ${
+                            plan.popular
+                              ? "border-aurora/60 bg-aurora/10"
+                              : "border-slate-700 bg-slate-950/60"
+                          }`}
+                        >
+                          <p className="text-sm font-semibold text-white">{plan.name}</p>
+                          <p className="mt-1 text-xs text-slate-300">
+                            {plan.credits.toLocaleString()} credits
+                          </p>
+                          <p className="text-xs text-slate-400">${plan.price_usd}</p>
+                          <button
+                            type="button"
+                            className="mt-2 w-full rounded-md border border-aurora/50 px-2 py-1 text-xs font-semibold text-aurora"
+                            onClick={() => handlePurchasePlan(plan.id)}
+                            disabled={purchaseLoadingPlan === plan.id || !plan.checkout_enabled}
+                          >
+                            {purchaseLoadingPlan === plan.id
+                              ? "Processing..."
+                              : plan.checkout_enabled
+                              ? "Buy"
+                              : "Unavailable"}
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {purchaseStatus ? (
+                    <p className="mt-2 text-xs text-emerald-300">{purchaseStatus}</p>
+                  ) : null}
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    Live Stripe checkout enabled for configured plans.
+                  </p>
+                </div>
+              ) : null}
+
+              {accountTab === "access" ? (
+                <div className="mt-3 space-y-4">
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">Password gate</p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          When enabled, the app requires a sign-in before any features can be used.
                         </p>
-                        <p className="text-xs text-slate-400">${plan.price_usd}</p>
+                        <p className="mt-2 text-[11px] text-slate-500" suppressHydrationWarning>
+                          {authGateLoading
+                            ? "Status: checking..."
+                            : authGateStatus
+                            ? `Status: ${authGateStatus.enabled ? "ON" : "OFF"} (source: ${authGateStatus.source})`
+                            : "Status: unknown"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                          authGateStatus?.enabled ? "bg-aurora" : "bg-slate-700"
+                        } ${
+                          authGateLocked || authGateLoading || authGateUpdating
+                            ? "opacity-60"
+                            : "hover:brightness-110"
+                        }`}
+                        aria-label="Toggle password gate"
+                        disabled={authGateLocked || authGateLoading || authGateUpdating}
+                        onClick={() => handlePasswordGateToggle(!(authGateStatus?.enabled ?? true))}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-slate-950 shadow transition ${
+                            authGateStatus?.enabled ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {authGateLocked ? (
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        Locked by `AUTH_REQUIRED=true` in the environment.
+                      </p>
+                    ) : null}
+                    {authGateError ? (
+                      <p className="mt-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                        {authGateError}
+                      </p>
+                    ) : null}
+                    {authGateStatus?.enabled ? (
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        Tip: update your password below, then enable the gate.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        Gate is off by default for local testing. Turn it on when you&apos;re ready to require sign-in.
+                      </p>
+                    )}
+                  </div>
+
+                  <form className="space-y-3" onSubmit={handlePasswordChange}>
+                    <p className="text-xs font-semibold text-white">Update password</p>
+                    {authGateStatus?.enabled !== false ? (
+                      <div>
+                        <label className="text-xs text-slate-400" htmlFor="current-password">
+                          Current password
+                        </label>
+                        <div className="relative mt-1">
+                          <input
+                            id="current-password"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 pr-10 text-sm text-white"
+                            type={showCurrentPassword ? "text" : "password"}
+                            value={currentPassword}
+                            onChange={(event) => setCurrentPassword(event.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="absolute inset-y-0 right-2 flex items-center text-slate-400 transition hover:text-slate-200"
+                            aria-label={
+                              showCurrentPassword ? "Hide current password" : "Show current password"
+                            }
+                            onClick={() => setShowCurrentPassword((value) => !value)}
+                          >
+                            {showCurrentPassword ? (
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M10.584 10.584a2 2 0 002.832 2.832"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M7.5 7.5C5.018 9.086 3.56 11.2 3 12c1.35 1.95 4.838 6 9 6 1.545 0 2.96-.474 4.125-1.178"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M14.12 14.12A3 3 0 009.88 9.88"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M9.35 5.85A8.497 8.497 0 0112 5c4.162 0 7.65 4.05 9 6-.51.737-1.528 2.097-2.975 3.357"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M2.458 12C3.732 9.057 7.2 5.5 12 5.5c4.8 0 8.268 3.557 9.542 6-1.274 2.943-4.742 6.5-9.542 6.5-4.8 0-8.268-3.557-9.542-6z"
+                                />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-500">
+                        Gate is currently off, so you can set a new password without entering the old one.
+                      </p>
+                    )}
+                    <div>
+                      <label className="text-xs text-slate-400" htmlFor="new-password">
+                        New password
+                      </label>
+                      <div className="relative mt-1">
+                        <input
+                          id="new-password"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 pr-10 text-sm text-white"
+                          type={showNewPassword ? "text" : "password"}
+                          value={newPassword}
+                          onChange={(event) => setNewPassword(event.target.value)}
+                        />
                         <button
                           type="button"
-                          className="mt-2 w-full rounded-md border border-aurora/50 px-2 py-1 text-xs font-semibold text-aurora"
-                          onClick={() => handlePurchasePlan(plan.id)}
-                          disabled={purchaseLoadingPlan === plan.id || !plan.checkout_enabled}
+                          className="absolute inset-y-0 right-2 flex items-center text-slate-400 transition hover:text-slate-200"
+                          aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+                          onClick={() => setShowNewPassword((value) => !value)}
                         >
-                          {purchaseLoadingPlan === plan.id
-                            ? "Processing..."
-                            : plan.checkout_enabled
-                            ? "Buy"
-                            : "Unavailable"}
+                          {showNewPassword ? (
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M10.584 10.584a2 2 0 002.832 2.832"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M7.5 7.5C5.018 9.086 3.56 11.2 3 12c1.35 1.95 4.838 6 9 6 1.545 0 2.96-.474 4.125-1.178"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M14.12 14.12A3 3 0 009.88 9.88"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M9.35 5.85A8.497 8.497 0 0112 5c4.162 0 7.65 4.05 9 6-.51.737-1.528 2.097-2.975 3.357"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M2.458 12C3.732 9.057 7.2 5.5 12 5.5c4.8 0 8.268 3.557 9.542 6-1.274 2.943-4.742 6.5-9.542 6.5-4.8 0-8.268-3.557-9.542-6z"
+                              />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          )}
                         </button>
                       </div>
-                    ))
-                  )}
-                </div>
-                {purchaseStatus ? (
-                  <p className="mt-2 text-xs text-emerald-300">{purchaseStatus}</p>
-                ) : null}
-                <p className="mt-2 text-[11px] text-slate-500">
-                  Live Stripe checkout enabled for configured plans.
-                </p>
-              </div>
-              <form className="mt-4 space-y-3" onSubmit={handlePasswordChange}>
-                <div>
-                  <label className="text-xs text-slate-400" htmlFor="current-password">
-                    Current password
-                  </label>
-                  <div className="relative mt-1">
-                    <input
-                      id="current-password"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 pr-10 text-sm text-white"
-                      type={showCurrentPassword ? "text" : "password"}
-                      value={currentPassword}
-                      onChange={(event) => setCurrentPassword(event.target.value)}
-                    />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400" htmlFor="confirm-password">
+                        Confirm password
+                      </label>
+                      <div className="relative mt-1">
+                        <input
+                          id="confirm-password"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 pr-10 text-sm text-white"
+                          type={showConfirmPassword ? "text" : "password"}
+                          value={confirmPassword}
+                          onChange={(event) => setConfirmPassword(event.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="absolute inset-y-0 right-2 flex items-center text-slate-400 transition hover:text-slate-200"
+                          aria-label={
+                            showConfirmPassword ? "Hide confirm password" : "Show confirm password"
+                          }
+                          onClick={() => setShowConfirmPassword((value) => !value)}
+                        >
+                          {showConfirmPassword ? (
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M10.584 10.584a2 2 0 002.832 2.832"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M7.5 7.5C5.018 9.086 3.56 11.2 3 12c1.35 1.95 4.838 6 9 6 1.545 0 2.96-.474 4.125-1.178"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M14.12 14.12A3 3 0 009.88 9.88"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M9.35 5.85A8.497 8.497 0 0112 5c4.162 0 7.65 4.05 9 6-.51.737-1.528 2.097-2.975 3.357"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M2.458 12C3.732 9.057 7.2 5.5 12 5.5c4.8 0 8.268 3.557 9.542 6-1.274 2.943-4.742 6.5-9.542 6.5-4.8 0-8.268-3.557-9.542-6z"
+                              />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    {passwordError ? (
+                      <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                        {passwordError}
+                      </p>
+                    ) : null}
+                    {passwordStatus ? (
+                      <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                        {passwordStatus}
+                      </p>
+                    ) : null}
+                    <button
+                      className="w-full rounded-lg bg-aurora px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-aurora/90"
+                      type="submit"
+                      disabled={passwordLoading}
+                    >
+                      {passwordLoading ? "Updating..." : "Update password"}
+                    </button>
+                  </form>
+
+                  {signedIn ? (
                     <button
                       type="button"
-                      className="absolute inset-y-0 right-2 flex items-center text-slate-400 transition hover:text-slate-200"
-                      aria-label={
-                        showCurrentPassword ? "Hide current password" : "Show current password"
-                      }
-                      onClick={() => setShowCurrentPassword((value) => !value)}
+                      className="w-full rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-500"
+                      onClick={handleSignOut}
                     >
-                      {showCurrentPassword ? (
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M10.584 10.584a2 2 0 002.832 2.832"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M7.5 7.5C5.018 9.086 3.56 11.2 3 12c1.35 1.95 4.838 6 9 6 1.545 0 2.96-.474 4.125-1.178"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M14.12 14.12A3 3 0 009.88 9.88"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M9.35 5.85A8.497 8.497 0 0112 5c4.162 0 7.65 4.05 9 6-.51.737-1.528 2.097-2.975 3.357"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M2.458 12C3.732 9.057 7.2 5.5 12 5.5c4.8 0 8.268 3.557 9.542 6-1.274 2.943-4.742 6.5-9.542 6.5-4.8 0-8.268-3.557-9.542-6z"
-                          />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      )}
+                      Sign out now
                     </button>
-                  </div>
+                  ) : null}
                 </div>
-                <div>
-                  <label className="text-xs text-slate-400" htmlFor="new-password">
-                    New password
-                  </label>
-                  <div className="relative mt-1">
-                    <input
-                      id="new-password"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 pr-10 text-sm text-white"
-                      type={showNewPassword ? "text" : "password"}
-                      value={newPassword}
-                      onChange={(event) => setNewPassword(event.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-2 flex items-center text-slate-400 transition hover:text-slate-200"
-                      aria-label={showNewPassword ? "Hide new password" : "Show new password"}
-                      onClick={() => setShowNewPassword((value) => !value)}
-                    >
-                      {showNewPassword ? (
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M10.584 10.584a2 2 0 002.832 2.832"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M7.5 7.5C5.018 9.086 3.56 11.2 3 12c1.35 1.95 4.838 6 9 6 1.545 0 2.96-.474 4.125-1.178"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M14.12 14.12A3 3 0 009.88 9.88"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M9.35 5.85A8.497 8.497 0 0112 5c4.162 0 7.65 4.05 9 6-.51.737-1.528 2.097-2.975 3.357"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M2.458 12C3.732 9.057 7.2 5.5 12 5.5c4.8 0 8.268 3.557 9.542 6-1.274 2.943-4.742 6.5-9.542 6.5-4.8 0-8.268-3.557-9.542-6z"
-                          />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-slate-400" htmlFor="confirm-password">
-                    Confirm password
-                  </label>
-                  <div className="relative mt-1">
-                    <input
-                      id="confirm-password"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 pr-10 text-sm text-white"
-                      type={showConfirmPassword ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(event) => setConfirmPassword(event.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-2 flex items-center text-slate-400 transition hover:text-slate-200"
-                      aria-label={
-                        showConfirmPassword ? "Hide confirm password" : "Show confirm password"
-                      }
-                      onClick={() => setShowConfirmPassword((value) => !value)}
-                    >
-                      {showConfirmPassword ? (
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M10.584 10.584a2 2 0 002.832 2.832"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M7.5 7.5C5.018 9.086 3.56 11.2 3 12c1.35 1.95 4.838 6 9 6 1.545 0 2.96-.474 4.125-1.178"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M14.12 14.12A3 3 0 009.88 9.88"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M9.35 5.85A8.497 8.497 0 0112 5c4.162 0 7.65 4.05 9 6-.51.737-1.528 2.097-2.975 3.357"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M2.458 12C3.732 9.057 7.2 5.5 12 5.5c4.8 0 8.268 3.557 9.542 6-1.274 2.943-4.742 6.5-9.542 6.5-4.8 0-8.268-3.557-9.542-6z"
-                          />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </div>
-                {passwordError ? (
-                  <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                    {passwordError}
-                  </p>
-                ) : null}
-                {passwordStatus ? (
-                  <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-                    {passwordStatus}
-                  </p>
-                ) : null}
-                <button
-                  className="w-full rounded-lg bg-aurora px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-aurora/90"
-                  type="submit"
-                  disabled={passwordLoading}
-                >
-                  {passwordLoading ? "Updating..." : "Update password"}
-                </button>
-              </form>
-              <button
-                type="button"
-                className="mt-4 w-full rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-500"
-                onClick={handleSignOut}
-              >
-                Sign out now
-              </button>
+              ) : null}
             </div>
           </div>
         ) : null}

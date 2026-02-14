@@ -107,3 +107,15 @@ class CreditLedgerEntry(SQLModel, table=True):
     balance_after: int = Field(default=0)
     reserved_after: int = Field(default=0)
     created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class AppSettings(SQLModel, table=True):
+    """
+    Local runtime settings that shouldn't require rebuilding containers.
+    Keep this small and safe; treat anything here as non-secret local config.
+    """
+
+    id: Optional[int] = Field(default=1, primary_key=True)
+    auth_required: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)

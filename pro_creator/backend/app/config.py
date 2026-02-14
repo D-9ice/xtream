@@ -92,7 +92,10 @@ DATABASE_URL = _env_file_or_aws("DATABASE_URL", f"sqlite:///{DB_PATH}")
 
 # Storage
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")  # local | s3
-PROJECTS_URL_BASE = os.getenv("PROJECTS_URL_BASE", "http://127.0.0.1:8000/projects")
+S3_PUBLIC_URL = os.getenv("S3_PUBLIC_URL", "").rstrip("/")
+PROJECTS_URL_BASE = os.getenv("PROJECTS_URL_BASE", "").rstrip("/") or (
+    S3_PUBLIC_URL if S3_PUBLIC_URL else "http://127.0.0.1:8000/projects"
+)
 
 S3_ENDPOINT = os.getenv("S3_ENDPOINT", "http://minio:9000")
 S3_ACCESS_KEY = _env_file_or_aws("S3_ACCESS_KEY", "minioadmin")

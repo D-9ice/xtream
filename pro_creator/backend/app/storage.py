@@ -10,6 +10,7 @@ from botocore.client import Config
 from app.config import (
     PROJECTS_DIR,
     PROJECTS_URL_BASE,
+    S3_PUBLIC_URL,
     S3_ACCESS_KEY,
     S3_BUCKET,
     S3_ENDPOINT,
@@ -146,6 +147,8 @@ class StorageClient:
 
     def public_url(self, key: str) -> str:
         if self.backend == "s3":
+            if S3_PUBLIC_URL:
+                return f"{S3_PUBLIC_URL}/{key}"
             return self._s3.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": S3_BUCKET, "Key": key},
