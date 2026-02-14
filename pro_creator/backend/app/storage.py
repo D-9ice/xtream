@@ -6,6 +6,7 @@ from typing import Iterable, Optional
 
 import boto3
 from botocore.client import Config
+from botocore.exceptions import ClientError
 
 from app.config import (
     PROJECTS_DIR,
@@ -82,8 +83,14 @@ class StorageClient:
 
     def read_text(self, key: str) -> str:
         if self.backend == "s3":
-            response = self._s3.get_object(Bucket=S3_BUCKET, Key=key)
-            return response["Body"].read().decode("utf-8")
+            try:
+                response = self._s3.get_object(Bucket=S3_BUCKET, Key=key)
+                return response["Body"].read().decode("utf-8")
+            except ClientError as exc:
+                code = (exc.response or {}).get("Error", {}).get("Code")
+                if code in {"NoSuchKey", "NotFound", "404"}:
+                    return ""
+                raise
         path = PROJECTS_DIR / key
         if not path.exists():
             return ""
@@ -91,8 +98,14 @@ class StorageClient:
 
     def read_bytes(self, key: str) -> bytes:
         if self.backend == "s3":
-            response = self._s3.get_object(Bucket=S3_BUCKET, Key=key)
-            return response["Body"].read()
+            try:
+                response = self._s3.get_object(Bucket=S3_BUCKET, Key=key)
+                return response["Body"].read()
+            except ClientError as exc:
+                code = (exc.response or {}).get("Error", {}).get("Code")
+                if code in {"NoSuchKey", "NotFound", "404"}:
+                    return b""
+                raise
         path = PROJECTS_DIR / key
         if not path.exists():
             return b""
