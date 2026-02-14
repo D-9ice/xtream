@@ -33,6 +33,21 @@ required_secret_vars=(
   S3_SECRET_KEY
 )
 
+resolve_host_path() {
+  # Map common container paths back to host paths for preflight checks.
+  # Production compose mounts ./deploy into the container at /app/deploy.
+  local path="$1"
+  if [[ "${path}" == /app/* ]]; then
+    echo "${ROOT_DIR}/${path#/app/}"
+    return 0
+  fi
+  if [[ "${path}" == ./* || "${path}" != /* ]]; then
+    echo "${ROOT_DIR}/${path#./}"
+    return 0
+  fi
+  echo "${path}"
+}
+
 get_env_value() {
   local key="$1"
   local line
@@ -98,6 +113,28 @@ for pattern in "${unsafe_patterns[@]}"; do
     exit 1
   fi
 done
+
+# Enforce lipsync dependency (Rhubarb must be installed and reachable).
+auto_lipsync="$(get_env_value "AUTO_LIPSYNC")"
+if [[ -z "${auto_lipsync}" ]]; then
+  auto_lipsync="true"
+fi
+if [[ "${auto_lipsync}" == "true" ]]; then
+  rhubarb_path="$(get_env_value "RHUBARB_PATH")"
+  if ! is_set_nonempty "${rhubarb_path}"; then
+    echo "ERROR: AUTO_LIPSYNC=true requires RHUBARB_PATH in .env.production"
+    exit 1
+  fi
+  rhubarb_host_path="$(resolve_host_path "${rhubarb_path}")"
+  if [[ ! -f "${rhubarb_host_path}" ]]; then
+    echo "ERROR: RHUBARB_PATH does not exist on host: ${rhubarb_host_path}"
+    exit 1
+  fi
+  if [[ ! -x "${rhubarb_host_path}" ]]; then
+    echo "ERROR: RHUBARB_PATH is not executable on host: ${rhubarb_host_path}"
+    exit 1
+  fi
+fi
 
 echo "Validating compose configuration..."
 cd "${ROOT_DIR}"

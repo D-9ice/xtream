@@ -33,8 +33,10 @@ services:
   backend:
     build:
       context: ./backend
+    volumes:
+      - ./deploy:/app/deploy:ro
     environment:
-      ENVIRONMENT: production
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       DATABASE_URL: ${DATABASE_URL:-sqlite:////app/pro_creator.db}
       STORAGE_BACKEND: s3
       PROJECTS_URL_BASE: http://minio:9000/${S3_BUCKET:-pro-creator}
@@ -48,7 +50,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       ENABLE_CELERY: "true"
-      AUTH_REQUIRED: "true"
+      AUTH_REQUIRED: "${AUTH_REQUIRED:-false}"
       JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@procreator.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-LocalAdminPass123!}
@@ -100,6 +102,8 @@ services:
     build:
       context: ./backend
     command: celery -A app.celery_app.celery_app worker -l info
+    volumes:
+      - ./deploy:/app/deploy:ro
     environment:
       DATABASE_URL: ${DATABASE_URL:-sqlite:////app/pro_creator.db}
       STORAGE_BACKEND: s3
@@ -114,7 +118,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       ENABLE_CELERY: "true"
-      AUTH_REQUIRED: "true"
+      AUTH_REQUIRED: "${AUTH_REQUIRED:-false}"
       JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@procreator.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-LocalAdminPass123!}

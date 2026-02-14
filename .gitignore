@@ -8,6 +8,8 @@ pro_creator/projects/
 # Env / secrets
 .env
 .env.*
+!pro_creator/.env.example
+!pro_creator/deploy/.env.production.example
 
 # Node / Next.js
 node_modules/

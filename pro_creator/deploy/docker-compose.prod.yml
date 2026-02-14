@@ -73,7 +73,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       ENABLE_CELERY: "true"
-      AUTH_REQUIRED: "true"
+      AUTH_REQUIRED: "${AUTH_REQUIRED:-true}"
       JWT_SECRET: ${JWT_SECRET}
       JWT_SECRET_FILE: ${JWT_SECRET_FILE:-}
       JWT_SECRET_AWS_SECRET_ID: ${JWT_SECRET_AWS_SECRET_ID:-}
@@ -180,7 +180,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       ENABLE_CELERY: "true"
-      AUTH_REQUIRED: "true"
+      AUTH_REQUIRED: "${AUTH_REQUIRED:-true}"
       JWT_SECRET: ${JWT_SECRET}
       JWT_SECRET_FILE: ${JWT_SECRET_FILE:-}
       JWT_SECRET_AWS_SECRET_ID: ${JWT_SECRET_AWS_SECRET_ID:-}
