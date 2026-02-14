@@ -1,2 +1,29 @@
 .git-backups/
 pro_creator/projects/
+
+# OS / editor
+.DS_Store
+.vscode/
+
+# Env / secrets
+.env
+.env.*
+
+# Node / Next.js
+node_modules/
+.npm/
+.pnpm/
+.yarn/
+.next/
+out/
+dist/
+build/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Logs
+*.log

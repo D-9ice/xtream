@@ -1,8 +1,0 @@
-[
-  {
-    "key": "cmd+shift+r",
-    "command": "workbench.action.tasks.runTask",
-    "args": "Pro Creator: Dev (Backend + Frontend)",
-    "when": "true"
-  }
-]
