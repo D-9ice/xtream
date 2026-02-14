@@ -45,7 +45,7 @@ class SceneResponse(BaseModel):
 class ScriptRequest(BaseModel):
     project_id: str
     topic: str
-    duration_minutes: int = 3
+    duration_minutes: float = 3
     tone: str = "neutral"
 
 
@@ -225,7 +225,7 @@ class OrchestrationQueueRequest(BaseModel):
     project_id: str
     kind: str = "full"
     topic: Optional[str] = None
-    duration_minutes: int = 3
+    duration_minutes: float = 3
     tone: str = "neutral"
     voice_text: Optional[str] = None
     image_prompt: Optional[str] = None

@@ -209,9 +209,21 @@ def _compose_visuals(beat_title: str, angle: str, scene_index: int) -> str:
     )
 
 
-def _generate_script_template(topic: str, duration_minutes: int, tone: str) -> Dict:
-    duration_minutes = max(1, min(45, duration_minutes))
-    scene_count = max(6, min(10, math.ceil(duration_minutes / 5)))
+def _normalize_duration_minutes(duration_minutes: float) -> int:
+    try:
+        minutes = float(duration_minutes)
+    except Exception:
+        minutes = 3.0
+    if not math.isfinite(minutes):
+        minutes = 3.0
+    # We accept fractional minutes from the UI, but the script layout expects an integer.
+    minutes_i = int(math.ceil(minutes))
+    return max(1, min(45, minutes_i))
+
+
+def _generate_script_template(topic: str, duration_minutes: float, tone: str) -> Dict:
+    duration_minutes_i = _normalize_duration_minutes(duration_minutes)
+    scene_count = max(6, min(10, math.ceil(duration_minutes_i / 5)))
 
     title, prompt = _parse_script_brief(topic)
     style_a, style_b = _tone_pack(tone)
@@ -221,7 +233,7 @@ def _generate_script_template(topic: str, duration_minutes: int, tone: str) -> D
     script_lines = [
         f"Title: {title}",
         f"Tone: {tone}",
-        f"Duration: {duration_minutes} minutes",
+        f"Duration: {duration_minutes_i} minutes",
         "",
         f"Brief: {prompt}",
         "Overview: A human-sounding narration plan built for YouTube pacing, clarity, and trust.",
@@ -280,7 +292,7 @@ def _extract_json_object(text: str) -> Dict | None:
 
 def _generate_script_llm(
     topic: str,
-    duration_minutes: int,
+    duration_minutes: float,
     tone: str,
     *,
     model_name: str,
@@ -291,7 +303,8 @@ def _generate_script_llm(
 
     base_url = OPENAI_BASE_URL
     model = model_name.strip()
-    scene_count = max(6, min(10, math.ceil(duration_minutes / 5)))
+    duration_minutes_i = _normalize_duration_minutes(duration_minutes)
+    scene_count = max(6, min(10, math.ceil(duration_minutes_i / 5)))
     title, prompt = _parse_script_brief(topic)
 
     system_prompt = (
@@ -303,7 +316,7 @@ def _generate_script_llm(
         f"Title: {title}\n"
         f"Brief: {prompt}\n"
         f"Tone: {tone}\n"
-        f"Duration minutes: {duration_minutes}\n"
+        f"Duration minutes: {duration_minutes_i}\n"
         f"Scene count: {scene_count}\n\n"
         "Return strict JSON with this shape:\n"
         "{\n"
@@ -371,7 +384,7 @@ def _generate_script_llm(
 
 def generate_script(
     topic: str,
-    duration_minutes: int,
+    duration_minutes: float,
     tone: str,
     *,
     script_provider: str | None = None,

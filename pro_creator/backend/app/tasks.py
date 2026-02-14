@@ -10,7 +10,7 @@ from app.routers.video import export_preset
 
 
 @celery_app.task(name="pro_creator.generate_script")
-def generate_script_task(project_id: str, topic: str, duration_minutes: int, tone: str) -> dict:
+def generate_script_task(project_id: str, topic: str, duration_minutes: float, tone: str) -> dict:
     result = generate_script(topic, duration_minutes, tone)
     project_path = ensure_project_dirs(project_id)
     write_script(project_path, result["full_script"])
