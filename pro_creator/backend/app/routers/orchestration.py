@@ -1,0 +1,470 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlmodel import Session, select
+
+from app.auth import get_current_user
+from app.config import ENABLE_CELERY
+from app.database import engine, get_session
+from app.models import OrchestrationJob, OrchestrationSchedule, Scene
+from app.schemas import (
+    ExportPresetRequest,
+    ExportPresetResponse,
+    OrchestrationProcessResponse,
+    OrchestrationQueueBatchRequest,
+    OrchestrationQueueItem,
+    OrchestrationQueueRequest,
+    OrchestrationQueueResponse,
+    OrchestrationRunnerStatus,
+    OrchestrationScheduleItem,
+    OrchestrationScheduleRequest,
+    OrchestrationScheduleResponse,
+    ScriptRequest,
+    VoiceRequest,
+    ImageRequest,
+    VideoRequest,
+)
+from app.services.image_engine import generate_image_for_scene
+from app.services.script_engine import generate_script
+from app.services.video_engine import render_video
+from app.services.voice_engine import generate_voice_for_scene
+from app.celery_app import celery_app
+from app import tasks as celery_tasks
+from app.utils.file_manager import ensure_project_dirs, write_scene_metadata, write_script
+from app.utils.logger import get_logger
+from app.routers.video import export_preset
+
+router = APIRouter(
+    prefix="/orchestration",
+    tags=["Orchestration"],
+    dependencies=[Depends(get_current_user)],
+)
+logger = get_logger(__name__)
+
+_runner_task: Optional[asyncio.Task] = None
+_runner_interval = 15
+
+_runner_task: Optional[asyncio.Task] = None
+_runner_interval = 15
+
+
+def utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _job_to_item(job: OrchestrationJob) -> OrchestrationQueueItem:
+    return OrchestrationQueueItem(
+        id=job.id or 0,
+        project_id=job.project_id,
+        kind=job.kind,
+        status=job.status,
+        attempts=job.attempts,
+        max_attempts=job.max_attempts,
+        last_error=job.last_error,
+        task_id=job.task_id,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
+
+
+def _schedule_to_item(schedule: OrchestrationSchedule) -> OrchestrationScheduleItem:
+    return OrchestrationScheduleItem(
+        id=schedule.id or 0,
+        project_id=schedule.project_id,
+        cadence_days=schedule.cadence_days,
+        next_run_at=schedule.next_run_at,
+        enabled=schedule.enabled,
+        last_run_at=schedule.last_run_at,
+        created_at=schedule.created_at,
+    )
+
+
+def _parse_payload(job: OrchestrationJob) -> dict:
+    if not job.payload:
+        return {}
+    try:
+        return json.loads(job.payload)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _run_script(payload: OrchestrationQueueRequest, session: Session) -> None:
+    result = generate_script(payload.topic or "Untitled", payload.duration_minutes, payload.tone)
+    project_path = ensure_project_dirs(payload.project_id)
+    write_script(project_path, result["full_script"])
+    write_scene_metadata(project_path, result["scenes"])
+
+    session.exec(Scene.__table__.delete().where(Scene.project_id == payload.project_id))
+    for scene in result["scenes"]:
+        session.add(Scene(project_id=payload.project_id, text=scene["text"]))
+    session.commit()
+
+
+def _run_voice(payload: OrchestrationQueueRequest, session: Session) -> None:
+    scenes = session.exec(
+        select(Scene).where(Scene.project_id == payload.project_id)
+    ).all()
+    text = payload.voice_text or (scenes[0].text if scenes else "Provide a concise narration for this project.")
+    result = generate_voice_for_scene(payload.project_id, 1, text)
+    if scenes:
+        for scene in scenes:
+            scene_result = generate_voice_for_scene(
+                payload.project_id,
+                scene.id or 1,
+                scene.text or text,
+            )
+            scene.audio_path = scene_result["audio_path"]
+            session.add(scene)
+        session.commit()
+    return result
+
+
+def _run_image(payload: OrchestrationQueueRequest, session: Session) -> None:
+    scenes = session.exec(
+        select(Scene).where(Scene.project_id == payload.project_id)
+    ).all()
+    prompt = payload.image_prompt or (scenes[0].text if scenes else "Scene visual")
+    result = generate_image_for_scene(payload.project_id, 1, prompt, "cinematic")
+    if scenes:
+        for scene in scenes:
+            scene_result = generate_image_for_scene(
+                payload.project_id,
+                scene.id or 1,
+                scene.text or prompt,
+                "cinematic",
+            )
+            scene.image_path = scene_result["image_path"]
+            session.add(scene)
+        session.commit()
+    return result
+
+
+def _run_video(payload: OrchestrationQueueRequest) -> None:
+    render_video(payload.project_id)
+
+
+def _run_export(payload: OrchestrationQueueRequest) -> ExportPresetResponse:
+    return export_preset(
+        ExportPresetRequest(project_id=payload.project_id, preset=payload.export_preset)
+    )
+
+
+def _execute_job(job: OrchestrationJob, session: Session) -> None:
+    payload = _parse_payload(job)
+    request = OrchestrationQueueRequest(
+        project_id=job.project_id,
+        kind=job.kind,
+        topic=payload.get("topic"),
+        duration_minutes=payload.get("duration_minutes", 3),
+        tone=payload.get("tone", "neutral"),
+        voice_text=payload.get("voice_text"),
+        image_prompt=payload.get("image_prompt"),
+        export_preset=payload.get("export_preset", "social-vertical"),
+    )
+
+    if job.kind == "script":
+        _run_script(request, session)
+    elif job.kind == "voice":
+        _run_voice(request, session)
+    elif job.kind == "image":
+        _run_image(request, session)
+    elif job.kind == "render":
+        _run_video(request)
+    elif job.kind == "export":
+        _run_export(request)
+    elif job.kind == "full":
+        _run_script(request, session)
+        _run_voice(request, session)
+        _run_image(request, session)
+        _run_video(request)
+        _run_export(request)
+    else:
+        raise ValueError(f"Unknown job kind: {job.kind}")
+
+
+def _dispatch_job(job: OrchestrationJob) -> str:
+    payload = _parse_payload(job)
+    if job.kind == "script":
+        result = celery_tasks.generate_script_task.delay(
+            job.project_id,
+            payload.get("topic") or "",
+            payload.get("duration_minutes") or 3,
+            payload.get("tone") or "neutral",
+        )
+    elif job.kind == "voice":
+        result = celery_tasks.generate_voice_task.delay(
+            job.project_id,
+            payload.get("voice_text") or "",
+        )
+    elif job.kind == "image":
+        result = celery_tasks.generate_image_task.delay(
+            job.project_id,
+            payload.get("image_prompt") or "",
+            "cinematic",
+        )
+    elif job.kind == "render":
+        result = celery_tasks.render_video_task.delay(job.project_id)
+    elif job.kind == "export":
+        result = celery_tasks.export_preset_task.delay(
+            job.project_id,
+            payload.get("export_preset") or "youtube",
+        )
+    elif job.kind == "full":
+        result = celery_tasks.generate_script_task.delay(
+            job.project_id,
+            payload.get("topic") or "",
+            payload.get("duration_minutes") or 3,
+            payload.get("tone") or "neutral",
+        )
+    else:
+        raise ValueError(f"Unknown job kind: {job.kind}")
+    return result.id
+
+
+def _process_queue_internal(
+    limit: int,
+    session: Session,
+) -> OrchestrationProcessResponse:
+    if ENABLE_CELERY:
+        processing_jobs = session.exec(
+            select(OrchestrationJob)
+            .where(OrchestrationJob.status == "processing")
+        ).all()
+        for job in processing_jobs:
+            if not job.task_id:
+                continue
+            async_result = celery_app.AsyncResult(job.task_id)
+            if async_result.ready():
+                if async_result.failed():
+                    job.status = "failed"
+                    job.last_error = str(async_result.result)
+                else:
+                    job.status = "complete"
+                    job.last_error = None
+                job.updated_at = utc_now_naive()
+                session.add(job)
+                session.commit()
+
+    jobs = session.exec(
+        select(OrchestrationJob)
+        .where(OrchestrationJob.status == "queued")
+        .order_by(OrchestrationJob.created_at.asc())
+        .limit(limit)
+    ).all()
+
+    completed: list[int] = []
+    failed: list[int] = []
+
+    for job in jobs:
+        job.status = "running"
+        job.attempts += 1
+        job.updated_at = utc_now_naive()
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+        try:
+            if ENABLE_CELERY:
+                job.task_id = _dispatch_job(job)
+                job.status = "processing"
+            else:
+                _execute_job(job, session)
+                job.status = "complete"
+                job.last_error = None
+                completed.append(job.id or 0)
+        except Exception as exc:
+            job.last_error = str(exc)
+            if job.attempts >= job.max_attempts:
+                job.status = "failed"
+                failed.append(job.id or 0)
+            else:
+                job.status = "queued"
+        finally:
+            job.updated_at = utc_now_naive()
+            session.add(job)
+            session.commit()
+    return OrchestrationProcessResponse(
+        processed=len(jobs), completed=completed, failed=failed
+    )
+
+
+async def _runner_loop(interval_seconds: int) -> None:
+    while True:
+        try:
+            with Session(engine) as session:
+                _process_queue_internal(1, session)
+        except Exception as exc:
+            logger.warning("Runner loop error: %s", exc)
+        await asyncio.sleep(interval_seconds)
+
+
+@router.post("/queue", response_model=OrchestrationQueueItem)
+def enqueue_job(
+    payload: OrchestrationQueueRequest, session: Session = Depends(get_session)
+) -> OrchestrationQueueItem:
+    job = OrchestrationJob(
+        project_id=payload.project_id,
+        kind=payload.kind,
+        status="queued",
+        attempts=0,
+        max_attempts=3,
+        payload=json.dumps(
+            {
+                "topic": payload.topic,
+                "duration_minutes": payload.duration_minutes,
+                "tone": payload.tone,
+                "voice_text": payload.voice_text,
+                "image_prompt": payload.image_prompt,
+                "export_preset": payload.export_preset,
+            }
+        ),
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    logger.info("Queued orchestration job %s for %s", job.kind, job.project_id)
+    return _job_to_item(job)
+
+
+@router.post("/queue/batch", response_model=OrchestrationQueueResponse)
+def enqueue_batch(
+    payload: OrchestrationQueueBatchRequest, session: Session = Depends(get_session)
+) -> OrchestrationQueueResponse:
+    items: list[OrchestrationQueueItem] = []
+    for entry in payload.items:
+        job = OrchestrationJob(
+            project_id=entry.project_id,
+            kind=entry.kind,
+            status="queued",
+            attempts=0,
+            max_attempts=3,
+            payload=json.dumps(
+                {
+                    "topic": entry.topic,
+                    "duration_minutes": entry.duration_minutes,
+                    "tone": entry.tone,
+                    "voice_text": entry.voice_text,
+                    "image_prompt": entry.image_prompt,
+                    "export_preset": entry.export_preset,
+                }
+            ),
+        )
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+        items.append(_job_to_item(job))
+    return OrchestrationQueueResponse(items=items)
+
+
+@router.get("/queue", response_model=OrchestrationQueueResponse)
+def list_queue(
+    status: Optional[str] = Query(None),
+    session: Session = Depends(get_session),
+) -> OrchestrationQueueResponse:
+    statement = select(OrchestrationJob)
+    if status:
+        statement = statement.where(OrchestrationJob.status == status)
+    jobs = session.exec(statement.order_by(OrchestrationJob.created_at.desc())).all()
+    return OrchestrationQueueResponse(items=[_job_to_item(job) for job in jobs])
+
+
+@router.post("/queue/process", response_model=OrchestrationProcessResponse)
+def process_queue(
+    limit: int = Query(1, ge=1, le=10),
+    session: Session = Depends(get_session),
+) -> OrchestrationProcessResponse:
+    return _process_queue_internal(limit, session)
+
+
+@router.post("/queue/runner/start", response_model=OrchestrationRunnerStatus)
+async def start_runner(
+    interval_seconds: int = Query(15, ge=5, le=300)
+) -> OrchestrationRunnerStatus:
+    global _runner_task, _runner_interval
+    _runner_interval = interval_seconds
+    if _runner_task is None or _runner_task.done():
+        loop = asyncio.get_running_loop()
+        _runner_task = loop.create_task(_runner_loop(interval_seconds))
+    return OrchestrationRunnerStatus(running=True, interval_seconds=_runner_interval)
+
+
+@router.post("/queue/runner/stop", response_model=OrchestrationRunnerStatus)
+async def stop_runner() -> OrchestrationRunnerStatus:
+    global _runner_task
+    if _runner_task is not None:
+        _runner_task.cancel()
+        _runner_task = None
+    return OrchestrationRunnerStatus(running=False, interval_seconds=_runner_interval)
+
+
+@router.get("/queue/runner/status", response_model=OrchestrationRunnerStatus)
+def runner_status() -> OrchestrationRunnerStatus:
+    running = _runner_task is not None and not _runner_task.done()
+    return OrchestrationRunnerStatus(running=running, interval_seconds=_runner_interval)
+
+
+@router.post("/queue/{job_id}/retry", response_model=OrchestrationQueueItem)
+def retry_job(job_id: int, session: Session = Depends(get_session)) -> OrchestrationQueueItem:
+    job = session.get(OrchestrationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "failed":
+        raise HTTPException(status_code=400, detail="Job is not failed")
+    job.status = "queued"
+    job.updated_at = utc_now_naive()
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return _job_to_item(job)
+
+
+@router.post("/schedules", response_model=OrchestrationScheduleItem)
+def create_schedule(
+    payload: OrchestrationScheduleRequest, session: Session = Depends(get_session)
+) -> OrchestrationScheduleItem:
+    schedule = OrchestrationSchedule(
+        project_id=payload.project_id,
+        cadence_days=payload.cadence_days,
+        next_run_at=utc_now_naive() + timedelta(days=payload.cadence_days),
+        enabled=True,
+    )
+    session.add(schedule)
+    session.commit()
+    session.refresh(schedule)
+    return _schedule_to_item(schedule)
+
+
+@router.get("/schedules", response_model=OrchestrationScheduleResponse)
+def list_schedules(session: Session = Depends(get_session)) -> OrchestrationScheduleResponse:
+    schedules = session.exec(
+        select(OrchestrationSchedule).order_by(OrchestrationSchedule.created_at.desc())
+    ).all()
+    return OrchestrationScheduleResponse(
+        items=[_schedule_to_item(schedule) for schedule in schedules]
+    )
+
+
+@router.post("/schedules/run", response_model=OrchestrationScheduleResponse)
+def run_schedules(session: Session = Depends(get_session)) -> OrchestrationScheduleResponse:
+    now = utc_now_naive()
+    schedules = session.exec(select(OrchestrationSchedule)).all()
+    for schedule in schedules:
+        if schedule.enabled and schedule.next_run_at <= now:
+            job = OrchestrationJob(
+                project_id=schedule.project_id,
+                kind="full",
+                status="queued",
+                payload=json.dumps({"export_preset": "social-vertical"}),
+            )
+            session.add(job)
+            schedule.last_run_at = now
+            schedule.next_run_at = now + timedelta(days=schedule.cadence_days)
+            session.add(schedule)
+    session.commit()
+    return OrchestrationScheduleResponse(
+        items=[_schedule_to_item(item) for item in schedules]
+    )

@@ -1,0 +1,19 @@
+{
+  email ${LETSENCRYPT_EMAIL}
+}
+
+${DOMAIN_NAME} {
+  encode zstd gzip
+
+  @metrics path /metrics
+  respond @metrics 403
+
+  @api path /api/* /docs* /openapi.json
+  handle @api {
+    reverse_proxy backend:8000
+  }
+
+  handle {
+    reverse_proxy frontend:3000
+  }
+}

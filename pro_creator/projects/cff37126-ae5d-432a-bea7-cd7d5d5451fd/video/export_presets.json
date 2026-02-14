@@ -1,0 +1,30 @@
+{
+  "project_id": "cff37126-ae5d-432a-bea7-cd7d5d5451fd",
+  "recommended": "youtube",
+  "presets": [
+    {
+      "preset": "youtube",
+      "resolution": "1920x1080",
+      "fps": 30,
+      "audio": "aac"
+    },
+    {
+      "preset": "tiktok",
+      "resolution": "1080x1920",
+      "fps": 30,
+      "audio": "aac"
+    },
+    {
+      "preset": "instagram",
+      "resolution": "1080x1350",
+      "fps": 30,
+      "audio": "aac"
+    },
+    {
+      "preset": "facebook",
+      "resolution": "1280x720",
+      "fps": 30,
+      "audio": "aac"
+    }
+  ]
+}

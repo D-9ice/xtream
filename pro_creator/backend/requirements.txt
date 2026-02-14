@@ -1,0 +1,20 @@
+fastapi
+uvicorn
+pydantic
+sqlmodel
+psycopg[binary]
+python-multipart
+ffmpeg-python
+requests
+httpx
+pytest
+Pillow
+# openai-whisper is excluded from local Docker builds to avoid multi-GB GPU dependency pulls.
+boto3
+celery
+redis
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt==3.2.2
+prometheus-client
+stripe

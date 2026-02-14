@@ -1,0 +1,6631 @@
+{
+  "scenes": [
+    {
+      "scene_id": 1,
+      "source": "heuristic",
+      "visemes": [
+        {
+          "start": 0.0,
+          "end": 0.4,
+          "viseme": "EH",
+          "word": "Scene",
+          "segment_id": 1
+        },
+        {
+          "start": 0.4,
+          "end": 0.8,
+          "viseme": "REST",
+          "word": "1:",
+          "segment_id": 1
+        },
+        {
+          "start": 0.8,
+          "end": 1.2,
+          "viseme": "OW",
+          "word": "Hook",
+          "segment_id": 1
+        },
+        {
+          "start": 1.2,
+          "end": 1.6,
+          "viseme": "IH",
+          "word": "Intent:",
+          "segment_id": 1
+        },
+        {
+          "start": 1.6,
+          "end": 2.0,
+          "viseme": "IH",
+          "word": "Instantly",
+          "segment_id": 1
+        },
+        {
+          "start": 2.0,
+          "end": 2.4,
+          "viseme": "AA",
+          "word": "capture",
+          "segment_id": 1
+        },
+        {
+          "start": 2.4,
+          "end": 2.8,
+          "viseme": "AA",
+          "word": "attention",
+          "segment_id": 1
+        },
+        {
+          "start": 2.8,
+          "end": 3.2,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 1
+        },
+        {
+          "start": 3.2,
+          "end": 3.6,
+          "viseme": "AA",
+          "word": "frame",
+          "segment_id": 1
+        },
+        {
+          "start": 3.6,
+          "end": 4.0,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 1
+        },
+        {
+          "start": 4.0,
+          "end": 4.4,
+          "viseme": "AA",
+          "word": "payoff.",
+          "segment_id": 1
+        },
+        {
+          "start": 4.4,
+          "end": 4.8,
+          "viseme": "AA",
+          "word": "Narration:",
+          "segment_id": 1
+        },
+        {
+          "start": 4.8,
+          "end": 5.2,
+          "viseme": "EH",
+          "word": "Describe",
+          "segment_id": 1
+        },
+        {
+          "start": 5.2,
+          "end": 5.6,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 1
+        },
+        {
+          "start": 5.6,
+          "end": 6.0,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 1
+        },
+        {
+          "start": 6.0,
+          "end": 6.4,
+          "viseme": "AA",
+          "word": "validation",
+          "segment_id": 1
+        },
+        {
+          "start": 6.4,
+          "end": 6.8,
+          "viseme": "IH",
+          "word": "in",
+          "segment_id": 1
+        },
+        {
+          "start": 6.8,
+          "end": 7.2,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 1
+        },
+        {
+          "start": 7.2,
+          "end": 7.6,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 1
+        },
+        {
+          "start": 7.6,
+          "end": 8.0,
+          "viseme": "OW",
+          "word": "voice,",
+          "segment_id": 1
+        },
+        {
+          "start": 8.0,
+          "end": 8.4,
+          "viseme": "EH",
+          "word": "weaving",
+          "segment_id": 1
+        },
+        {
+          "start": 8.4,
+          "end": 8.8,
+          "viseme": "EH",
+          "word": "sensory",
+          "segment_id": 1
+        },
+        {
+          "start": 8.8,
+          "end": 9.2,
+          "viseme": "EH",
+          "word": "detail,",
+          "segment_id": 1
+        },
+        {
+          "start": 9.2,
+          "end": 9.6,
+          "viseme": "OW",
+          "word": "concrete",
+          "segment_id": 1
+        },
+        {
+          "start": 9.6,
+          "end": 10.0,
+          "viseme": "EH",
+          "word": "examples,",
+          "segment_id": 1
+        },
+        {
+          "start": 10.0,
+          "end": 10.4,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 1
+        },
+        {
+          "start": 10.4,
+          "end": 10.8,
+          "viseme": "AA",
+          "word": "actionable",
+          "segment_id": 1
+        },
+        {
+          "start": 10.8,
+          "end": 11.2,
+          "viseme": "IH",
+          "word": "insight.",
+          "segment_id": 1
+        },
+        {
+          "start": 11.2,
+          "end": 11.6,
+          "viseme": "EH",
+          "word": "Expand",
+          "segment_id": 1
+        },
+        {
+          "start": 11.6,
+          "end": 12.0,
+          "viseme": "IH",
+          "word": "with",
+          "segment_id": 1
+        },
+        {
+          "start": 12.0,
+          "end": 12.4,
+          "viseme": "IH",
+          "word": "vivid",
+          "segment_id": 1
+        },
+        {
+          "start": 12.4,
+          "end": 12.8,
+          "viseme": "EH",
+          "word": "metaphors,",
+          "segment_id": 1
+        },
+        {
+          "start": 12.8,
+          "end": 13.2,
+          "viseme": "IH",
+          "word": "crisp",
+          "segment_id": 1
+        },
+        {
+          "start": 13.2,
+          "end": 13.6,
+          "viseme": "AA",
+          "word": "data",
+          "segment_id": 1
+        },
+        {
+          "start": 13.6,
+          "end": 14.0,
+          "viseme": "OW",
+          "word": "points,",
+          "segment_id": 1
+        },
+        {
+          "start": 14.0,
+          "end": 14.4,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 1
+        },
+        {
+          "start": 14.4,
+          "end": 14.8,
+          "viseme": "AA",
+          "word": "an",
+          "segment_id": 1
+        },
+        {
+          "start": 14.8,
+          "end": 15.2,
+          "viseme": "EH",
+          "word": "explicit",
+          "segment_id": 1
+        },
+        {
+          "start": 15.2,
+          "end": 15.6,
+          "viseme": "EH",
+          "word": "next",
+          "segment_id": 1
+        },
+        {
+          "start": 15.6,
+          "end": 16.0,
+          "viseme": "EH",
+          "word": "step",
+          "segment_id": 1
+        },
+        {
+          "start": 16.0,
+          "end": 16.4,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 1
+        },
+        {
+          "start": 16.4,
+          "end": 16.8,
+          "viseme": "OW",
+          "word": "connects",
+          "segment_id": 1
+        },
+        {
+          "start": 16.8,
+          "end": 17.2,
+          "viseme": "OW",
+          "word": "to",
+          "segment_id": 1
+        },
+        {
+          "start": 17.2,
+          "end": 17.6,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 1
+        },
+        {
+          "start": 17.6,
+          "end": 18.0,
+          "viseme": "OW",
+          "word": "overall",
+          "segment_id": 1
+        },
+        {
+          "start": 18.0,
+          "end": 18.4,
+          "viseme": "OW",
+          "word": "story.",
+          "segment_id": 1
+        },
+        {
+          "start": 18.4,
+          "end": 18.8,
+          "viseme": "EH",
+          "word": "Emphasize",
+          "segment_id": 1
+        },
+        {
+          "start": 18.8,
+          "end": 19.2,
+          "viseme": "OW",
+          "word": "outcomes,",
+          "segment_id": 1
+        },
+        {
+          "start": 19.2,
+          "end": 19.6,
+          "viseme": "AA",
+          "word": "transformation,",
+          "segment_id": 1
+        },
+        {
+          "start": 19.6,
+          "end": 20.0,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 1
+        },
+        {
+          "start": 20.0,
+          "end": 20.4,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 1
+        },
+        {
+          "start": 20.4,
+          "end": 20.8,
+          "viseme": "AA",
+          "word": "audience's",
+          "segment_id": 1
+        },
+        {
+          "start": 20.8,
+          "end": 21.2,
+          "viseme": "EH",
+          "word": "emotional",
+          "segment_id": 1
+        },
+        {
+          "start": 21.2,
+          "end": 21.6,
+          "viseme": "AA",
+          "word": "stakes.",
+          "segment_id": 1
+        },
+        {
+          "start": 21.6,
+          "end": 22.0,
+          "viseme": "IH",
+          "word": "Visuals:",
+          "segment_id": 1
+        },
+        {
+          "start": 22.0,
+          "end": 22.4,
+          "viseme": "AA",
+          "word": "Fast",
+          "segment_id": 1
+        },
+        {
+          "start": 22.4,
+          "end": 22.8,
+          "viseme": "UH",
+          "word": "cuts,",
+          "segment_id": 1
+        },
+        {
+          "start": 22.8,
+          "end": 23.2,
+          "viseme": "IH",
+          "word": "kinetic",
+          "segment_id": 1
+        },
+        {
+          "start": 23.2,
+          "end": 23.6,
+          "viseme": "IH",
+          "word": "typography,",
+          "segment_id": 1
+        },
+        {
+          "start": 23.6,
+          "end": 24.0,
+          "viseme": "OW",
+          "word": "bold",
+          "segment_id": 1
+        },
+        {
+          "start": 24.0,
+          "end": 24.4,
+          "viseme": "OW",
+          "word": "color",
+          "segment_id": 1
+        },
+        {
+          "start": 24.4,
+          "end": 24.8,
+          "viseme": "AA",
+          "word": "accents.",
+          "segment_id": 1
+        },
+        {
+          "start": 24.8,
+          "end": 25.2,
+          "viseme": "IH",
+          "word": "Include",
+          "segment_id": 1
+        },
+        {
+          "start": 25.2,
+          "end": 25.6,
+          "viseme": "IH",
+          "word": "lighting,",
+          "segment_id": 1
+        },
+        {
+          "start": 25.6,
+          "end": 26.0,
+          "viseme": "AA",
+          "word": "framing,",
+          "segment_id": 1
+        },
+        {
+          "start": 26.0,
+          "end": 26.4,
+          "viseme": "OW",
+          "word": "b-roll",
+          "segment_id": 1
+        },
+        {
+          "start": 26.4,
+          "end": 26.8,
+          "viseme": "IH",
+          "word": "ideas,",
+          "segment_id": 1
+        },
+        {
+          "start": 26.8,
+          "end": 27.2,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 1
+        },
+        {
+          "start": 27.2,
+          "end": 27.6,
+          "viseme": "OW",
+          "word": "motion",
+          "segment_id": 1
+        },
+        {
+          "start": 27.6,
+          "end": 28.0,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 1
+        },
+        {
+          "start": 28.0,
+          "end": 28.4,
+          "viseme": "OW",
+          "word": "notes.",
+          "segment_id": 1
+        },
+        {
+          "start": 28.4,
+          "end": 28.8,
+          "viseme": "AA",
+          "word": "Add",
+          "segment_id": 1
+        },
+        {
+          "start": 28.8,
+          "end": 29.2,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 1
+        },
+        {
+          "start": 29.2,
+          "end": 29.6,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 1
+        },
+        {
+          "start": 29.6,
+          "end": 30.0,
+          "viseme": "AA",
+          "word": "layer",
+          "segment_id": 1
+        },
+        {
+          "start": 30.0,
+          "end": 30.4,
+          "viseme": "OW",
+          "word": "of",
+          "segment_id": 1
+        },
+        {
+          "start": 30.4,
+          "end": 30.8,
+          "viseme": "EH",
+          "word": "detail",
+          "segment_id": 1
+        },
+        {
+          "start": 30.8,
+          "end": 31.2,
+          "viseme": "AA",
+          "word": "about",
+          "segment_id": 1
+        },
+        {
+          "start": 31.2,
+          "end": 31.6,
+          "viseme": "AA",
+          "word": "pacing,",
+          "segment_id": 1
+        },
+        {
+          "start": 31.6,
+          "end": 32.0,
+          "viseme": "AA",
+          "word": "camera",
+          "segment_id": 1
+        },
+        {
+          "start": 32.0,
+          "end": 32.4,
+          "viseme": "OW",
+          "word": "movement,",
+          "segment_id": 1
+        },
+        {
+          "start": 32.4,
+          "end": 32.8,
+          "viseme": "OW",
+          "word": "sound",
+          "segment_id": 1
+        },
+        {
+          "start": 32.8,
+          "end": 33.2,
+          "viseme": "EH",
+          "word": "design,",
+          "segment_id": 1
+        },
+        {
+          "start": 33.2,
+          "end": 33.6,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 1
+        },
+        {
+          "start": 33.6,
+          "end": 34.0,
+          "viseme": "OW",
+          "word": "on-screen",
+          "segment_id": 1
+        },
+        {
+          "start": 34.0,
+          "end": 34.4,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 1
+        },
+        {
+          "start": 34.4,
+          "end": 34.8,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 1
+        },
+        {
+          "start": 34.8,
+          "end": 35.2,
+          "viseme": "EH",
+          "word": "reinforce",
+          "segment_id": 1
+        },
+        {
+          "start": 35.2,
+          "end": 35.6,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 1
+        },
+        {
+          "start": 35.6,
+          "end": 36.0,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 1
+        },
+        {
+          "start": 36.0,
+          "end": 36.4,
+          "viseme": "AA",
+          "word": "validation.",
+          "segment_id": 1
+        }
+      ]
+    },
+    {
+      "scene_id": 2,
+      "source": "heuristic",
+      "visemes": [
+        {
+          "start": 36.4,
+          "end": 36.8,
+          "viseme": "EH",
+          "word": "Scene",
+          "segment_id": 2
+        },
+        {
+          "start": 36.8,
+          "end": 37.2,
+          "viseme": "REST",
+          "word": "2:",
+          "segment_id": 2
+        },
+        {
+          "start": 37.2,
+          "end": 37.6,
+          "viseme": "OW",
+          "word": "Problem",
+          "segment_id": 2
+        },
+        {
+          "start": 37.6,
+          "end": 38.0,
+          "viseme": "IH",
+          "word": "Intent:",
+          "segment_id": 2
+        },
+        {
+          "start": 38.0,
+          "end": 38.4,
+          "viseme": "UH",
+          "word": "Surface",
+          "segment_id": 2
+        },
+        {
+          "start": 38.4,
+          "end": 38.8,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 2
+        },
+        {
+          "start": 38.8,
+          "end": 39.2,
+          "viseme": "AA",
+          "word": "pain",
+          "segment_id": 2
+        },
+        {
+          "start": 39.2,
+          "end": 39.6,
+          "viseme": "OW",
+          "word": "point",
+          "segment_id": 2
+        },
+        {
+          "start": 39.6,
+          "end": 40.0,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 2
+        },
+        {
+          "start": 40.0,
+          "end": 40.4,
+          "viseme": "EH",
+          "word": "create",
+          "segment_id": 2
+        },
+        {
+          "start": 40.4,
+          "end": 40.8,
+          "viseme": "UH",
+          "word": "urgency.",
+          "segment_id": 2
+        },
+        {
+          "start": 40.8,
+          "end": 41.2,
+          "viseme": "AA",
+          "word": "Narration:",
+          "segment_id": 2
+        },
+        {
+          "start": 41.2,
+          "end": 41.6,
+          "viseme": "EH",
+          "word": "Describe",
+          "segment_id": 2
+        },
+        {
+          "start": 41.6,
+          "end": 42.0,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 2
+        },
+        {
+          "start": 42.0,
+          "end": 42.4,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 2
+        },
+        {
+          "start": 42.4,
+          "end": 42.8,
+          "viseme": "AA",
+          "word": "validation",
+          "segment_id": 2
+        },
+        {
+          "start": 42.8,
+          "end": 43.2,
+          "viseme": "IH",
+          "word": "in",
+          "segment_id": 2
+        },
+        {
+          "start": 43.2,
+          "end": 43.6,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 2
+        },
+        {
+          "start": 43.6,
+          "end": 44.0,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 2
+        },
+        {
+          "start": 44.0,
+          "end": 44.4,
+          "viseme": "OW",
+          "word": "voice,",
+          "segment_id": 2
+        },
+        {
+          "start": 44.4,
+          "end": 44.8,
+          "viseme": "EH",
+          "word": "weaving",
+          "segment_id": 2
+        },
+        {
+          "start": 44.8,
+          "end": 45.2,
+          "viseme": "EH",
+          "word": "sensory",
+          "segment_id": 2
+        },
+        {
+          "start": 45.2,
+          "end": 45.6,
+          "viseme": "EH",
+          "word": "detail,",
+          "segment_id": 2
+        },
+        {
+          "start": 45.6,
+          "end": 46.0,
+          "viseme": "OW",
+          "word": "concrete",
+          "segment_id": 2
+        },
+        {
+          "start": 46.0,
+          "end": 46.4,
+          "viseme": "EH",
+          "word": "examples,",
+          "segment_id": 2
+        },
+        {
+          "start": 46.4,
+          "end": 46.8,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 2
+        },
+        {
+          "start": 46.8,
+          "end": 47.2,
+          "viseme": "AA",
+          "word": "actionable",
+          "segment_id": 2
+        },
+        {
+          "start": 47.2,
+          "end": 47.6,
+          "viseme": "IH",
+          "word": "insight.",
+          "segment_id": 2
+        },
+        {
+          "start": 47.6,
+          "end": 48.0,
+          "viseme": "EH",
+          "word": "Expand",
+          "segment_id": 2
+        },
+        {
+          "start": 48.0,
+          "end": 48.4,
+          "viseme": "IH",
+          "word": "with",
+          "segment_id": 2
+        },
+        {
+          "start": 48.4,
+          "end": 48.8,
+          "viseme": "IH",
+          "word": "vivid",
+          "segment_id": 2
+        },
+        {
+          "start": 48.8,
+          "end": 49.2,
+          "viseme": "EH",
+          "word": "metaphors,",
+          "segment_id": 2
+        },
+        {
+          "start": 49.2,
+          "end": 49.6,
+          "viseme": "IH",
+          "word": "crisp",
+          "segment_id": 2
+        },
+        {
+          "start": 49.6,
+          "end": 50.0,
+          "viseme": "AA",
+          "word": "data",
+          "segment_id": 2
+        },
+        {
+          "start": 50.0,
+          "end": 50.4,
+          "viseme": "OW",
+          "word": "points,",
+          "segment_id": 2
+        },
+        {
+          "start": 50.4,
+          "end": 50.8,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 2
+        },
+        {
+          "start": 50.8,
+          "end": 51.2,
+          "viseme": "AA",
+          "word": "an",
+          "segment_id": 2
+        },
+        {
+          "start": 51.2,
+          "end": 51.6,
+          "viseme": "EH",
+          "word": "explicit",
+          "segment_id": 2
+        },
+        {
+          "start": 51.6,
+          "end": 52.0,
+          "viseme": "EH",
+          "word": "next",
+          "segment_id": 2
+        },
+        {
+          "start": 52.0,
+          "end": 52.4,
+          "viseme": "EH",
+          "word": "step",
+          "segment_id": 2
+        },
+        {
+          "start": 52.4,
+          "end": 52.8,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 2
+        },
+        {
+          "start": 52.8,
+          "end": 53.2,
+          "viseme": "OW",
+          "word": "connects",
+          "segment_id": 2
+        },
+        {
+          "start": 53.2,
+          "end": 53.6,
+          "viseme": "OW",
+          "word": "to",
+          "segment_id": 2
+        },
+        {
+          "start": 53.6,
+          "end": 54.0,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 2
+        },
+        {
+          "start": 54.0,
+          "end": 54.4,
+          "viseme": "OW",
+          "word": "overall",
+          "segment_id": 2
+        },
+        {
+          "start": 54.4,
+          "end": 54.8,
+          "viseme": "OW",
+          "word": "story.",
+          "segment_id": 2
+        },
+        {
+          "start": 54.8,
+          "end": 55.2,
+          "viseme": "EH",
+          "word": "Emphasize",
+          "segment_id": 2
+        },
+        {
+          "start": 55.2,
+          "end": 55.6,
+          "viseme": "OW",
+          "word": "outcomes,",
+          "segment_id": 2
+        },
+        {
+          "start": 55.6,
+          "end": 56.0,
+          "viseme": "AA",
+          "word": "transformation,",
+          "segment_id": 2
+        },
+        {
+          "start": 56.0,
+          "end": 56.4,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 2
+        },
+        {
+          "start": 56.4,
+          "end": 56.8,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 2
+        },
+        {
+          "start": 56.8,
+          "end": 57.2,
+          "viseme": "AA",
+          "word": "audience's",
+          "segment_id": 2
+        },
+        {
+          "start": 57.2,
+          "end": 57.6,
+          "viseme": "EH",
+          "word": "emotional",
+          "segment_id": 2
+        },
+        {
+          "start": 57.6,
+          "end": 58.0,
+          "viseme": "AA",
+          "word": "stakes.",
+          "segment_id": 2
+        },
+        {
+          "start": 58.0,
+          "end": 58.4,
+          "viseme": "IH",
+          "word": "Visuals:",
+          "segment_id": 2
+        },
+        {
+          "start": 58.4,
+          "end": 58.8,
+          "viseme": "UH",
+          "word": "Muted",
+          "segment_id": 2
+        },
+        {
+          "start": 58.8,
+          "end": 59.2,
+          "viseme": "AA",
+          "word": "palette,",
+          "segment_id": 2
+        },
+        {
+          "start": 59.2,
+          "end": 59.6,
+          "viseme": "IH",
+          "word": "tight",
+          "segment_id": 2
+        },
+        {
+          "start": 59.6,
+          "end": 60.0,
+          "viseme": "OW",
+          "word": "close-ups,",
+          "segment_id": 2
+        },
+        {
+          "start": 60.0,
+          "end": 60.4,
+          "viseme": "UH",
+          "word": "subtle",
+          "segment_id": 2
+        },
+        {
+          "start": 60.4,
+          "end": 60.8,
+          "viseme": "AA",
+          "word": "ambient",
+          "segment_id": 2
+        },
+        {
+          "start": 60.8,
+          "end": 61.2,
+          "viseme": "EH",
+          "word": "tension.",
+          "segment_id": 2
+        },
+        {
+          "start": 61.2,
+          "end": 61.6,
+          "viseme": "IH",
+          "word": "Include",
+          "segment_id": 2
+        },
+        {
+          "start": 61.6,
+          "end": 62.0,
+          "viseme": "IH",
+          "word": "lighting,",
+          "segment_id": 2
+        },
+        {
+          "start": 62.0,
+          "end": 62.4,
+          "viseme": "AA",
+          "word": "framing,",
+          "segment_id": 2
+        },
+        {
+          "start": 62.4,
+          "end": 62.8,
+          "viseme": "OW",
+          "word": "b-roll",
+          "segment_id": 2
+        },
+        {
+          "start": 62.8,
+          "end": 63.2,
+          "viseme": "IH",
+          "word": "ideas,",
+          "segment_id": 2
+        },
+        {
+          "start": 63.2,
+          "end": 63.6,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 2
+        },
+        {
+          "start": 63.6,
+          "end": 64.0,
+          "viseme": "OW",
+          "word": "motion",
+          "segment_id": 2
+        },
+        {
+          "start": 64.0,
+          "end": 64.4,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 2
+        },
+        {
+          "start": 64.4,
+          "end": 64.8,
+          "viseme": "OW",
+          "word": "notes.",
+          "segment_id": 2
+        },
+        {
+          "start": 64.8,
+          "end": 65.2,
+          "viseme": "AA",
+          "word": "Add",
+          "segment_id": 2
+        },
+        {
+          "start": 65.2,
+          "end": 65.6,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 2
+        },
+        {
+          "start": 65.6,
+          "end": 66.0,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 2
+        },
+        {
+          "start": 66.0,
+          "end": 66.4,
+          "viseme": "AA",
+          "word": "layer",
+          "segment_id": 2
+        },
+        {
+          "start": 66.4,
+          "end": 66.8,
+          "viseme": "OW",
+          "word": "of",
+          "segment_id": 2
+        },
+        {
+          "start": 66.8,
+          "end": 67.2,
+          "viseme": "EH",
+          "word": "detail",
+          "segment_id": 2
+        },
+        {
+          "start": 67.2,
+          "end": 67.6,
+          "viseme": "AA",
+          "word": "about",
+          "segment_id": 2
+        },
+        {
+          "start": 67.6,
+          "end": 68.0,
+          "viseme": "AA",
+          "word": "pacing,",
+          "segment_id": 2
+        },
+        {
+          "start": 68.0,
+          "end": 68.4,
+          "viseme": "AA",
+          "word": "camera",
+          "segment_id": 2
+        },
+        {
+          "start": 68.4,
+          "end": 68.8,
+          "viseme": "OW",
+          "word": "movement,",
+          "segment_id": 2
+        },
+        {
+          "start": 68.8,
+          "end": 69.2,
+          "viseme": "OW",
+          "word": "sound",
+          "segment_id": 2
+        },
+        {
+          "start": 69.2,
+          "end": 69.6,
+          "viseme": "EH",
+          "word": "design,",
+          "segment_id": 2
+        },
+        {
+          "start": 69.6,
+          "end": 70.0,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 2
+        },
+        {
+          "start": 70.0,
+          "end": 70.4,
+          "viseme": "OW",
+          "word": "on-screen",
+          "segment_id": 2
+        },
+        {
+          "start": 70.4,
+          "end": 70.8,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 2
+        },
+        {
+          "start": 70.8,
+          "end": 71.2,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 2
+        },
+        {
+          "start": 71.2,
+          "end": 71.6,
+          "viseme": "EH",
+          "word": "reinforce",
+          "segment_id": 2
+        },
+        {
+          "start": 71.6,
+          "end": 72.0,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 2
+        },
+        {
+          "start": 72.0,
+          "end": 72.4,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 2
+        },
+        {
+          "start": 72.4,
+          "end": 72.8,
+          "viseme": "AA",
+          "word": "validation.",
+          "segment_id": 2
+        }
+      ]
+    },
+    {
+      "scene_id": 3,
+      "source": "heuristic",
+      "visemes": [
+        {
+          "start": 72.8,
+          "end": 73.2,
+          "viseme": "EH",
+          "word": "Scene",
+          "segment_id": 3
+        },
+        {
+          "start": 73.2,
+          "end": 73.6,
+          "viseme": "REST",
+          "word": "3:",
+          "segment_id": 3
+        },
+        {
+          "start": 73.6,
+          "end": 74.0,
+          "viseme": "OW",
+          "word": "Promise",
+          "segment_id": 3
+        },
+        {
+          "start": 74.0,
+          "end": 74.4,
+          "viseme": "IH",
+          "word": "Intent:",
+          "segment_id": 3
+        },
+        {
+          "start": 74.4,
+          "end": 74.8,
+          "viseme": "OW",
+          "word": "Position",
+          "segment_id": 3
+        },
+        {
+          "start": 74.8,
+          "end": 75.2,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 3
+        },
+        {
+          "start": 75.2,
+          "end": 75.6,
+          "viseme": "AA",
+          "word": "transformation",
+          "segment_id": 3
+        },
+        {
+          "start": 75.6,
+          "end": 76.0,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 3
+        },
+        {
+          "start": 76.0,
+          "end": 76.4,
+          "viseme": "UH",
+          "word": "build",
+          "segment_id": 3
+        },
+        {
+          "start": 76.4,
+          "end": 76.8,
+          "viseme": "UH",
+          "word": "trust.",
+          "segment_id": 3
+        },
+        {
+          "start": 76.8,
+          "end": 77.2,
+          "viseme": "AA",
+          "word": "Narration:",
+          "segment_id": 3
+        },
+        {
+          "start": 77.2,
+          "end": 77.6,
+          "viseme": "EH",
+          "word": "Describe",
+          "segment_id": 3
+        },
+        {
+          "start": 77.6,
+          "end": 78.0,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 3
+        },
+        {
+          "start": 78.0,
+          "end": 78.4,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 3
+        },
+        {
+          "start": 78.4,
+          "end": 78.8,
+          "viseme": "AA",
+          "word": "validation",
+          "segment_id": 3
+        },
+        {
+          "start": 78.8,
+          "end": 79.2,
+          "viseme": "IH",
+          "word": "in",
+          "segment_id": 3
+        },
+        {
+          "start": 79.2,
+          "end": 79.6,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 3
+        },
+        {
+          "start": 79.6,
+          "end": 80.0,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 3
+        },
+        {
+          "start": 80.0,
+          "end": 80.4,
+          "viseme": "OW",
+          "word": "voice,",
+          "segment_id": 3
+        },
+        {
+          "start": 80.4,
+          "end": 80.8,
+          "viseme": "EH",
+          "word": "weaving",
+          "segment_id": 3
+        },
+        {
+          "start": 80.8,
+          "end": 81.2,
+          "viseme": "EH",
+          "word": "sensory",
+          "segment_id": 3
+        },
+        {
+          "start": 81.2,
+          "end": 81.6,
+          "viseme": "EH",
+          "word": "detail,",
+          "segment_id": 3
+        },
+        {
+          "start": 81.6,
+          "end": 82.0,
+          "viseme": "OW",
+          "word": "concrete",
+          "segment_id": 3
+        },
+        {
+          "start": 82.0,
+          "end": 82.4,
+          "viseme": "EH",
+          "word": "examples,",
+          "segment_id": 3
+        },
+        {
+          "start": 82.4,
+          "end": 82.8,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 3
+        },
+        {
+          "start": 82.8,
+          "end": 83.2,
+          "viseme": "AA",
+          "word": "actionable",
+          "segment_id": 3
+        },
+        {
+          "start": 83.2,
+          "end": 83.6,
+          "viseme": "IH",
+          "word": "insight.",
+          "segment_id": 3
+        },
+        {
+          "start": 83.6,
+          "end": 84.0,
+          "viseme": "EH",
+          "word": "Expand",
+          "segment_id": 3
+        },
+        {
+          "start": 84.0,
+          "end": 84.4,
+          "viseme": "IH",
+          "word": "with",
+          "segment_id": 3
+        },
+        {
+          "start": 84.4,
+          "end": 84.8,
+          "viseme": "IH",
+          "word": "vivid",
+          "segment_id": 3
+        },
+        {
+          "start": 84.8,
+          "end": 85.2,
+          "viseme": "EH",
+          "word": "metaphors,",
+          "segment_id": 3
+        },
+        {
+          "start": 85.2,
+          "end": 85.6,
+          "viseme": "IH",
+          "word": "crisp",
+          "segment_id": 3
+        },
+        {
+          "start": 85.6,
+          "end": 86.0,
+          "viseme": "AA",
+          "word": "data",
+          "segment_id": 3
+        },
+        {
+          "start": 86.0,
+          "end": 86.4,
+          "viseme": "OW",
+          "word": "points,",
+          "segment_id": 3
+        },
+        {
+          "start": 86.4,
+          "end": 86.8,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 3
+        },
+        {
+          "start": 86.8,
+          "end": 87.2,
+          "viseme": "AA",
+          "word": "an",
+          "segment_id": 3
+        },
+        {
+          "start": 87.2,
+          "end": 87.6,
+          "viseme": "EH",
+          "word": "explicit",
+          "segment_id": 3
+        },
+        {
+          "start": 87.6,
+          "end": 88.0,
+          "viseme": "EH",
+          "word": "next",
+          "segment_id": 3
+        },
+        {
+          "start": 88.0,
+          "end": 88.4,
+          "viseme": "EH",
+          "word": "step",
+          "segment_id": 3
+        },
+        {
+          "start": 88.4,
+          "end": 88.8,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 3
+        },
+        {
+          "start": 88.8,
+          "end": 89.2,
+          "viseme": "OW",
+          "word": "connects",
+          "segment_id": 3
+        },
+        {
+          "start": 89.2,
+          "end": 89.6,
+          "viseme": "OW",
+          "word": "to",
+          "segment_id": 3
+        },
+        {
+          "start": 89.6,
+          "end": 90.0,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 3
+        },
+        {
+          "start": 90.0,
+          "end": 90.4,
+          "viseme": "OW",
+          "word": "overall",
+          "segment_id": 3
+        },
+        {
+          "start": 90.4,
+          "end": 90.8,
+          "viseme": "OW",
+          "word": "story.",
+          "segment_id": 3
+        },
+        {
+          "start": 90.8,
+          "end": 91.2,
+          "viseme": "EH",
+          "word": "Emphasize",
+          "segment_id": 3
+        },
+        {
+          "start": 91.2,
+          "end": 91.6,
+          "viseme": "OW",
+          "word": "outcomes,",
+          "segment_id": 3
+        },
+        {
+          "start": 91.6,
+          "end": 92.0,
+          "viseme": "AA",
+          "word": "transformation,",
+          "segment_id": 3
+        },
+        {
+          "start": 92.0,
+          "end": 92.4,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 3
+        },
+        {
+          "start": 92.4,
+          "end": 92.8,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 3
+        },
+        {
+          "start": 92.8,
+          "end": 93.2,
+          "viseme": "AA",
+          "word": "audience's",
+          "segment_id": 3
+        },
+        {
+          "start": 93.2,
+          "end": 93.6,
+          "viseme": "EH",
+          "word": "emotional",
+          "segment_id": 3
+        },
+        {
+          "start": 93.6,
+          "end": 94.0,
+          "viseme": "AA",
+          "word": "stakes.",
+          "segment_id": 3
+        },
+        {
+          "start": 94.0,
+          "end": 94.4,
+          "viseme": "IH",
+          "word": "Visuals:",
+          "segment_id": 3
+        },
+        {
+          "start": 94.4,
+          "end": 94.8,
+          "viseme": "IH",
+          "word": "Lift",
+          "segment_id": 3
+        },
+        {
+          "start": 94.8,
+          "end": 95.2,
+          "viseme": "IH",
+          "word": "in",
+          "segment_id": 3
+        },
+        {
+          "start": 95.2,
+          "end": 95.6,
+          "viseme": "OW",
+          "word": "color,",
+          "segment_id": 3
+        },
+        {
+          "start": 95.6,
+          "end": 96.0,
+          "viseme": "EH",
+          "word": "clear",
+          "segment_id": 3
+        },
+        {
+          "start": 96.0,
+          "end": 96.4,
+          "viseme": "AA",
+          "word": "graphical",
+          "segment_id": 3
+        },
+        {
+          "start": 96.4,
+          "end": 96.8,
+          "viseme": "AA",
+          "word": "callouts,",
+          "segment_id": 3
+        },
+        {
+          "start": 96.8,
+          "end": 97.2,
+          "viseme": "EH",
+          "word": "steady",
+          "segment_id": 3
+        },
+        {
+          "start": 97.2,
+          "end": 97.6,
+          "viseme": "AA",
+          "word": "pacing.",
+          "segment_id": 3
+        },
+        {
+          "start": 97.6,
+          "end": 98.0,
+          "viseme": "IH",
+          "word": "Include",
+          "segment_id": 3
+        },
+        {
+          "start": 98.0,
+          "end": 98.4,
+          "viseme": "IH",
+          "word": "lighting,",
+          "segment_id": 3
+        },
+        {
+          "start": 98.4,
+          "end": 98.8,
+          "viseme": "AA",
+          "word": "framing,",
+          "segment_id": 3
+        },
+        {
+          "start": 98.8,
+          "end": 99.2,
+          "viseme": "OW",
+          "word": "b-roll",
+          "segment_id": 3
+        },
+        {
+          "start": 99.2,
+          "end": 99.6,
+          "viseme": "IH",
+          "word": "ideas,",
+          "segment_id": 3
+        },
+        {
+          "start": 99.6,
+          "end": 100.0,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 3
+        },
+        {
+          "start": 100.0,
+          "end": 100.4,
+          "viseme": "OW",
+          "word": "motion",
+          "segment_id": 3
+        },
+        {
+          "start": 100.4,
+          "end": 100.8,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 3
+        },
+        {
+          "start": 100.8,
+          "end": 101.2,
+          "viseme": "OW",
+          "word": "notes.",
+          "segment_id": 3
+        },
+        {
+          "start": 101.2,
+          "end": 101.6,
+          "viseme": "AA",
+          "word": "Add",
+          "segment_id": 3
+        },
+        {
+          "start": 101.6,
+          "end": 102.0,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 3
+        },
+        {
+          "start": 102.0,
+          "end": 102.4,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 3
+        },
+        {
+          "start": 102.4,
+          "end": 102.8,
+          "viseme": "AA",
+          "word": "layer",
+          "segment_id": 3
+        },
+        {
+          "start": 102.8,
+          "end": 103.2,
+          "viseme": "OW",
+          "word": "of",
+          "segment_id": 3
+        },
+        {
+          "start": 103.2,
+          "end": 103.6,
+          "viseme": "EH",
+          "word": "detail",
+          "segment_id": 3
+        },
+        {
+          "start": 103.6,
+          "end": 104.0,
+          "viseme": "AA",
+          "word": "about",
+          "segment_id": 3
+        },
+        {
+          "start": 104.0,
+          "end": 104.4,
+          "viseme": "AA",
+          "word": "pacing,",
+          "segment_id": 3
+        },
+        {
+          "start": 104.4,
+          "end": 104.8,
+          "viseme": "AA",
+          "word": "camera",
+          "segment_id": 3
+        },
+        {
+          "start": 104.8,
+          "end": 105.2,
+          "viseme": "OW",
+          "word": "movement,",
+          "segment_id": 3
+        },
+        {
+          "start": 105.2,
+          "end": 105.6,
+          "viseme": "OW",
+          "word": "sound",
+          "segment_id": 3
+        },
+        {
+          "start": 105.6,
+          "end": 106.0,
+          "viseme": "EH",
+          "word": "design,",
+          "segment_id": 3
+        },
+        {
+          "start": 106.0,
+          "end": 106.4,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 3
+        },
+        {
+          "start": 106.4,
+          "end": 106.8,
+          "viseme": "OW",
+          "word": "on-screen",
+          "segment_id": 3
+        },
+        {
+          "start": 106.8,
+          "end": 107.2,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 3
+        },
+        {
+          "start": 107.2,
+          "end": 107.6,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 3
+        },
+        {
+          "start": 107.6,
+          "end": 108.0,
+          "viseme": "EH",
+          "word": "reinforce",
+          "segment_id": 3
+        },
+        {
+          "start": 108.0,
+          "end": 108.4,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 3
+        },
+        {
+          "start": 108.4,
+          "end": 108.8,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 3
+        },
+        {
+          "start": 108.8,
+          "end": 109.2,
+          "viseme": "AA",
+          "word": "validation.",
+          "segment_id": 3
+        }
+      ]
+    },
+    {
+      "scene_id": 4,
+      "source": "heuristic",
+      "visemes": [
+        {
+          "start": 109.2,
+          "end": 109.6,
+          "viseme": "EH",
+          "word": "Scene",
+          "segment_id": 4
+        },
+        {
+          "start": 109.6,
+          "end": 110.0,
+          "viseme": "REST",
+          "word": "4:",
+          "segment_id": 4
+        },
+        {
+          "start": 110.0,
+          "end": 110.4,
+          "viseme": "UH",
+          "word": "Blueprint",
+          "segment_id": 4
+        },
+        {
+          "start": 110.4,
+          "end": 110.8,
+          "viseme": "IH",
+          "word": "Intent:",
+          "segment_id": 4
+        },
+        {
+          "start": 110.8,
+          "end": 111.2,
+          "viseme": "EH",
+          "word": "Deliver",
+          "segment_id": 4
+        },
+        {
+          "start": 111.2,
+          "end": 111.6,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 4
+        },
+        {
+          "start": 111.6,
+          "end": 112.0,
+          "viseme": "EH",
+          "word": "step-by-step",
+          "segment_id": 4
+        },
+        {
+          "start": 112.0,
+          "end": 112.4,
+          "viseme": "UH",
+          "word": "structure.",
+          "segment_id": 4
+        },
+        {
+          "start": 112.4,
+          "end": 112.8,
+          "viseme": "AA",
+          "word": "Narration:",
+          "segment_id": 4
+        },
+        {
+          "start": 112.8,
+          "end": 113.2,
+          "viseme": "EH",
+          "word": "Describe",
+          "segment_id": 4
+        },
+        {
+          "start": 113.2,
+          "end": 113.6,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 4
+        },
+        {
+          "start": 113.6,
+          "end": 114.0,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 4
+        },
+        {
+          "start": 114.0,
+          "end": 114.4,
+          "viseme": "AA",
+          "word": "validation",
+          "segment_id": 4
+        },
+        {
+          "start": 114.4,
+          "end": 114.8,
+          "viseme": "IH",
+          "word": "in",
+          "segment_id": 4
+        },
+        {
+          "start": 114.8,
+          "end": 115.2,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 4
+        },
+        {
+          "start": 115.2,
+          "end": 115.6,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 4
+        },
+        {
+          "start": 115.6,
+          "end": 116.0,
+          "viseme": "OW",
+          "word": "voice,",
+          "segment_id": 4
+        },
+        {
+          "start": 116.0,
+          "end": 116.4,
+          "viseme": "EH",
+          "word": "weaving",
+          "segment_id": 4
+        },
+        {
+          "start": 116.4,
+          "end": 116.8,
+          "viseme": "EH",
+          "word": "sensory",
+          "segment_id": 4
+        },
+        {
+          "start": 116.8,
+          "end": 117.2,
+          "viseme": "EH",
+          "word": "detail,",
+          "segment_id": 4
+        },
+        {
+          "start": 117.2,
+          "end": 117.6,
+          "viseme": "OW",
+          "word": "concrete",
+          "segment_id": 4
+        },
+        {
+          "start": 117.6,
+          "end": 118.0,
+          "viseme": "EH",
+          "word": "examples,",
+          "segment_id": 4
+        },
+        {
+          "start": 118.0,
+          "end": 118.4,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 4
+        },
+        {
+          "start": 118.4,
+          "end": 118.8,
+          "viseme": "AA",
+          "word": "actionable",
+          "segment_id": 4
+        },
+        {
+          "start": 118.8,
+          "end": 119.2,
+          "viseme": "IH",
+          "word": "insight.",
+          "segment_id": 4
+        },
+        {
+          "start": 119.2,
+          "end": 119.6,
+          "viseme": "EH",
+          "word": "Expand",
+          "segment_id": 4
+        },
+        {
+          "start": 119.6,
+          "end": 120.0,
+          "viseme": "IH",
+          "word": "with",
+          "segment_id": 4
+        },
+        {
+          "start": 120.0,
+          "end": 120.4,
+          "viseme": "IH",
+          "word": "vivid",
+          "segment_id": 4
+        },
+        {
+          "start": 120.4,
+          "end": 120.8,
+          "viseme": "EH",
+          "word": "metaphors,",
+          "segment_id": 4
+        },
+        {
+          "start": 120.8,
+          "end": 121.2,
+          "viseme": "IH",
+          "word": "crisp",
+          "segment_id": 4
+        },
+        {
+          "start": 121.2,
+          "end": 121.6,
+          "viseme": "AA",
+          "word": "data",
+          "segment_id": 4
+        },
+        {
+          "start": 121.6,
+          "end": 122.0,
+          "viseme": "OW",
+          "word": "points,",
+          "segment_id": 4
+        },
+        {
+          "start": 122.0,
+          "end": 122.4,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 4
+        },
+        {
+          "start": 122.4,
+          "end": 122.8,
+          "viseme": "AA",
+          "word": "an",
+          "segment_id": 4
+        },
+        {
+          "start": 122.8,
+          "end": 123.2,
+          "viseme": "EH",
+          "word": "explicit",
+          "segment_id": 4
+        },
+        {
+          "start": 123.2,
+          "end": 123.6,
+          "viseme": "EH",
+          "word": "next",
+          "segment_id": 4
+        },
+        {
+          "start": 123.6,
+          "end": 124.0,
+          "viseme": "EH",
+          "word": "step",
+          "segment_id": 4
+        },
+        {
+          "start": 124.0,
+          "end": 124.4,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 4
+        },
+        {
+          "start": 124.4,
+          "end": 124.8,
+          "viseme": "OW",
+          "word": "connects",
+          "segment_id": 4
+        },
+        {
+          "start": 124.8,
+          "end": 125.2,
+          "viseme": "OW",
+          "word": "to",
+          "segment_id": 4
+        },
+        {
+          "start": 125.2,
+          "end": 125.6,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 4
+        },
+        {
+          "start": 125.6,
+          "end": 126.0,
+          "viseme": "OW",
+          "word": "overall",
+          "segment_id": 4
+        },
+        {
+          "start": 126.0,
+          "end": 126.4,
+          "viseme": "OW",
+          "word": "story.",
+          "segment_id": 4
+        },
+        {
+          "start": 126.4,
+          "end": 126.8,
+          "viseme": "EH",
+          "word": "Emphasize",
+          "segment_id": 4
+        },
+        {
+          "start": 126.8,
+          "end": 127.2,
+          "viseme": "OW",
+          "word": "outcomes,",
+          "segment_id": 4
+        },
+        {
+          "start": 127.2,
+          "end": 127.6,
+          "viseme": "AA",
+          "word": "transformation,",
+          "segment_id": 4
+        },
+        {
+          "start": 127.6,
+          "end": 128.0,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 4
+        },
+        {
+          "start": 128.0,
+          "end": 128.4,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 4
+        },
+        {
+          "start": 128.4,
+          "end": 128.8,
+          "viseme": "AA",
+          "word": "audience's",
+          "segment_id": 4
+        },
+        {
+          "start": 128.8,
+          "end": 129.2,
+          "viseme": "EH",
+          "word": "emotional",
+          "segment_id": 4
+        },
+        {
+          "start": 129.2,
+          "end": 129.6,
+          "viseme": "AA",
+          "word": "stakes.",
+          "segment_id": 4
+        },
+        {
+          "start": 129.6,
+          "end": 130.0,
+          "viseme": "IH",
+          "word": "Visuals:",
+          "segment_id": 4
+        },
+        {
+          "start": 130.0,
+          "end": 130.4,
+          "viseme": "OW",
+          "word": "On-screen",
+          "segment_id": 4
+        },
+        {
+          "start": 130.4,
+          "end": 130.8,
+          "viseme": "EH",
+          "word": "steps,",
+          "segment_id": 4
+        },
+        {
+          "start": 130.8,
+          "end": 131.2,
+          "viseme": "UH",
+          "word": "UI",
+          "segment_id": 4
+        },
+        {
+          "start": 131.2,
+          "end": 131.6,
+          "viseme": "OW",
+          "word": "overlays,",
+          "segment_id": 4
+        },
+        {
+          "start": 131.6,
+          "end": 132.0,
+          "viseme": "AA",
+          "word": "layered",
+          "segment_id": 4
+        },
+        {
+          "start": 132.0,
+          "end": 132.4,
+          "viseme": "AA",
+          "word": "callouts.",
+          "segment_id": 4
+        },
+        {
+          "start": 132.4,
+          "end": 132.8,
+          "viseme": "IH",
+          "word": "Include",
+          "segment_id": 4
+        },
+        {
+          "start": 132.8,
+          "end": 133.2,
+          "viseme": "IH",
+          "word": "lighting,",
+          "segment_id": 4
+        },
+        {
+          "start": 133.2,
+          "end": 133.6,
+          "viseme": "AA",
+          "word": "framing,",
+          "segment_id": 4
+        },
+        {
+          "start": 133.6,
+          "end": 134.0,
+          "viseme": "OW",
+          "word": "b-roll",
+          "segment_id": 4
+        },
+        {
+          "start": 134.0,
+          "end": 134.4,
+          "viseme": "IH",
+          "word": "ideas,",
+          "segment_id": 4
+        },
+        {
+          "start": 134.4,
+          "end": 134.8,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 4
+        },
+        {
+          "start": 134.8,
+          "end": 135.2,
+          "viseme": "OW",
+          "word": "motion",
+          "segment_id": 4
+        },
+        {
+          "start": 135.2,
+          "end": 135.6,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 4
+        },
+        {
+          "start": 135.6,
+          "end": 136.0,
+          "viseme": "OW",
+          "word": "notes.",
+          "segment_id": 4
+        },
+        {
+          "start": 136.0,
+          "end": 136.4,
+          "viseme": "AA",
+          "word": "Add",
+          "segment_id": 4
+        },
+        {
+          "start": 136.4,
+          "end": 136.8,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 4
+        },
+        {
+          "start": 136.8,
+          "end": 137.2,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 4
+        },
+        {
+          "start": 137.2,
+          "end": 137.6,
+          "viseme": "AA",
+          "word": "layer",
+          "segment_id": 4
+        },
+        {
+          "start": 137.6,
+          "end": 138.0,
+          "viseme": "OW",
+          "word": "of",
+          "segment_id": 4
+        },
+        {
+          "start": 138.0,
+          "end": 138.4,
+          "viseme": "EH",
+          "word": "detail",
+          "segment_id": 4
+        },
+        {
+          "start": 138.4,
+          "end": 138.8,
+          "viseme": "AA",
+          "word": "about",
+          "segment_id": 4
+        },
+        {
+          "start": 138.8,
+          "end": 139.2,
+          "viseme": "AA",
+          "word": "pacing,",
+          "segment_id": 4
+        },
+        {
+          "start": 139.2,
+          "end": 139.6,
+          "viseme": "AA",
+          "word": "camera",
+          "segment_id": 4
+        },
+        {
+          "start": 139.6,
+          "end": 140.0,
+          "viseme": "OW",
+          "word": "movement,",
+          "segment_id": 4
+        },
+        {
+          "start": 140.0,
+          "end": 140.4,
+          "viseme": "OW",
+          "word": "sound",
+          "segment_id": 4
+        },
+        {
+          "start": 140.4,
+          "end": 140.8,
+          "viseme": "EH",
+          "word": "design,",
+          "segment_id": 4
+        },
+        {
+          "start": 140.8,
+          "end": 141.2,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 4
+        },
+        {
+          "start": 141.2,
+          "end": 141.6,
+          "viseme": "OW",
+          "word": "on-screen",
+          "segment_id": 4
+        },
+        {
+          "start": 141.6,
+          "end": 142.0,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 4
+        },
+        {
+          "start": 142.0,
+          "end": 142.4,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 4
+        },
+        {
+          "start": 142.4,
+          "end": 142.8,
+          "viseme": "EH",
+          "word": "reinforce",
+          "segment_id": 4
+        },
+        {
+          "start": 142.8,
+          "end": 143.2,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 4
+        },
+        {
+          "start": 143.2,
+          "end": 143.6,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 4
+        },
+        {
+          "start": 143.6,
+          "end": 144.0,
+          "viseme": "AA",
+          "word": "validation.",
+          "segment_id": 4
+        },
+        {
+          "start": 144.0,
+          "end": 144.4,
+          "viseme": "AA",
+          "word": "Add",
+          "segment_id": 4
+        },
+        {
+          "start": 144.4,
+          "end": 144.8,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 4
+        },
+        {
+          "start": 144.8,
+          "end": 145.2,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 4
+        },
+        {
+          "start": 145.2,
+          "end": 145.6,
+          "viseme": "AA",
+          "word": "layer",
+          "segment_id": 4
+        },
+        {
+          "start": 145.6,
+          "end": 146.0,
+          "viseme": "OW",
+          "word": "of",
+          "segment_id": 4
+        },
+        {
+          "start": 146.0,
+          "end": 146.4,
+          "viseme": "EH",
+          "word": "detail",
+          "segment_id": 4
+        },
+        {
+          "start": 146.4,
+          "end": 146.8,
+          "viseme": "AA",
+          "word": "about",
+          "segment_id": 4
+        },
+        {
+          "start": 146.8,
+          "end": 147.2,
+          "viseme": "AA",
+          "word": "pacing,",
+          "segment_id": 4
+        },
+        {
+          "start": 147.2,
+          "end": 147.6,
+          "viseme": "AA",
+          "word": "camera",
+          "segment_id": 4
+        },
+        {
+          "start": 147.6,
+          "end": 148.0,
+          "viseme": "OW",
+          "word": "movement,",
+          "segment_id": 4
+        },
+        {
+          "start": 148.0,
+          "end": 148.4,
+          "viseme": "OW",
+          "word": "sound",
+          "segment_id": 4
+        },
+        {
+          "start": 148.4,
+          "end": 148.8,
+          "viseme": "EH",
+          "word": "design,",
+          "segment_id": 4
+        },
+        {
+          "start": 148.8,
+          "end": 149.2,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 4
+        },
+        {
+          "start": 149.2,
+          "end": 149.6,
+          "viseme": "OW",
+          "word": "on-screen",
+          "segment_id": 4
+        },
+        {
+          "start": 149.6,
+          "end": 150.0,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 4
+        },
+        {
+          "start": 150.0,
+          "end": 150.4,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 4
+        },
+        {
+          "start": 150.4,
+          "end": 150.8,
+          "viseme": "EH",
+          "word": "reinforce",
+          "segment_id": 4
+        },
+        {
+          "start": 150.8,
+          "end": 151.2,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 4
+        },
+        {
+          "start": 151.2,
+          "end": 151.6,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 4
+        },
+        {
+          "start": 151.6,
+          "end": 152.0,
+          "viseme": "AA",
+          "word": "validation.",
+          "segment_id": 4
+        }
+      ]
+    },
+    {
+      "scene_id": 5,
+      "source": "heuristic",
+      "visemes": [
+        {
+          "start": 152.0,
+          "end": 152.4,
+          "viseme": "EH",
+          "word": "Scene",
+          "segment_id": 5
+        },
+        {
+          "start": 152.4,
+          "end": 152.8,
+          "viseme": "REST",
+          "word": "5:",
+          "segment_id": 5
+        },
+        {
+          "start": 152.8,
+          "end": 153.2,
+          "viseme": "EH",
+          "word": "Deep",
+          "segment_id": 5
+        },
+        {
+          "start": 153.2,
+          "end": 153.6,
+          "viseme": "IH",
+          "word": "dive",
+          "segment_id": 5
+        },
+        {
+          "start": 153.6,
+          "end": 154.0,
+          "viseme": "IH",
+          "word": "Intent:",
+          "segment_id": 5
+        },
+        {
+          "start": 154.0,
+          "end": 154.4,
+          "viseme": "OW",
+          "word": "Provide",
+          "segment_id": 5
+        },
+        {
+          "start": 154.4,
+          "end": 154.8,
+          "viseme": "IH",
+          "word": "rich",
+          "segment_id": 5
+        },
+        {
+          "start": 154.8,
+          "end": 155.2,
+          "viseme": "EH",
+          "word": "detail,",
+          "segment_id": 5
+        },
+        {
+          "start": 155.2,
+          "end": 155.6,
+          "viseme": "AA",
+          "word": "tactics,",
+          "segment_id": 5
+        },
+        {
+          "start": 155.6,
+          "end": 156.0,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 5
+        },
+        {
+          "start": 156.0,
+          "end": 156.4,
+          "viseme": "AA",
+          "word": "craft.",
+          "segment_id": 5
+        },
+        {
+          "start": 156.4,
+          "end": 156.8,
+          "viseme": "AA",
+          "word": "Narration:",
+          "segment_id": 5
+        },
+        {
+          "start": 156.8,
+          "end": 157.2,
+          "viseme": "EH",
+          "word": "Describe",
+          "segment_id": 5
+        },
+        {
+          "start": 157.2,
+          "end": 157.6,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 5
+        },
+        {
+          "start": 157.6,
+          "end": 158.0,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 5
+        },
+        {
+          "start": 158.0,
+          "end": 158.4,
+          "viseme": "AA",
+          "word": "validation",
+          "segment_id": 5
+        },
+        {
+          "start": 158.4,
+          "end": 158.8,
+          "viseme": "IH",
+          "word": "in",
+          "segment_id": 5
+        },
+        {
+          "start": 158.8,
+          "end": 159.2,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 5
+        },
+        {
+          "start": 159.2,
+          "end": 159.6,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 5
+        },
+        {
+          "start": 159.6,
+          "end": 160.0,
+          "viseme": "OW",
+          "word": "voice,",
+          "segment_id": 5
+        },
+        {
+          "start": 160.0,
+          "end": 160.4,
+          "viseme": "EH",
+          "word": "weaving",
+          "segment_id": 5
+        },
+        {
+          "start": 160.4,
+          "end": 160.8,
+          "viseme": "EH",
+          "word": "sensory",
+          "segment_id": 5
+        },
+        {
+          "start": 160.8,
+          "end": 161.2,
+          "viseme": "EH",
+          "word": "detail,",
+          "segment_id": 5
+        },
+        {
+          "start": 161.2,
+          "end": 161.6,
+          "viseme": "OW",
+          "word": "concrete",
+          "segment_id": 5
+        },
+        {
+          "start": 161.6,
+          "end": 162.0,
+          "viseme": "EH",
+          "word": "examples,",
+          "segment_id": 5
+        },
+        {
+          "start": 162.0,
+          "end": 162.4,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 5
+        },
+        {
+          "start": 162.4,
+          "end": 162.8,
+          "viseme": "AA",
+          "word": "actionable",
+          "segment_id": 5
+        },
+        {
+          "start": 162.8,
+          "end": 163.2,
+          "viseme": "IH",
+          "word": "insight.",
+          "segment_id": 5
+        },
+        {
+          "start": 163.2,
+          "end": 163.6,
+          "viseme": "EH",
+          "word": "Expand",
+          "segment_id": 5
+        },
+        {
+          "start": 163.6,
+          "end": 164.0,
+          "viseme": "IH",
+          "word": "with",
+          "segment_id": 5
+        },
+        {
+          "start": 164.0,
+          "end": 164.4,
+          "viseme": "IH",
+          "word": "vivid",
+          "segment_id": 5
+        },
+        {
+          "start": 164.4,
+          "end": 164.8,
+          "viseme": "EH",
+          "word": "metaphors,",
+          "segment_id": 5
+        },
+        {
+          "start": 164.8,
+          "end": 165.2,
+          "viseme": "IH",
+          "word": "crisp",
+          "segment_id": 5
+        },
+        {
+          "start": 165.2,
+          "end": 165.6,
+          "viseme": "AA",
+          "word": "data",
+          "segment_id": 5
+        },
+        {
+          "start": 165.6,
+          "end": 166.0,
+          "viseme": "OW",
+          "word": "points,",
+          "segment_id": 5
+        },
+        {
+          "start": 166.0,
+          "end": 166.4,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 5
+        },
+        {
+          "start": 166.4,
+          "end": 166.8,
+          "viseme": "AA",
+          "word": "an",
+          "segment_id": 5
+        },
+        {
+          "start": 166.8,
+          "end": 167.2,
+          "viseme": "EH",
+          "word": "explicit",
+          "segment_id": 5
+        },
+        {
+          "start": 167.2,
+          "end": 167.6,
+          "viseme": "EH",
+          "word": "next",
+          "segment_id": 5
+        },
+        {
+          "start": 167.6,
+          "end": 168.0,
+          "viseme": "EH",
+          "word": "step",
+          "segment_id": 5
+        },
+        {
+          "start": 168.0,
+          "end": 168.4,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 5
+        },
+        {
+          "start": 168.4,
+          "end": 168.8,
+          "viseme": "OW",
+          "word": "connects",
+          "segment_id": 5
+        },
+        {
+          "start": 168.8,
+          "end": 169.2,
+          "viseme": "OW",
+          "word": "to",
+          "segment_id": 5
+        },
+        {
+          "start": 169.2,
+          "end": 169.6,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 5
+        },
+        {
+          "start": 169.6,
+          "end": 170.0,
+          "viseme": "OW",
+          "word": "overall",
+          "segment_id": 5
+        },
+        {
+          "start": 170.0,
+          "end": 170.4,
+          "viseme": "OW",
+          "word": "story.",
+          "segment_id": 5
+        },
+        {
+          "start": 170.4,
+          "end": 170.8,
+          "viseme": "EH",
+          "word": "Emphasize",
+          "segment_id": 5
+        },
+        {
+          "start": 170.8,
+          "end": 171.2,
+          "viseme": "OW",
+          "word": "outcomes,",
+          "segment_id": 5
+        },
+        {
+          "start": 171.2,
+          "end": 171.6,
+          "viseme": "AA",
+          "word": "transformation,",
+          "segment_id": 5
+        },
+        {
+          "start": 171.6,
+          "end": 172.0,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 5
+        },
+        {
+          "start": 172.0,
+          "end": 172.4,
+          "viseme": "EH",
+          "word": "the",
+          "segment_id": 5
+        },
+        {
+          "start": 172.4,
+          "end": 172.8,
+          "viseme": "AA",
+          "word": "audience's",
+          "segment_id": 5
+        },
+        {
+          "start": 172.8,
+          "end": 173.2,
+          "viseme": "EH",
+          "word": "emotional",
+          "segment_id": 5
+        },
+        {
+          "start": 173.2,
+          "end": 173.6,
+          "viseme": "AA",
+          "word": "stakes.",
+          "segment_id": 5
+        },
+        {
+          "start": 173.6,
+          "end": 174.0,
+          "viseme": "IH",
+          "word": "Visuals:",
+          "segment_id": 5
+        },
+        {
+          "start": 174.0,
+          "end": 174.4,
+          "viseme": "AA",
+          "word": "Hands-on",
+          "segment_id": 5
+        },
+        {
+          "start": 174.4,
+          "end": 174.8,
+          "viseme": "EH",
+          "word": "demos,",
+          "segment_id": 5
+        },
+        {
+          "start": 174.8,
+          "end": 175.2,
+          "viseme": "EH",
+          "word": "screen",
+          "segment_id": 5
+        },
+        {
+          "start": 175.2,
+          "end": 175.6,
+          "viseme": "AA",
+          "word": "captures,",
+          "segment_id": 5
+        },
+        {
+          "start": 175.6,
+          "end": 176.0,
+          "viseme": "AA",
+          "word": "macro",
+          "segment_id": 5
+        },
+        {
+          "start": 176.0,
+          "end": 176.4,
+          "viseme": "EH",
+          "word": "detail",
+          "segment_id": 5
+        },
+        {
+          "start": 176.4,
+          "end": 176.8,
+          "viseme": "OW",
+          "word": "shots.",
+          "segment_id": 5
+        },
+        {
+          "start": 176.8,
+          "end": 177.2,
+          "viseme": "IH",
+          "word": "Include",
+          "segment_id": 5
+        },
+        {
+          "start": 177.2,
+          "end": 177.6,
+          "viseme": "IH",
+          "word": "lighting,",
+          "segment_id": 5
+        },
+        {
+          "start": 177.6,
+          "end": 178.0,
+          "viseme": "AA",
+          "word": "framing,",
+          "segment_id": 5
+        },
+        {
+          "start": 178.0,
+          "end": 178.4,
+          "viseme": "OW",
+          "word": "b-roll",
+          "segment_id": 5
+        },
+        {
+          "start": 178.4,
+          "end": 178.8,
+          "viseme": "IH",
+          "word": "ideas,",
+          "segment_id": 5
+        },
+        {
+          "start": 178.8,
+          "end": 179.2,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 5
+        },
+        {
+          "start": 179.2,
+          "end": 179.6,
+          "viseme": "OW",
+          "word": "motion",
+          "segment_id": 5
+        },
+        {
+          "start": 179.6,
+          "end": 180.0,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 5
+        },
+        {
+          "start": 180.0,
+          "end": 180.4,
+          "viseme": "OW",
+          "word": "notes.",
+          "segment_id": 5
+        },
+        {
+          "start": 180.4,
+          "end": 180.8,
+          "viseme": "AA",
+          "word": "Add",
+          "segment_id": 5
+        },
+        {
+          "start": 180.8,
+          "end": 181.2,
+          "viseme": "AA",
+          "word": "a",
+          "segment_id": 5
+        },
+        {
+          "start": 181.2,
+          "end": 181.6,
+          "viseme": "EH",
+          "word": "neutral",
+          "segment_id": 5
+        },
+        {
+          "start": 181.6,
+          "end": 182.0,
+          "viseme": "AA",
+          "word": "layer",
+          "segment_id": 5
+        },
+        {
+          "start": 182.0,
+          "end": 182.4,
+          "viseme": "OW",
+          "word": "of",
+          "segment_id": 5
+        },
+        {
+          "start": 182.4,
+          "end": 182.8,
+          "viseme": "EH",
+          "word": "detail",
+          "segment_id": 5
+        },
+        {
+          "start": 182.8,
+          "end": 183.2,
+          "viseme": "AA",
+          "word": "about",
+          "segment_id": 5
+        },
+        {
+          "start": 183.2,
+          "end": 183.6,
+          "viseme": "AA",
+          "word": "pacing,",
+          "segment_id": 5
+        },
+        {
+          "start": 183.6,
+          "end": 184.0,
+          "viseme": "AA",
+          "word": "camera",
+          "segment_id": 5
+        },
+        {
+          "start": 184.0,
+          "end": 184.4,
+          "viseme": "OW",
+          "word": "movement,",
+          "segment_id": 5
+        },
+        {
+          "start": 184.4,
+          "end": 184.8,
+          "viseme": "OW",
+          "word": "sound",
+          "segment_id": 5
+        },
+        {
+          "start": 184.8,
+          "end": 185.2,
+          "viseme": "EH",
+          "word": "design,",
+          "segment_id": 5
+        },
+        {
+          "start": 185.2,
+          "end": 185.6,
+          "viseme": "AA",
+          "word": "and",
+          "segment_id": 5
+        },
+        {
+          "start": 185.6,
+          "end": 186.0,
+          "viseme": "OW",
+          "word": "on-screen",
+          "segment_id": 5
+        },
+        {
+          "start": 186.0,
+          "end": 186.4,
+          "viseme": "AA",
+          "word": "graphics",
+          "segment_id": 5
+        },
+        {
+          "start": 186.4,
+          "end": 186.8,
+          "viseme": "AA",
+          "word": "that",
+          "segment_id": 5
+        },
+        {
+          "start": 186.8,
+          "end": 187.2,
+          "viseme": "EH",
+          "word": "reinforce",
+          "segment_id": 5
+        },
+        {
+          "start": 187.2,
+          "end": 187.6,
+          "viseme": "IH",
+          "word": "Critical",
+          "segment_id": 5
+        },
+        {
+          "start": 187.6,
+          "end": 188.0,
+          "viseme": "AA",
+          "word": "path",
+          "segment_id": 5
+        },
+        {
+          "start": 188.0,
+          "end": 188.4,
+          "viseme": "AA",
+          "word": "validation.",
+          "segment_id": 5
+        }
+      ]
+    }
+  ],
+  "visemes": [
+    {
+      "start": 0.0,
+      "end": 0.4,
+      "viseme": "EH",
+      "word": "Scene",
+      "segment_id": 1
+    },
+    {
+      "start": 0.4,
+      "end": 0.8,
+      "viseme": "REST",
+      "word": "1:",
+      "segment_id": 1
+    },
+    {
+      "start": 0.8,
+      "end": 1.2,
+      "viseme": "OW",
+      "word": "Hook",
+      "segment_id": 1
+    },
+    {
+      "start": 1.2,
+      "end": 1.6,
+      "viseme": "IH",
+      "word": "Intent:",
+      "segment_id": 1
+    },
+    {
+      "start": 1.6,
+      "end": 2.0,
+      "viseme": "IH",
+      "word": "Instantly",
+      "segment_id": 1
+    },
+    {
+      "start": 2.0,
+      "end": 2.4,
+      "viseme": "AA",
+      "word": "capture",
+      "segment_id": 1
+    },
+    {
+      "start": 2.4,
+      "end": 2.8,
+      "viseme": "AA",
+      "word": "attention",
+      "segment_id": 1
+    },
+    {
+      "start": 2.8,
+      "end": 3.2,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 1
+    },
+    {
+      "start": 3.2,
+      "end": 3.6,
+      "viseme": "AA",
+      "word": "frame",
+      "segment_id": 1
+    },
+    {
+      "start": 3.6,
+      "end": 4.0,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 1
+    },
+    {
+      "start": 4.0,
+      "end": 4.4,
+      "viseme": "AA",
+      "word": "payoff.",
+      "segment_id": 1
+    },
+    {
+      "start": 4.4,
+      "end": 4.8,
+      "viseme": "AA",
+      "word": "Narration:",
+      "segment_id": 1
+    },
+    {
+      "start": 4.8,
+      "end": 5.2,
+      "viseme": "EH",
+      "word": "Describe",
+      "segment_id": 1
+    },
+    {
+      "start": 5.2,
+      "end": 5.6,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 1
+    },
+    {
+      "start": 5.6,
+      "end": 6.0,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 1
+    },
+    {
+      "start": 6.0,
+      "end": 6.4,
+      "viseme": "AA",
+      "word": "validation",
+      "segment_id": 1
+    },
+    {
+      "start": 6.4,
+      "end": 6.8,
+      "viseme": "IH",
+      "word": "in",
+      "segment_id": 1
+    },
+    {
+      "start": 6.8,
+      "end": 7.2,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 1
+    },
+    {
+      "start": 7.2,
+      "end": 7.6,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 1
+    },
+    {
+      "start": 7.6,
+      "end": 8.0,
+      "viseme": "OW",
+      "word": "voice,",
+      "segment_id": 1
+    },
+    {
+      "start": 8.0,
+      "end": 8.4,
+      "viseme": "EH",
+      "word": "weaving",
+      "segment_id": 1
+    },
+    {
+      "start": 8.4,
+      "end": 8.8,
+      "viseme": "EH",
+      "word": "sensory",
+      "segment_id": 1
+    },
+    {
+      "start": 8.8,
+      "end": 9.2,
+      "viseme": "EH",
+      "word": "detail,",
+      "segment_id": 1
+    },
+    {
+      "start": 9.2,
+      "end": 9.6,
+      "viseme": "OW",
+      "word": "concrete",
+      "segment_id": 1
+    },
+    {
+      "start": 9.6,
+      "end": 10.0,
+      "viseme": "EH",
+      "word": "examples,",
+      "segment_id": 1
+    },
+    {
+      "start": 10.0,
+      "end": 10.4,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 1
+    },
+    {
+      "start": 10.4,
+      "end": 10.8,
+      "viseme": "AA",
+      "word": "actionable",
+      "segment_id": 1
+    },
+    {
+      "start": 10.8,
+      "end": 11.2,
+      "viseme": "IH",
+      "word": "insight.",
+      "segment_id": 1
+    },
+    {
+      "start": 11.2,
+      "end": 11.6,
+      "viseme": "EH",
+      "word": "Expand",
+      "segment_id": 1
+    },
+    {
+      "start": 11.6,
+      "end": 12.0,
+      "viseme": "IH",
+      "word": "with",
+      "segment_id": 1
+    },
+    {
+      "start": 12.0,
+      "end": 12.4,
+      "viseme": "IH",
+      "word": "vivid",
+      "segment_id": 1
+    },
+    {
+      "start": 12.4,
+      "end": 12.8,
+      "viseme": "EH",
+      "word": "metaphors,",
+      "segment_id": 1
+    },
+    {
+      "start": 12.8,
+      "end": 13.2,
+      "viseme": "IH",
+      "word": "crisp",
+      "segment_id": 1
+    },
+    {
+      "start": 13.2,
+      "end": 13.6,
+      "viseme": "AA",
+      "word": "data",
+      "segment_id": 1
+    },
+    {
+      "start": 13.6,
+      "end": 14.0,
+      "viseme": "OW",
+      "word": "points,",
+      "segment_id": 1
+    },
+    {
+      "start": 14.0,
+      "end": 14.4,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 1
+    },
+    {
+      "start": 14.4,
+      "end": 14.8,
+      "viseme": "AA",
+      "word": "an",
+      "segment_id": 1
+    },
+    {
+      "start": 14.8,
+      "end": 15.2,
+      "viseme": "EH",
+      "word": "explicit",
+      "segment_id": 1
+    },
+    {
+      "start": 15.2,
+      "end": 15.6,
+      "viseme": "EH",
+      "word": "next",
+      "segment_id": 1
+    },
+    {
+      "start": 15.6,
+      "end": 16.0,
+      "viseme": "EH",
+      "word": "step",
+      "segment_id": 1
+    },
+    {
+      "start": 16.0,
+      "end": 16.4,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 1
+    },
+    {
+      "start": 16.4,
+      "end": 16.8,
+      "viseme": "OW",
+      "word": "connects",
+      "segment_id": 1
+    },
+    {
+      "start": 16.8,
+      "end": 17.2,
+      "viseme": "OW",
+      "word": "to",
+      "segment_id": 1
+    },
+    {
+      "start": 17.2,
+      "end": 17.6,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 1
+    },
+    {
+      "start": 17.6,
+      "end": 18.0,
+      "viseme": "OW",
+      "word": "overall",
+      "segment_id": 1
+    },
+    {
+      "start": 18.0,
+      "end": 18.4,
+      "viseme": "OW",
+      "word": "story.",
+      "segment_id": 1
+    },
+    {
+      "start": 18.4,
+      "end": 18.8,
+      "viseme": "EH",
+      "word": "Emphasize",
+      "segment_id": 1
+    },
+    {
+      "start": 18.8,
+      "end": 19.2,
+      "viseme": "OW",
+      "word": "outcomes,",
+      "segment_id": 1
+    },
+    {
+      "start": 19.2,
+      "end": 19.6,
+      "viseme": "AA",
+      "word": "transformation,",
+      "segment_id": 1
+    },
+    {
+      "start": 19.6,
+      "end": 20.0,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 1
+    },
+    {
+      "start": 20.0,
+      "end": 20.4,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 1
+    },
+    {
+      "start": 20.4,
+      "end": 20.8,
+      "viseme": "AA",
+      "word": "audience's",
+      "segment_id": 1
+    },
+    {
+      "start": 20.8,
+      "end": 21.2,
+      "viseme": "EH",
+      "word": "emotional",
+      "segment_id": 1
+    },
+    {
+      "start": 21.2,
+      "end": 21.6,
+      "viseme": "AA",
+      "word": "stakes.",
+      "segment_id": 1
+    },
+    {
+      "start": 21.6,
+      "end": 22.0,
+      "viseme": "IH",
+      "word": "Visuals:",
+      "segment_id": 1
+    },
+    {
+      "start": 22.0,
+      "end": 22.4,
+      "viseme": "AA",
+      "word": "Fast",
+      "segment_id": 1
+    },
+    {
+      "start": 22.4,
+      "end": 22.8,
+      "viseme": "UH",
+      "word": "cuts,",
+      "segment_id": 1
+    },
+    {
+      "start": 22.8,
+      "end": 23.2,
+      "viseme": "IH",
+      "word": "kinetic",
+      "segment_id": 1
+    },
+    {
+      "start": 23.2,
+      "end": 23.6,
+      "viseme": "IH",
+      "word": "typography,",
+      "segment_id": 1
+    },
+    {
+      "start": 23.6,
+      "end": 24.0,
+      "viseme": "OW",
+      "word": "bold",
+      "segment_id": 1
+    },
+    {
+      "start": 24.0,
+      "end": 24.4,
+      "viseme": "OW",
+      "word": "color",
+      "segment_id": 1
+    },
+    {
+      "start": 24.4,
+      "end": 24.8,
+      "viseme": "AA",
+      "word": "accents.",
+      "segment_id": 1
+    },
+    {
+      "start": 24.8,
+      "end": 25.2,
+      "viseme": "IH",
+      "word": "Include",
+      "segment_id": 1
+    },
+    {
+      "start": 25.2,
+      "end": 25.6,
+      "viseme": "IH",
+      "word": "lighting,",
+      "segment_id": 1
+    },
+    {
+      "start": 25.6,
+      "end": 26.0,
+      "viseme": "AA",
+      "word": "framing,",
+      "segment_id": 1
+    },
+    {
+      "start": 26.0,
+      "end": 26.4,
+      "viseme": "OW",
+      "word": "b-roll",
+      "segment_id": 1
+    },
+    {
+      "start": 26.4,
+      "end": 26.8,
+      "viseme": "IH",
+      "word": "ideas,",
+      "segment_id": 1
+    },
+    {
+      "start": 26.8,
+      "end": 27.2,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 1
+    },
+    {
+      "start": 27.2,
+      "end": 27.6,
+      "viseme": "OW",
+      "word": "motion",
+      "segment_id": 1
+    },
+    {
+      "start": 27.6,
+      "end": 28.0,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 1
+    },
+    {
+      "start": 28.0,
+      "end": 28.4,
+      "viseme": "OW",
+      "word": "notes.",
+      "segment_id": 1
+    },
+    {
+      "start": 28.4,
+      "end": 28.8,
+      "viseme": "AA",
+      "word": "Add",
+      "segment_id": 1
+    },
+    {
+      "start": 28.8,
+      "end": 29.2,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 1
+    },
+    {
+      "start": 29.2,
+      "end": 29.6,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 1
+    },
+    {
+      "start": 29.6,
+      "end": 30.0,
+      "viseme": "AA",
+      "word": "layer",
+      "segment_id": 1
+    },
+    {
+      "start": 30.0,
+      "end": 30.4,
+      "viseme": "OW",
+      "word": "of",
+      "segment_id": 1
+    },
+    {
+      "start": 30.4,
+      "end": 30.8,
+      "viseme": "EH",
+      "word": "detail",
+      "segment_id": 1
+    },
+    {
+      "start": 30.8,
+      "end": 31.2,
+      "viseme": "AA",
+      "word": "about",
+      "segment_id": 1
+    },
+    {
+      "start": 31.2,
+      "end": 31.6,
+      "viseme": "AA",
+      "word": "pacing,",
+      "segment_id": 1
+    },
+    {
+      "start": 31.6,
+      "end": 32.0,
+      "viseme": "AA",
+      "word": "camera",
+      "segment_id": 1
+    },
+    {
+      "start": 32.0,
+      "end": 32.4,
+      "viseme": "OW",
+      "word": "movement,",
+      "segment_id": 1
+    },
+    {
+      "start": 32.4,
+      "end": 32.8,
+      "viseme": "OW",
+      "word": "sound",
+      "segment_id": 1
+    },
+    {
+      "start": 32.8,
+      "end": 33.2,
+      "viseme": "EH",
+      "word": "design,",
+      "segment_id": 1
+    },
+    {
+      "start": 33.2,
+      "end": 33.6,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 1
+    },
+    {
+      "start": 33.6,
+      "end": 34.0,
+      "viseme": "OW",
+      "word": "on-screen",
+      "segment_id": 1
+    },
+    {
+      "start": 34.0,
+      "end": 34.4,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 1
+    },
+    {
+      "start": 34.4,
+      "end": 34.8,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 1
+    },
+    {
+      "start": 34.8,
+      "end": 35.2,
+      "viseme": "EH",
+      "word": "reinforce",
+      "segment_id": 1
+    },
+    {
+      "start": 35.2,
+      "end": 35.6,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 1
+    },
+    {
+      "start": 35.6,
+      "end": 36.0,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 1
+    },
+    {
+      "start": 36.0,
+      "end": 36.4,
+      "viseme": "AA",
+      "word": "validation.",
+      "segment_id": 1
+    },
+    {
+      "start": 36.4,
+      "end": 36.8,
+      "viseme": "EH",
+      "word": "Scene",
+      "segment_id": 2
+    },
+    {
+      "start": 36.8,
+      "end": 37.2,
+      "viseme": "REST",
+      "word": "2:",
+      "segment_id": 2
+    },
+    {
+      "start": 37.2,
+      "end": 37.6,
+      "viseme": "OW",
+      "word": "Problem",
+      "segment_id": 2
+    },
+    {
+      "start": 37.6,
+      "end": 38.0,
+      "viseme": "IH",
+      "word": "Intent:",
+      "segment_id": 2
+    },
+    {
+      "start": 38.0,
+      "end": 38.4,
+      "viseme": "UH",
+      "word": "Surface",
+      "segment_id": 2
+    },
+    {
+      "start": 38.4,
+      "end": 38.8,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 2
+    },
+    {
+      "start": 38.8,
+      "end": 39.2,
+      "viseme": "AA",
+      "word": "pain",
+      "segment_id": 2
+    },
+    {
+      "start": 39.2,
+      "end": 39.6,
+      "viseme": "OW",
+      "word": "point",
+      "segment_id": 2
+    },
+    {
+      "start": 39.6,
+      "end": 40.0,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 2
+    },
+    {
+      "start": 40.0,
+      "end": 40.4,
+      "viseme": "EH",
+      "word": "create",
+      "segment_id": 2
+    },
+    {
+      "start": 40.4,
+      "end": 40.8,
+      "viseme": "UH",
+      "word": "urgency.",
+      "segment_id": 2
+    },
+    {
+      "start": 40.8,
+      "end": 41.2,
+      "viseme": "AA",
+      "word": "Narration:",
+      "segment_id": 2
+    },
+    {
+      "start": 41.2,
+      "end": 41.6,
+      "viseme": "EH",
+      "word": "Describe",
+      "segment_id": 2
+    },
+    {
+      "start": 41.6,
+      "end": 42.0,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 2
+    },
+    {
+      "start": 42.0,
+      "end": 42.4,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 2
+    },
+    {
+      "start": 42.4,
+      "end": 42.8,
+      "viseme": "AA",
+      "word": "validation",
+      "segment_id": 2
+    },
+    {
+      "start": 42.8,
+      "end": 43.2,
+      "viseme": "IH",
+      "word": "in",
+      "segment_id": 2
+    },
+    {
+      "start": 43.2,
+      "end": 43.6,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 2
+    },
+    {
+      "start": 43.6,
+      "end": 44.0,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 2
+    },
+    {
+      "start": 44.0,
+      "end": 44.4,
+      "viseme": "OW",
+      "word": "voice,",
+      "segment_id": 2
+    },
+    {
+      "start": 44.4,
+      "end": 44.8,
+      "viseme": "EH",
+      "word": "weaving",
+      "segment_id": 2
+    },
+    {
+      "start": 44.8,
+      "end": 45.2,
+      "viseme": "EH",
+      "word": "sensory",
+      "segment_id": 2
+    },
+    {
+      "start": 45.2,
+      "end": 45.6,
+      "viseme": "EH",
+      "word": "detail,",
+      "segment_id": 2
+    },
+    {
+      "start": 45.6,
+      "end": 46.0,
+      "viseme": "OW",
+      "word": "concrete",
+      "segment_id": 2
+    },
+    {
+      "start": 46.0,
+      "end": 46.4,
+      "viseme": "EH",
+      "word": "examples,",
+      "segment_id": 2
+    },
+    {
+      "start": 46.4,
+      "end": 46.8,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 2
+    },
+    {
+      "start": 46.8,
+      "end": 47.2,
+      "viseme": "AA",
+      "word": "actionable",
+      "segment_id": 2
+    },
+    {
+      "start": 47.2,
+      "end": 47.6,
+      "viseme": "IH",
+      "word": "insight.",
+      "segment_id": 2
+    },
+    {
+      "start": 47.6,
+      "end": 48.0,
+      "viseme": "EH",
+      "word": "Expand",
+      "segment_id": 2
+    },
+    {
+      "start": 48.0,
+      "end": 48.4,
+      "viseme": "IH",
+      "word": "with",
+      "segment_id": 2
+    },
+    {
+      "start": 48.4,
+      "end": 48.8,
+      "viseme": "IH",
+      "word": "vivid",
+      "segment_id": 2
+    },
+    {
+      "start": 48.8,
+      "end": 49.2,
+      "viseme": "EH",
+      "word": "metaphors,",
+      "segment_id": 2
+    },
+    {
+      "start": 49.2,
+      "end": 49.6,
+      "viseme": "IH",
+      "word": "crisp",
+      "segment_id": 2
+    },
+    {
+      "start": 49.6,
+      "end": 50.0,
+      "viseme": "AA",
+      "word": "data",
+      "segment_id": 2
+    },
+    {
+      "start": 50.0,
+      "end": 50.4,
+      "viseme": "OW",
+      "word": "points,",
+      "segment_id": 2
+    },
+    {
+      "start": 50.4,
+      "end": 50.8,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 2
+    },
+    {
+      "start": 50.8,
+      "end": 51.2,
+      "viseme": "AA",
+      "word": "an",
+      "segment_id": 2
+    },
+    {
+      "start": 51.2,
+      "end": 51.6,
+      "viseme": "EH",
+      "word": "explicit",
+      "segment_id": 2
+    },
+    {
+      "start": 51.6,
+      "end": 52.0,
+      "viseme": "EH",
+      "word": "next",
+      "segment_id": 2
+    },
+    {
+      "start": 52.0,
+      "end": 52.4,
+      "viseme": "EH",
+      "word": "step",
+      "segment_id": 2
+    },
+    {
+      "start": 52.4,
+      "end": 52.8,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 2
+    },
+    {
+      "start": 52.8,
+      "end": 53.2,
+      "viseme": "OW",
+      "word": "connects",
+      "segment_id": 2
+    },
+    {
+      "start": 53.2,
+      "end": 53.6,
+      "viseme": "OW",
+      "word": "to",
+      "segment_id": 2
+    },
+    {
+      "start": 53.6,
+      "end": 54.0,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 2
+    },
+    {
+      "start": 54.0,
+      "end": 54.4,
+      "viseme": "OW",
+      "word": "overall",
+      "segment_id": 2
+    },
+    {
+      "start": 54.4,
+      "end": 54.8,
+      "viseme": "OW",
+      "word": "story.",
+      "segment_id": 2
+    },
+    {
+      "start": 54.8,
+      "end": 55.2,
+      "viseme": "EH",
+      "word": "Emphasize",
+      "segment_id": 2
+    },
+    {
+      "start": 55.2,
+      "end": 55.6,
+      "viseme": "OW",
+      "word": "outcomes,",
+      "segment_id": 2
+    },
+    {
+      "start": 55.6,
+      "end": 56.0,
+      "viseme": "AA",
+      "word": "transformation,",
+      "segment_id": 2
+    },
+    {
+      "start": 56.0,
+      "end": 56.4,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 2
+    },
+    {
+      "start": 56.4,
+      "end": 56.8,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 2
+    },
+    {
+      "start": 56.8,
+      "end": 57.2,
+      "viseme": "AA",
+      "word": "audience's",
+      "segment_id": 2
+    },
+    {
+      "start": 57.2,
+      "end": 57.6,
+      "viseme": "EH",
+      "word": "emotional",
+      "segment_id": 2
+    },
+    {
+      "start": 57.6,
+      "end": 58.0,
+      "viseme": "AA",
+      "word": "stakes.",
+      "segment_id": 2
+    },
+    {
+      "start": 58.0,
+      "end": 58.4,
+      "viseme": "IH",
+      "word": "Visuals:",
+      "segment_id": 2
+    },
+    {
+      "start": 58.4,
+      "end": 58.8,
+      "viseme": "UH",
+      "word": "Muted",
+      "segment_id": 2
+    },
+    {
+      "start": 58.8,
+      "end": 59.2,
+      "viseme": "AA",
+      "word": "palette,",
+      "segment_id": 2
+    },
+    {
+      "start": 59.2,
+      "end": 59.6,
+      "viseme": "IH",
+      "word": "tight",
+      "segment_id": 2
+    },
+    {
+      "start": 59.6,
+      "end": 60.0,
+      "viseme": "OW",
+      "word": "close-ups,",
+      "segment_id": 2
+    },
+    {
+      "start": 60.0,
+      "end": 60.4,
+      "viseme": "UH",
+      "word": "subtle",
+      "segment_id": 2
+    },
+    {
+      "start": 60.4,
+      "end": 60.8,
+      "viseme": "AA",
+      "word": "ambient",
+      "segment_id": 2
+    },
+    {
+      "start": 60.8,
+      "end": 61.2,
+      "viseme": "EH",
+      "word": "tension.",
+      "segment_id": 2
+    },
+    {
+      "start": 61.2,
+      "end": 61.6,
+      "viseme": "IH",
+      "word": "Include",
+      "segment_id": 2
+    },
+    {
+      "start": 61.6,
+      "end": 62.0,
+      "viseme": "IH",
+      "word": "lighting,",
+      "segment_id": 2
+    },
+    {
+      "start": 62.0,
+      "end": 62.4,
+      "viseme": "AA",
+      "word": "framing,",
+      "segment_id": 2
+    },
+    {
+      "start": 62.4,
+      "end": 62.8,
+      "viseme": "OW",
+      "word": "b-roll",
+      "segment_id": 2
+    },
+    {
+      "start": 62.8,
+      "end": 63.2,
+      "viseme": "IH",
+      "word": "ideas,",
+      "segment_id": 2
+    },
+    {
+      "start": 63.2,
+      "end": 63.6,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 2
+    },
+    {
+      "start": 63.6,
+      "end": 64.0,
+      "viseme": "OW",
+      "word": "motion",
+      "segment_id": 2
+    },
+    {
+      "start": 64.0,
+      "end": 64.4,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 2
+    },
+    {
+      "start": 64.4,
+      "end": 64.8,
+      "viseme": "OW",
+      "word": "notes.",
+      "segment_id": 2
+    },
+    {
+      "start": 64.8,
+      "end": 65.2,
+      "viseme": "AA",
+      "word": "Add",
+      "segment_id": 2
+    },
+    {
+      "start": 65.2,
+      "end": 65.6,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 2
+    },
+    {
+      "start": 65.6,
+      "end": 66.0,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 2
+    },
+    {
+      "start": 66.0,
+      "end": 66.4,
+      "viseme": "AA",
+      "word": "layer",
+      "segment_id": 2
+    },
+    {
+      "start": 66.4,
+      "end": 66.8,
+      "viseme": "OW",
+      "word": "of",
+      "segment_id": 2
+    },
+    {
+      "start": 66.8,
+      "end": 67.2,
+      "viseme": "EH",
+      "word": "detail",
+      "segment_id": 2
+    },
+    {
+      "start": 67.2,
+      "end": 67.6,
+      "viseme": "AA",
+      "word": "about",
+      "segment_id": 2
+    },
+    {
+      "start": 67.6,
+      "end": 68.0,
+      "viseme": "AA",
+      "word": "pacing,",
+      "segment_id": 2
+    },
+    {
+      "start": 68.0,
+      "end": 68.4,
+      "viseme": "AA",
+      "word": "camera",
+      "segment_id": 2
+    },
+    {
+      "start": 68.4,
+      "end": 68.8,
+      "viseme": "OW",
+      "word": "movement,",
+      "segment_id": 2
+    },
+    {
+      "start": 68.8,
+      "end": 69.2,
+      "viseme": "OW",
+      "word": "sound",
+      "segment_id": 2
+    },
+    {
+      "start": 69.2,
+      "end": 69.6,
+      "viseme": "EH",
+      "word": "design,",
+      "segment_id": 2
+    },
+    {
+      "start": 69.6,
+      "end": 70.0,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 2
+    },
+    {
+      "start": 70.0,
+      "end": 70.4,
+      "viseme": "OW",
+      "word": "on-screen",
+      "segment_id": 2
+    },
+    {
+      "start": 70.4,
+      "end": 70.8,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 2
+    },
+    {
+      "start": 70.8,
+      "end": 71.2,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 2
+    },
+    {
+      "start": 71.2,
+      "end": 71.6,
+      "viseme": "EH",
+      "word": "reinforce",
+      "segment_id": 2
+    },
+    {
+      "start": 71.6,
+      "end": 72.0,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 2
+    },
+    {
+      "start": 72.0,
+      "end": 72.4,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 2
+    },
+    {
+      "start": 72.4,
+      "end": 72.8,
+      "viseme": "AA",
+      "word": "validation.",
+      "segment_id": 2
+    },
+    {
+      "start": 72.8,
+      "end": 73.2,
+      "viseme": "EH",
+      "word": "Scene",
+      "segment_id": 3
+    },
+    {
+      "start": 73.2,
+      "end": 73.6,
+      "viseme": "REST",
+      "word": "3:",
+      "segment_id": 3
+    },
+    {
+      "start": 73.6,
+      "end": 74.0,
+      "viseme": "OW",
+      "word": "Promise",
+      "segment_id": 3
+    },
+    {
+      "start": 74.0,
+      "end": 74.4,
+      "viseme": "IH",
+      "word": "Intent:",
+      "segment_id": 3
+    },
+    {
+      "start": 74.4,
+      "end": 74.8,
+      "viseme": "OW",
+      "word": "Position",
+      "segment_id": 3
+    },
+    {
+      "start": 74.8,
+      "end": 75.2,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 3
+    },
+    {
+      "start": 75.2,
+      "end": 75.6,
+      "viseme": "AA",
+      "word": "transformation",
+      "segment_id": 3
+    },
+    {
+      "start": 75.6,
+      "end": 76.0,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 3
+    },
+    {
+      "start": 76.0,
+      "end": 76.4,
+      "viseme": "UH",
+      "word": "build",
+      "segment_id": 3
+    },
+    {
+      "start": 76.4,
+      "end": 76.8,
+      "viseme": "UH",
+      "word": "trust.",
+      "segment_id": 3
+    },
+    {
+      "start": 76.8,
+      "end": 77.2,
+      "viseme": "AA",
+      "word": "Narration:",
+      "segment_id": 3
+    },
+    {
+      "start": 77.2,
+      "end": 77.6,
+      "viseme": "EH",
+      "word": "Describe",
+      "segment_id": 3
+    },
+    {
+      "start": 77.6,
+      "end": 78.0,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 3
+    },
+    {
+      "start": 78.0,
+      "end": 78.4,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 3
+    },
+    {
+      "start": 78.4,
+      "end": 78.8,
+      "viseme": "AA",
+      "word": "validation",
+      "segment_id": 3
+    },
+    {
+      "start": 78.8,
+      "end": 79.2,
+      "viseme": "IH",
+      "word": "in",
+      "segment_id": 3
+    },
+    {
+      "start": 79.2,
+      "end": 79.6,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 3
+    },
+    {
+      "start": 79.6,
+      "end": 80.0,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 3
+    },
+    {
+      "start": 80.0,
+      "end": 80.4,
+      "viseme": "OW",
+      "word": "voice,",
+      "segment_id": 3
+    },
+    {
+      "start": 80.4,
+      "end": 80.8,
+      "viseme": "EH",
+      "word": "weaving",
+      "segment_id": 3
+    },
+    {
+      "start": 80.8,
+      "end": 81.2,
+      "viseme": "EH",
+      "word": "sensory",
+      "segment_id": 3
+    },
+    {
+      "start": 81.2,
+      "end": 81.6,
+      "viseme": "EH",
+      "word": "detail,",
+      "segment_id": 3
+    },
+    {
+      "start": 81.6,
+      "end": 82.0,
+      "viseme": "OW",
+      "word": "concrete",
+      "segment_id": 3
+    },
+    {
+      "start": 82.0,
+      "end": 82.4,
+      "viseme": "EH",
+      "word": "examples,",
+      "segment_id": 3
+    },
+    {
+      "start": 82.4,
+      "end": 82.8,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 3
+    },
+    {
+      "start": 82.8,
+      "end": 83.2,
+      "viseme": "AA",
+      "word": "actionable",
+      "segment_id": 3
+    },
+    {
+      "start": 83.2,
+      "end": 83.6,
+      "viseme": "IH",
+      "word": "insight.",
+      "segment_id": 3
+    },
+    {
+      "start": 83.6,
+      "end": 84.0,
+      "viseme": "EH",
+      "word": "Expand",
+      "segment_id": 3
+    },
+    {
+      "start": 84.0,
+      "end": 84.4,
+      "viseme": "IH",
+      "word": "with",
+      "segment_id": 3
+    },
+    {
+      "start": 84.4,
+      "end": 84.8,
+      "viseme": "IH",
+      "word": "vivid",
+      "segment_id": 3
+    },
+    {
+      "start": 84.8,
+      "end": 85.2,
+      "viseme": "EH",
+      "word": "metaphors,",
+      "segment_id": 3
+    },
+    {
+      "start": 85.2,
+      "end": 85.6,
+      "viseme": "IH",
+      "word": "crisp",
+      "segment_id": 3
+    },
+    {
+      "start": 85.6,
+      "end": 86.0,
+      "viseme": "AA",
+      "word": "data",
+      "segment_id": 3
+    },
+    {
+      "start": 86.0,
+      "end": 86.4,
+      "viseme": "OW",
+      "word": "points,",
+      "segment_id": 3
+    },
+    {
+      "start": 86.4,
+      "end": 86.8,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 3
+    },
+    {
+      "start": 86.8,
+      "end": 87.2,
+      "viseme": "AA",
+      "word": "an",
+      "segment_id": 3
+    },
+    {
+      "start": 87.2,
+      "end": 87.6,
+      "viseme": "EH",
+      "word": "explicit",
+      "segment_id": 3
+    },
+    {
+      "start": 87.6,
+      "end": 88.0,
+      "viseme": "EH",
+      "word": "next",
+      "segment_id": 3
+    },
+    {
+      "start": 88.0,
+      "end": 88.4,
+      "viseme": "EH",
+      "word": "step",
+      "segment_id": 3
+    },
+    {
+      "start": 88.4,
+      "end": 88.8,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 3
+    },
+    {
+      "start": 88.8,
+      "end": 89.2,
+      "viseme": "OW",
+      "word": "connects",
+      "segment_id": 3
+    },
+    {
+      "start": 89.2,
+      "end": 89.6,
+      "viseme": "OW",
+      "word": "to",
+      "segment_id": 3
+    },
+    {
+      "start": 89.6,
+      "end": 90.0,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 3
+    },
+    {
+      "start": 90.0,
+      "end": 90.4,
+      "viseme": "OW",
+      "word": "overall",
+      "segment_id": 3
+    },
+    {
+      "start": 90.4,
+      "end": 90.8,
+      "viseme": "OW",
+      "word": "story.",
+      "segment_id": 3
+    },
+    {
+      "start": 90.8,
+      "end": 91.2,
+      "viseme": "EH",
+      "word": "Emphasize",
+      "segment_id": 3
+    },
+    {
+      "start": 91.2,
+      "end": 91.6,
+      "viseme": "OW",
+      "word": "outcomes,",
+      "segment_id": 3
+    },
+    {
+      "start": 91.6,
+      "end": 92.0,
+      "viseme": "AA",
+      "word": "transformation,",
+      "segment_id": 3
+    },
+    {
+      "start": 92.0,
+      "end": 92.4,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 3
+    },
+    {
+      "start": 92.4,
+      "end": 92.8,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 3
+    },
+    {
+      "start": 92.8,
+      "end": 93.2,
+      "viseme": "AA",
+      "word": "audience's",
+      "segment_id": 3
+    },
+    {
+      "start": 93.2,
+      "end": 93.6,
+      "viseme": "EH",
+      "word": "emotional",
+      "segment_id": 3
+    },
+    {
+      "start": 93.6,
+      "end": 94.0,
+      "viseme": "AA",
+      "word": "stakes.",
+      "segment_id": 3
+    },
+    {
+      "start": 94.0,
+      "end": 94.4,
+      "viseme": "IH",
+      "word": "Visuals:",
+      "segment_id": 3
+    },
+    {
+      "start": 94.4,
+      "end": 94.8,
+      "viseme": "IH",
+      "word": "Lift",
+      "segment_id": 3
+    },
+    {
+      "start": 94.8,
+      "end": 95.2,
+      "viseme": "IH",
+      "word": "in",
+      "segment_id": 3
+    },
+    {
+      "start": 95.2,
+      "end": 95.6,
+      "viseme": "OW",
+      "word": "color,",
+      "segment_id": 3
+    },
+    {
+      "start": 95.6,
+      "end": 96.0,
+      "viseme": "EH",
+      "word": "clear",
+      "segment_id": 3
+    },
+    {
+      "start": 96.0,
+      "end": 96.4,
+      "viseme": "AA",
+      "word": "graphical",
+      "segment_id": 3
+    },
+    {
+      "start": 96.4,
+      "end": 96.8,
+      "viseme": "AA",
+      "word": "callouts,",
+      "segment_id": 3
+    },
+    {
+      "start": 96.8,
+      "end": 97.2,
+      "viseme": "EH",
+      "word": "steady",
+      "segment_id": 3
+    },
+    {
+      "start": 97.2,
+      "end": 97.6,
+      "viseme": "AA",
+      "word": "pacing.",
+      "segment_id": 3
+    },
+    {
+      "start": 97.6,
+      "end": 98.0,
+      "viseme": "IH",
+      "word": "Include",
+      "segment_id": 3
+    },
+    {
+      "start": 98.0,
+      "end": 98.4,
+      "viseme": "IH",
+      "word": "lighting,",
+      "segment_id": 3
+    },
+    {
+      "start": 98.4,
+      "end": 98.8,
+      "viseme": "AA",
+      "word": "framing,",
+      "segment_id": 3
+    },
+    {
+      "start": 98.8,
+      "end": 99.2,
+      "viseme": "OW",
+      "word": "b-roll",
+      "segment_id": 3
+    },
+    {
+      "start": 99.2,
+      "end": 99.6,
+      "viseme": "IH",
+      "word": "ideas,",
+      "segment_id": 3
+    },
+    {
+      "start": 99.6,
+      "end": 100.0,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 3
+    },
+    {
+      "start": 100.0,
+      "end": 100.4,
+      "viseme": "OW",
+      "word": "motion",
+      "segment_id": 3
+    },
+    {
+      "start": 100.4,
+      "end": 100.8,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 3
+    },
+    {
+      "start": 100.8,
+      "end": 101.2,
+      "viseme": "OW",
+      "word": "notes.",
+      "segment_id": 3
+    },
+    {
+      "start": 101.2,
+      "end": 101.6,
+      "viseme": "AA",
+      "word": "Add",
+      "segment_id": 3
+    },
+    {
+      "start": 101.6,
+      "end": 102.0,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 3
+    },
+    {
+      "start": 102.0,
+      "end": 102.4,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 3
+    },
+    {
+      "start": 102.4,
+      "end": 102.8,
+      "viseme": "AA",
+      "word": "layer",
+      "segment_id": 3
+    },
+    {
+      "start": 102.8,
+      "end": 103.2,
+      "viseme": "OW",
+      "word": "of",
+      "segment_id": 3
+    },
+    {
+      "start": 103.2,
+      "end": 103.6,
+      "viseme": "EH",
+      "word": "detail",
+      "segment_id": 3
+    },
+    {
+      "start": 103.6,
+      "end": 104.0,
+      "viseme": "AA",
+      "word": "about",
+      "segment_id": 3
+    },
+    {
+      "start": 104.0,
+      "end": 104.4,
+      "viseme": "AA",
+      "word": "pacing,",
+      "segment_id": 3
+    },
+    {
+      "start": 104.4,
+      "end": 104.8,
+      "viseme": "AA",
+      "word": "camera",
+      "segment_id": 3
+    },
+    {
+      "start": 104.8,
+      "end": 105.2,
+      "viseme": "OW",
+      "word": "movement,",
+      "segment_id": 3
+    },
+    {
+      "start": 105.2,
+      "end": 105.6,
+      "viseme": "OW",
+      "word": "sound",
+      "segment_id": 3
+    },
+    {
+      "start": 105.6,
+      "end": 106.0,
+      "viseme": "EH",
+      "word": "design,",
+      "segment_id": 3
+    },
+    {
+      "start": 106.0,
+      "end": 106.4,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 3
+    },
+    {
+      "start": 106.4,
+      "end": 106.8,
+      "viseme": "OW",
+      "word": "on-screen",
+      "segment_id": 3
+    },
+    {
+      "start": 106.8,
+      "end": 107.2,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 3
+    },
+    {
+      "start": 107.2,
+      "end": 107.6,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 3
+    },
+    {
+      "start": 107.6,
+      "end": 108.0,
+      "viseme": "EH",
+      "word": "reinforce",
+      "segment_id": 3
+    },
+    {
+      "start": 108.0,
+      "end": 108.4,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 3
+    },
+    {
+      "start": 108.4,
+      "end": 108.8,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 3
+    },
+    {
+      "start": 108.8,
+      "end": 109.2,
+      "viseme": "AA",
+      "word": "validation.",
+      "segment_id": 3
+    },
+    {
+      "start": 109.2,
+      "end": 109.6,
+      "viseme": "EH",
+      "word": "Scene",
+      "segment_id": 4
+    },
+    {
+      "start": 109.6,
+      "end": 110.0,
+      "viseme": "REST",
+      "word": "4:",
+      "segment_id": 4
+    },
+    {
+      "start": 110.0,
+      "end": 110.4,
+      "viseme": "UH",
+      "word": "Blueprint",
+      "segment_id": 4
+    },
+    {
+      "start": 110.4,
+      "end": 110.8,
+      "viseme": "IH",
+      "word": "Intent:",
+      "segment_id": 4
+    },
+    {
+      "start": 110.8,
+      "end": 111.2,
+      "viseme": "EH",
+      "word": "Deliver",
+      "segment_id": 4
+    },
+    {
+      "start": 111.2,
+      "end": 111.6,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 4
+    },
+    {
+      "start": 111.6,
+      "end": 112.0,
+      "viseme": "EH",
+      "word": "step-by-step",
+      "segment_id": 4
+    },
+    {
+      "start": 112.0,
+      "end": 112.4,
+      "viseme": "UH",
+      "word": "structure.",
+      "segment_id": 4
+    },
+    {
+      "start": 112.4,
+      "end": 112.8,
+      "viseme": "AA",
+      "word": "Narration:",
+      "segment_id": 4
+    },
+    {
+      "start": 112.8,
+      "end": 113.2,
+      "viseme": "EH",
+      "word": "Describe",
+      "segment_id": 4
+    },
+    {
+      "start": 113.2,
+      "end": 113.6,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 4
+    },
+    {
+      "start": 113.6,
+      "end": 114.0,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 4
+    },
+    {
+      "start": 114.0,
+      "end": 114.4,
+      "viseme": "AA",
+      "word": "validation",
+      "segment_id": 4
+    },
+    {
+      "start": 114.4,
+      "end": 114.8,
+      "viseme": "IH",
+      "word": "in",
+      "segment_id": 4
+    },
+    {
+      "start": 114.8,
+      "end": 115.2,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 4
+    },
+    {
+      "start": 115.2,
+      "end": 115.6,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 4
+    },
+    {
+      "start": 115.6,
+      "end": 116.0,
+      "viseme": "OW",
+      "word": "voice,",
+      "segment_id": 4
+    },
+    {
+      "start": 116.0,
+      "end": 116.4,
+      "viseme": "EH",
+      "word": "weaving",
+      "segment_id": 4
+    },
+    {
+      "start": 116.4,
+      "end": 116.8,
+      "viseme": "EH",
+      "word": "sensory",
+      "segment_id": 4
+    },
+    {
+      "start": 116.8,
+      "end": 117.2,
+      "viseme": "EH",
+      "word": "detail,",
+      "segment_id": 4
+    },
+    {
+      "start": 117.2,
+      "end": 117.6,
+      "viseme": "OW",
+      "word": "concrete",
+      "segment_id": 4
+    },
+    {
+      "start": 117.6,
+      "end": 118.0,
+      "viseme": "EH",
+      "word": "examples,",
+      "segment_id": 4
+    },
+    {
+      "start": 118.0,
+      "end": 118.4,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 4
+    },
+    {
+      "start": 118.4,
+      "end": 118.8,
+      "viseme": "AA",
+      "word": "actionable",
+      "segment_id": 4
+    },
+    {
+      "start": 118.8,
+      "end": 119.2,
+      "viseme": "IH",
+      "word": "insight.",
+      "segment_id": 4
+    },
+    {
+      "start": 119.2,
+      "end": 119.6,
+      "viseme": "EH",
+      "word": "Expand",
+      "segment_id": 4
+    },
+    {
+      "start": 119.6,
+      "end": 120.0,
+      "viseme": "IH",
+      "word": "with",
+      "segment_id": 4
+    },
+    {
+      "start": 120.0,
+      "end": 120.4,
+      "viseme": "IH",
+      "word": "vivid",
+      "segment_id": 4
+    },
+    {
+      "start": 120.4,
+      "end": 120.8,
+      "viseme": "EH",
+      "word": "metaphors,",
+      "segment_id": 4
+    },
+    {
+      "start": 120.8,
+      "end": 121.2,
+      "viseme": "IH",
+      "word": "crisp",
+      "segment_id": 4
+    },
+    {
+      "start": 121.2,
+      "end": 121.6,
+      "viseme": "AA",
+      "word": "data",
+      "segment_id": 4
+    },
+    {
+      "start": 121.6,
+      "end": 122.0,
+      "viseme": "OW",
+      "word": "points,",
+      "segment_id": 4
+    },
+    {
+      "start": 122.0,
+      "end": 122.4,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 4
+    },
+    {
+      "start": 122.4,
+      "end": 122.8,
+      "viseme": "AA",
+      "word": "an",
+      "segment_id": 4
+    },
+    {
+      "start": 122.8,
+      "end": 123.2,
+      "viseme": "EH",
+      "word": "explicit",
+      "segment_id": 4
+    },
+    {
+      "start": 123.2,
+      "end": 123.6,
+      "viseme": "EH",
+      "word": "next",
+      "segment_id": 4
+    },
+    {
+      "start": 123.6,
+      "end": 124.0,
+      "viseme": "EH",
+      "word": "step",
+      "segment_id": 4
+    },
+    {
+      "start": 124.0,
+      "end": 124.4,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 4
+    },
+    {
+      "start": 124.4,
+      "end": 124.8,
+      "viseme": "OW",
+      "word": "connects",
+      "segment_id": 4
+    },
+    {
+      "start": 124.8,
+      "end": 125.2,
+      "viseme": "OW",
+      "word": "to",
+      "segment_id": 4
+    },
+    {
+      "start": 125.2,
+      "end": 125.6,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 4
+    },
+    {
+      "start": 125.6,
+      "end": 126.0,
+      "viseme": "OW",
+      "word": "overall",
+      "segment_id": 4
+    },
+    {
+      "start": 126.0,
+      "end": 126.4,
+      "viseme": "OW",
+      "word": "story.",
+      "segment_id": 4
+    },
+    {
+      "start": 126.4,
+      "end": 126.8,
+      "viseme": "EH",
+      "word": "Emphasize",
+      "segment_id": 4
+    },
+    {
+      "start": 126.8,
+      "end": 127.2,
+      "viseme": "OW",
+      "word": "outcomes,",
+      "segment_id": 4
+    },
+    {
+      "start": 127.2,
+      "end": 127.6,
+      "viseme": "AA",
+      "word": "transformation,",
+      "segment_id": 4
+    },
+    {
+      "start": 127.6,
+      "end": 128.0,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 4
+    },
+    {
+      "start": 128.0,
+      "end": 128.4,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 4
+    },
+    {
+      "start": 128.4,
+      "end": 128.8,
+      "viseme": "AA",
+      "word": "audience's",
+      "segment_id": 4
+    },
+    {
+      "start": 128.8,
+      "end": 129.2,
+      "viseme": "EH",
+      "word": "emotional",
+      "segment_id": 4
+    },
+    {
+      "start": 129.2,
+      "end": 129.6,
+      "viseme": "AA",
+      "word": "stakes.",
+      "segment_id": 4
+    },
+    {
+      "start": 129.6,
+      "end": 130.0,
+      "viseme": "IH",
+      "word": "Visuals:",
+      "segment_id": 4
+    },
+    {
+      "start": 130.0,
+      "end": 130.4,
+      "viseme": "OW",
+      "word": "On-screen",
+      "segment_id": 4
+    },
+    {
+      "start": 130.4,
+      "end": 130.8,
+      "viseme": "EH",
+      "word": "steps,",
+      "segment_id": 4
+    },
+    {
+      "start": 130.8,
+      "end": 131.2,
+      "viseme": "UH",
+      "word": "UI",
+      "segment_id": 4
+    },
+    {
+      "start": 131.2,
+      "end": 131.6,
+      "viseme": "OW",
+      "word": "overlays,",
+      "segment_id": 4
+    },
+    {
+      "start": 131.6,
+      "end": 132.0,
+      "viseme": "AA",
+      "word": "layered",
+      "segment_id": 4
+    },
+    {
+      "start": 132.0,
+      "end": 132.4,
+      "viseme": "AA",
+      "word": "callouts.",
+      "segment_id": 4
+    },
+    {
+      "start": 132.4,
+      "end": 132.8,
+      "viseme": "IH",
+      "word": "Include",
+      "segment_id": 4
+    },
+    {
+      "start": 132.8,
+      "end": 133.2,
+      "viseme": "IH",
+      "word": "lighting,",
+      "segment_id": 4
+    },
+    {
+      "start": 133.2,
+      "end": 133.6,
+      "viseme": "AA",
+      "word": "framing,",
+      "segment_id": 4
+    },
+    {
+      "start": 133.6,
+      "end": 134.0,
+      "viseme": "OW",
+      "word": "b-roll",
+      "segment_id": 4
+    },
+    {
+      "start": 134.0,
+      "end": 134.4,
+      "viseme": "IH",
+      "word": "ideas,",
+      "segment_id": 4
+    },
+    {
+      "start": 134.4,
+      "end": 134.8,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 4
+    },
+    {
+      "start": 134.8,
+      "end": 135.2,
+      "viseme": "OW",
+      "word": "motion",
+      "segment_id": 4
+    },
+    {
+      "start": 135.2,
+      "end": 135.6,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 4
+    },
+    {
+      "start": 135.6,
+      "end": 136.0,
+      "viseme": "OW",
+      "word": "notes.",
+      "segment_id": 4
+    },
+    {
+      "start": 136.0,
+      "end": 136.4,
+      "viseme": "AA",
+      "word": "Add",
+      "segment_id": 4
+    },
+    {
+      "start": 136.4,
+      "end": 136.8,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 4
+    },
+    {
+      "start": 136.8,
+      "end": 137.2,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 4
+    },
+    {
+      "start": 137.2,
+      "end": 137.6,
+      "viseme": "AA",
+      "word": "layer",
+      "segment_id": 4
+    },
+    {
+      "start": 137.6,
+      "end": 138.0,
+      "viseme": "OW",
+      "word": "of",
+      "segment_id": 4
+    },
+    {
+      "start": 138.0,
+      "end": 138.4,
+      "viseme": "EH",
+      "word": "detail",
+      "segment_id": 4
+    },
+    {
+      "start": 138.4,
+      "end": 138.8,
+      "viseme": "AA",
+      "word": "about",
+      "segment_id": 4
+    },
+    {
+      "start": 138.8,
+      "end": 139.2,
+      "viseme": "AA",
+      "word": "pacing,",
+      "segment_id": 4
+    },
+    {
+      "start": 139.2,
+      "end": 139.6,
+      "viseme": "AA",
+      "word": "camera",
+      "segment_id": 4
+    },
+    {
+      "start": 139.6,
+      "end": 140.0,
+      "viseme": "OW",
+      "word": "movement,",
+      "segment_id": 4
+    },
+    {
+      "start": 140.0,
+      "end": 140.4,
+      "viseme": "OW",
+      "word": "sound",
+      "segment_id": 4
+    },
+    {
+      "start": 140.4,
+      "end": 140.8,
+      "viseme": "EH",
+      "word": "design,",
+      "segment_id": 4
+    },
+    {
+      "start": 140.8,
+      "end": 141.2,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 4
+    },
+    {
+      "start": 141.2,
+      "end": 141.6,
+      "viseme": "OW",
+      "word": "on-screen",
+      "segment_id": 4
+    },
+    {
+      "start": 141.6,
+      "end": 142.0,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 4
+    },
+    {
+      "start": 142.0,
+      "end": 142.4,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 4
+    },
+    {
+      "start": 142.4,
+      "end": 142.8,
+      "viseme": "EH",
+      "word": "reinforce",
+      "segment_id": 4
+    },
+    {
+      "start": 142.8,
+      "end": 143.2,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 4
+    },
+    {
+      "start": 143.2,
+      "end": 143.6,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 4
+    },
+    {
+      "start": 143.6,
+      "end": 144.0,
+      "viseme": "AA",
+      "word": "validation.",
+      "segment_id": 4
+    },
+    {
+      "start": 144.0,
+      "end": 144.4,
+      "viseme": "AA",
+      "word": "Add",
+      "segment_id": 4
+    },
+    {
+      "start": 144.4,
+      "end": 144.8,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 4
+    },
+    {
+      "start": 144.8,
+      "end": 145.2,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 4
+    },
+    {
+      "start": 145.2,
+      "end": 145.6,
+      "viseme": "AA",
+      "word": "layer",
+      "segment_id": 4
+    },
+    {
+      "start": 145.6,
+      "end": 146.0,
+      "viseme": "OW",
+      "word": "of",
+      "segment_id": 4
+    },
+    {
+      "start": 146.0,
+      "end": 146.4,
+      "viseme": "EH",
+      "word": "detail",
+      "segment_id": 4
+    },
+    {
+      "start": 146.4,
+      "end": 146.8,
+      "viseme": "AA",
+      "word": "about",
+      "segment_id": 4
+    },
+    {
+      "start": 146.8,
+      "end": 147.2,
+      "viseme": "AA",
+      "word": "pacing,",
+      "segment_id": 4
+    },
+    {
+      "start": 147.2,
+      "end": 147.6,
+      "viseme": "AA",
+      "word": "camera",
+      "segment_id": 4
+    },
+    {
+      "start": 147.6,
+      "end": 148.0,
+      "viseme": "OW",
+      "word": "movement,",
+      "segment_id": 4
+    },
+    {
+      "start": 148.0,
+      "end": 148.4,
+      "viseme": "OW",
+      "word": "sound",
+      "segment_id": 4
+    },
+    {
+      "start": 148.4,
+      "end": 148.8,
+      "viseme": "EH",
+      "word": "design,",
+      "segment_id": 4
+    },
+    {
+      "start": 148.8,
+      "end": 149.2,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 4
+    },
+    {
+      "start": 149.2,
+      "end": 149.6,
+      "viseme": "OW",
+      "word": "on-screen",
+      "segment_id": 4
+    },
+    {
+      "start": 149.6,
+      "end": 150.0,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 4
+    },
+    {
+      "start": 150.0,
+      "end": 150.4,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 4
+    },
+    {
+      "start": 150.4,
+      "end": 150.8,
+      "viseme": "EH",
+      "word": "reinforce",
+      "segment_id": 4
+    },
+    {
+      "start": 150.8,
+      "end": 151.2,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 4
+    },
+    {
+      "start": 151.2,
+      "end": 151.6,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 4
+    },
+    {
+      "start": 151.6,
+      "end": 152.0,
+      "viseme": "AA",
+      "word": "validation.",
+      "segment_id": 4
+    },
+    {
+      "start": 152.0,
+      "end": 152.4,
+      "viseme": "EH",
+      "word": "Scene",
+      "segment_id": 5
+    },
+    {
+      "start": 152.4,
+      "end": 152.8,
+      "viseme": "REST",
+      "word": "5:",
+      "segment_id": 5
+    },
+    {
+      "start": 152.8,
+      "end": 153.2,
+      "viseme": "EH",
+      "word": "Deep",
+      "segment_id": 5
+    },
+    {
+      "start": 153.2,
+      "end": 153.6,
+      "viseme": "IH",
+      "word": "dive",
+      "segment_id": 5
+    },
+    {
+      "start": 153.6,
+      "end": 154.0,
+      "viseme": "IH",
+      "word": "Intent:",
+      "segment_id": 5
+    },
+    {
+      "start": 154.0,
+      "end": 154.4,
+      "viseme": "OW",
+      "word": "Provide",
+      "segment_id": 5
+    },
+    {
+      "start": 154.4,
+      "end": 154.8,
+      "viseme": "IH",
+      "word": "rich",
+      "segment_id": 5
+    },
+    {
+      "start": 154.8,
+      "end": 155.2,
+      "viseme": "EH",
+      "word": "detail,",
+      "segment_id": 5
+    },
+    {
+      "start": 155.2,
+      "end": 155.6,
+      "viseme": "AA",
+      "word": "tactics,",
+      "segment_id": 5
+    },
+    {
+      "start": 155.6,
+      "end": 156.0,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 5
+    },
+    {
+      "start": 156.0,
+      "end": 156.4,
+      "viseme": "AA",
+      "word": "craft.",
+      "segment_id": 5
+    },
+    {
+      "start": 156.4,
+      "end": 156.8,
+      "viseme": "AA",
+      "word": "Narration:",
+      "segment_id": 5
+    },
+    {
+      "start": 156.8,
+      "end": 157.2,
+      "viseme": "EH",
+      "word": "Describe",
+      "segment_id": 5
+    },
+    {
+      "start": 157.2,
+      "end": 157.6,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 5
+    },
+    {
+      "start": 157.6,
+      "end": 158.0,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 5
+    },
+    {
+      "start": 158.0,
+      "end": 158.4,
+      "viseme": "AA",
+      "word": "validation",
+      "segment_id": 5
+    },
+    {
+      "start": 158.4,
+      "end": 158.8,
+      "viseme": "IH",
+      "word": "in",
+      "segment_id": 5
+    },
+    {
+      "start": 158.8,
+      "end": 159.2,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 5
+    },
+    {
+      "start": 159.2,
+      "end": 159.6,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 5
+    },
+    {
+      "start": 159.6,
+      "end": 160.0,
+      "viseme": "OW",
+      "word": "voice,",
+      "segment_id": 5
+    },
+    {
+      "start": 160.0,
+      "end": 160.4,
+      "viseme": "EH",
+      "word": "weaving",
+      "segment_id": 5
+    },
+    {
+      "start": 160.4,
+      "end": 160.8,
+      "viseme": "EH",
+      "word": "sensory",
+      "segment_id": 5
+    },
+    {
+      "start": 160.8,
+      "end": 161.2,
+      "viseme": "EH",
+      "word": "detail,",
+      "segment_id": 5
+    },
+    {
+      "start": 161.2,
+      "end": 161.6,
+      "viseme": "OW",
+      "word": "concrete",
+      "segment_id": 5
+    },
+    {
+      "start": 161.6,
+      "end": 162.0,
+      "viseme": "EH",
+      "word": "examples,",
+      "segment_id": 5
+    },
+    {
+      "start": 162.0,
+      "end": 162.4,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 5
+    },
+    {
+      "start": 162.4,
+      "end": 162.8,
+      "viseme": "AA",
+      "word": "actionable",
+      "segment_id": 5
+    },
+    {
+      "start": 162.8,
+      "end": 163.2,
+      "viseme": "IH",
+      "word": "insight.",
+      "segment_id": 5
+    },
+    {
+      "start": 163.2,
+      "end": 163.6,
+      "viseme": "EH",
+      "word": "Expand",
+      "segment_id": 5
+    },
+    {
+      "start": 163.6,
+      "end": 164.0,
+      "viseme": "IH",
+      "word": "with",
+      "segment_id": 5
+    },
+    {
+      "start": 164.0,
+      "end": 164.4,
+      "viseme": "IH",
+      "word": "vivid",
+      "segment_id": 5
+    },
+    {
+      "start": 164.4,
+      "end": 164.8,
+      "viseme": "EH",
+      "word": "metaphors,",
+      "segment_id": 5
+    },
+    {
+      "start": 164.8,
+      "end": 165.2,
+      "viseme": "IH",
+      "word": "crisp",
+      "segment_id": 5
+    },
+    {
+      "start": 165.2,
+      "end": 165.6,
+      "viseme": "AA",
+      "word": "data",
+      "segment_id": 5
+    },
+    {
+      "start": 165.6,
+      "end": 166.0,
+      "viseme": "OW",
+      "word": "points,",
+      "segment_id": 5
+    },
+    {
+      "start": 166.0,
+      "end": 166.4,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 5
+    },
+    {
+      "start": 166.4,
+      "end": 166.8,
+      "viseme": "AA",
+      "word": "an",
+      "segment_id": 5
+    },
+    {
+      "start": 166.8,
+      "end": 167.2,
+      "viseme": "EH",
+      "word": "explicit",
+      "segment_id": 5
+    },
+    {
+      "start": 167.2,
+      "end": 167.6,
+      "viseme": "EH",
+      "word": "next",
+      "segment_id": 5
+    },
+    {
+      "start": 167.6,
+      "end": 168.0,
+      "viseme": "EH",
+      "word": "step",
+      "segment_id": 5
+    },
+    {
+      "start": 168.0,
+      "end": 168.4,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 5
+    },
+    {
+      "start": 168.4,
+      "end": 168.8,
+      "viseme": "OW",
+      "word": "connects",
+      "segment_id": 5
+    },
+    {
+      "start": 168.8,
+      "end": 169.2,
+      "viseme": "OW",
+      "word": "to",
+      "segment_id": 5
+    },
+    {
+      "start": 169.2,
+      "end": 169.6,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 5
+    },
+    {
+      "start": 169.6,
+      "end": 170.0,
+      "viseme": "OW",
+      "word": "overall",
+      "segment_id": 5
+    },
+    {
+      "start": 170.0,
+      "end": 170.4,
+      "viseme": "OW",
+      "word": "story.",
+      "segment_id": 5
+    },
+    {
+      "start": 170.4,
+      "end": 170.8,
+      "viseme": "EH",
+      "word": "Emphasize",
+      "segment_id": 5
+    },
+    {
+      "start": 170.8,
+      "end": 171.2,
+      "viseme": "OW",
+      "word": "outcomes,",
+      "segment_id": 5
+    },
+    {
+      "start": 171.2,
+      "end": 171.6,
+      "viseme": "AA",
+      "word": "transformation,",
+      "segment_id": 5
+    },
+    {
+      "start": 171.6,
+      "end": 172.0,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 5
+    },
+    {
+      "start": 172.0,
+      "end": 172.4,
+      "viseme": "EH",
+      "word": "the",
+      "segment_id": 5
+    },
+    {
+      "start": 172.4,
+      "end": 172.8,
+      "viseme": "AA",
+      "word": "audience's",
+      "segment_id": 5
+    },
+    {
+      "start": 172.8,
+      "end": 173.2,
+      "viseme": "EH",
+      "word": "emotional",
+      "segment_id": 5
+    },
+    {
+      "start": 173.2,
+      "end": 173.6,
+      "viseme": "AA",
+      "word": "stakes.",
+      "segment_id": 5
+    },
+    {
+      "start": 173.6,
+      "end": 174.0,
+      "viseme": "IH",
+      "word": "Visuals:",
+      "segment_id": 5
+    },
+    {
+      "start": 174.0,
+      "end": 174.4,
+      "viseme": "AA",
+      "word": "Hands-on",
+      "segment_id": 5
+    },
+    {
+      "start": 174.4,
+      "end": 174.8,
+      "viseme": "EH",
+      "word": "demos,",
+      "segment_id": 5
+    },
+    {
+      "start": 174.8,
+      "end": 175.2,
+      "viseme": "EH",
+      "word": "screen",
+      "segment_id": 5
+    },
+    {
+      "start": 175.2,
+      "end": 175.6,
+      "viseme": "AA",
+      "word": "captures,",
+      "segment_id": 5
+    },
+    {
+      "start": 175.6,
+      "end": 176.0,
+      "viseme": "AA",
+      "word": "macro",
+      "segment_id": 5
+    },
+    {
+      "start": 176.0,
+      "end": 176.4,
+      "viseme": "EH",
+      "word": "detail",
+      "segment_id": 5
+    },
+    {
+      "start": 176.4,
+      "end": 176.8,
+      "viseme": "OW",
+      "word": "shots.",
+      "segment_id": 5
+    },
+    {
+      "start": 176.8,
+      "end": 177.2,
+      "viseme": "IH",
+      "word": "Include",
+      "segment_id": 5
+    },
+    {
+      "start": 177.2,
+      "end": 177.6,
+      "viseme": "IH",
+      "word": "lighting,",
+      "segment_id": 5
+    },
+    {
+      "start": 177.6,
+      "end": 178.0,
+      "viseme": "AA",
+      "word": "framing,",
+      "segment_id": 5
+    },
+    {
+      "start": 178.0,
+      "end": 178.4,
+      "viseme": "OW",
+      "word": "b-roll",
+      "segment_id": 5
+    },
+    {
+      "start": 178.4,
+      "end": 178.8,
+      "viseme": "IH",
+      "word": "ideas,",
+      "segment_id": 5
+    },
+    {
+      "start": 178.8,
+      "end": 179.2,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 5
+    },
+    {
+      "start": 179.2,
+      "end": 179.6,
+      "viseme": "OW",
+      "word": "motion",
+      "segment_id": 5
+    },
+    {
+      "start": 179.6,
+      "end": 180.0,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 5
+    },
+    {
+      "start": 180.0,
+      "end": 180.4,
+      "viseme": "OW",
+      "word": "notes.",
+      "segment_id": 5
+    },
+    {
+      "start": 180.4,
+      "end": 180.8,
+      "viseme": "AA",
+      "word": "Add",
+      "segment_id": 5
+    },
+    {
+      "start": 180.8,
+      "end": 181.2,
+      "viseme": "AA",
+      "word": "a",
+      "segment_id": 5
+    },
+    {
+      "start": 181.2,
+      "end": 181.6,
+      "viseme": "EH",
+      "word": "neutral",
+      "segment_id": 5
+    },
+    {
+      "start": 181.6,
+      "end": 182.0,
+      "viseme": "AA",
+      "word": "layer",
+      "segment_id": 5
+    },
+    {
+      "start": 182.0,
+      "end": 182.4,
+      "viseme": "OW",
+      "word": "of",
+      "segment_id": 5
+    },
+    {
+      "start": 182.4,
+      "end": 182.8,
+      "viseme": "EH",
+      "word": "detail",
+      "segment_id": 5
+    },
+    {
+      "start": 182.8,
+      "end": 183.2,
+      "viseme": "AA",
+      "word": "about",
+      "segment_id": 5
+    },
+    {
+      "start": 183.2,
+      "end": 183.6,
+      "viseme": "AA",
+      "word": "pacing,",
+      "segment_id": 5
+    },
+    {
+      "start": 183.6,
+      "end": 184.0,
+      "viseme": "AA",
+      "word": "camera",
+      "segment_id": 5
+    },
+    {
+      "start": 184.0,
+      "end": 184.4,
+      "viseme": "OW",
+      "word": "movement,",
+      "segment_id": 5
+    },
+    {
+      "start": 184.4,
+      "end": 184.8,
+      "viseme": "OW",
+      "word": "sound",
+      "segment_id": 5
+    },
+    {
+      "start": 184.8,
+      "end": 185.2,
+      "viseme": "EH",
+      "word": "design,",
+      "segment_id": 5
+    },
+    {
+      "start": 185.2,
+      "end": 185.6,
+      "viseme": "AA",
+      "word": "and",
+      "segment_id": 5
+    },
+    {
+      "start": 185.6,
+      "end": 186.0,
+      "viseme": "OW",
+      "word": "on-screen",
+      "segment_id": 5
+    },
+    {
+      "start": 186.0,
+      "end": 186.4,
+      "viseme": "AA",
+      "word": "graphics",
+      "segment_id": 5
+    },
+    {
+      "start": 186.4,
+      "end": 186.8,
+      "viseme": "AA",
+      "word": "that",
+      "segment_id": 5
+    },
+    {
+      "start": 186.8,
+      "end": 187.2,
+      "viseme": "EH",
+      "word": "reinforce",
+      "segment_id": 5
+    },
+    {
+      "start": 187.2,
+      "end": 187.6,
+      "viseme": "IH",
+      "word": "Critical",
+      "segment_id": 5
+    },
+    {
+      "start": 187.6,
+      "end": 188.0,
+      "viseme": "AA",
+      "word": "path",
+      "segment_id": 5
+    },
+    {
+      "start": 188.0,
+      "end": 188.4,
+      "viseme": "AA",
+      "word": "validation.",
+      "segment_id": 5
+    }
+  ],
+  "source": "heuristic"
+}

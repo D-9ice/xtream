@@ -1,0 +1,26 @@
+{
+  "project_id": "ec2dc106-68bd-4351-9a97-abbd65be263d",
+  "selected_template": "cinematic",
+  "available_templates": [
+    {
+      "id": "cinematic",
+      "aspect_ratio": "16:9",
+      "transition": "crossfade"
+    },
+    {
+      "id": "tutorial",
+      "aspect_ratio": "16:9",
+      "transition": "cut"
+    },
+    {
+      "id": "promo",
+      "aspect_ratio": "9:16",
+      "transition": "zoom"
+    },
+    {
+      "id": "talking-head",
+      "aspect_ratio": "1:1",
+      "transition": "slide"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "project_id": "da1470fd-efc8-482d-8c41-9e62d7421ea7",
+  "resolution": "1920x1080",
+  "fps": 30,
+  "timeline": [
+    {
+      "scene_id": 1,
+      "start": 0.0,
+      "end": 10.0,
+      "layout": "screen+webcam",
+      "webcam_position": "bottom-right",
+      "notes": "Default recording segment"
+    }
+  ]
+}

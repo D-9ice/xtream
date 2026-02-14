@@ -1,0 +1,169 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set procreator http://minio:9000 ${S3_ACCESS_KEY:-minioadmin} ${S3_SECRET_KEY:-minioadmin};
+      mc mb -p procreator/${S3_BUCKET:-pro-creator};
+      mc anonymous set download procreator/${S3_BUCKET:-pro-creator};
+      exit 0;
+      "
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/pro_creator.db}
+      STORAGE_BACKEND: s3
+      PROJECTS_URL_BASE: http://minio:9000/${S3_BUCKET:-pro-creator}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-pro-creator}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_USE_SSL: "false"
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ENABLE_CELERY: "true"
+      AUTH_REQUIRED: "true"
+      JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@procreator.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-LocalAdminPass123!}
+      ADMIN_DASHBOARD_PASSWORD: ${ADMIN_DASHBOARD_PASSWORD:-LocalAdminPass123!}
+      ADMIN_2FA_ENABLED: "${ADMIN_2FA_ENABLED:-false}"
+      ALLOWED_ORIGINS: http://localhost:3000
+      TTS_PROVIDER: "${TTS_PROVIDER:-xtts}"
+      XTTS_ENDPOINT: "${XTTS_ENDPOINT:-}"
+      ELEVENLABS_API_KEY: "${ELEVENLABS_API_KEY:-}"
+      ELEVENLABS_VOICE_ID: "${ELEVENLABS_VOICE_ID:-}"
+      ELEVENLABS_MODEL: "${ELEVENLABS_MODEL:-eleven_multilingual_v2}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"
+      OPENAI_MODEL_DRAFT: "${OPENAI_MODEL_DRAFT:-gpt-4o-mini}"
+      OPENAI_MODEL_STANDARD: "${OPENAI_MODEL_STANDARD:-gpt-4o-mini}"
+      OPENAI_MODEL_PREMIUM: "${OPENAI_MODEL_PREMIUM:-gpt-4.1}"
+      SCRIPT_PROVIDER: "${SCRIPT_PROVIDER:-auto}"
+      IMAGE_PROVIDER: "${IMAGE_PROVIDER:-local}"
+      VOICE_PROVIDER_DEFAULT: "${VOICE_PROVIDER_DEFAULT:-xtts}"
+      CREDITS_COST_SCRIPT_GENERATE: "${CREDITS_COST_SCRIPT_GENERATE:-6}"
+      CREDITS_COST_SCRIPT_IMPORT: "${CREDITS_COST_SCRIPT_IMPORT:-2}"
+      CREDITS_COST_VOICE_GENERATE: "${CREDITS_COST_VOICE_GENERATE:-8}"
+      CREDITS_COST_IMAGE_GENERATE: "${CREDITS_COST_IMAGE_GENERATE:-7}"
+      CREDITS_COST_VIDEO_RENDER: "${CREDITS_COST_VIDEO_RENDER:-20}"
+      CREDITS_COST_VIDEO_EXPORT: "${CREDITS_COST_VIDEO_EXPORT:-4}"
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
+      STRIPE_PRICE_ID_MODERATE: "${STRIPE_PRICE_ID_MODERATE:-}"
+      STRIPE_PRICE_ID_PRO: "${STRIPE_PRICE_ID_PRO:-}"
+      STRIPE_PRICE_ID_STUDIO: "${STRIPE_PRICE_ID_STUDIO:-}"
+      STRIPE_SUCCESS_URL: "${STRIPE_SUCCESS_URL:-http://localhost:3000/?checkout=success}"
+      STRIPE_CANCEL_URL: "${STRIPE_CANCEL_URL:-http://localhost:3000/?checkout=cancel}"
+      AUTO_LIPSYNC: "${AUTO_LIPSYNC:-true}"
+      RHUBARB_PATH: "${RHUBARB_PATH:-}"
+      RHUBARB_TIMEOUT: "${RHUBARB_TIMEOUT:-30}"
+      RATE_LIMIT_ENABLED: "${RATE_LIMIT_ENABLED:-false}"
+      RATE_LIMIT_AUTH_REQUESTS: "${RATE_LIMIT_AUTH_REQUESTS:-15}"
+      RATE_LIMIT_HEAVY_REQUESTS: "${RATE_LIMIT_HEAVY_REQUESTS:-30}"
+      RATE_LIMIT_WINDOW_SECONDS: "${RATE_LIMIT_WINDOW_SECONDS:-60}"
+      UVICORN_WORKERS: "${UVICORN_WORKERS:-1}"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - minio
+
+  worker:
+    build:
+      context: ./backend
+    command: celery -A app.celery_app.celery_app worker -l info
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/pro_creator.db}
+      STORAGE_BACKEND: s3
+      PROJECTS_URL_BASE: http://minio:9000/${S3_BUCKET:-pro-creator}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-pro-creator}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_USE_SSL: "false"
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ENABLE_CELERY: "true"
+      AUTH_REQUIRED: "true"
+      JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@procreator.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-LocalAdminPass123!}
+      ADMIN_DASHBOARD_PASSWORD: ${ADMIN_DASHBOARD_PASSWORD:-LocalAdminPass123!}
+      ADMIN_2FA_ENABLED: "${ADMIN_2FA_ENABLED:-false}"
+      TTS_PROVIDER: "${TTS_PROVIDER:-xtts}"
+      XTTS_ENDPOINT: "${XTTS_ENDPOINT:-}"
+      ELEVENLABS_API_KEY: "${ELEVENLABS_API_KEY:-}"
+      ELEVENLABS_VOICE_ID: "${ELEVENLABS_VOICE_ID:-}"
+      ELEVENLABS_MODEL: "${ELEVENLABS_MODEL:-eleven_multilingual_v2}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"
+      OPENAI_MODEL_DRAFT: "${OPENAI_MODEL_DRAFT:-gpt-4o-mini}"
+      OPENAI_MODEL_STANDARD: "${OPENAI_MODEL_STANDARD:-gpt-4o-mini}"
+      OPENAI_MODEL_PREMIUM: "${OPENAI_MODEL_PREMIUM:-gpt-4.1}"
+      SCRIPT_PROVIDER: "${SCRIPT_PROVIDER:-auto}"
+      IMAGE_PROVIDER: "${IMAGE_PROVIDER:-local}"
+      VOICE_PROVIDER_DEFAULT: "${VOICE_PROVIDER_DEFAULT:-xtts}"
+      CREDITS_COST_SCRIPT_GENERATE: "${CREDITS_COST_SCRIPT_GENERATE:-6}"
+      CREDITS_COST_SCRIPT_IMPORT: "${CREDITS_COST_SCRIPT_IMPORT:-2}"
+      CREDITS_COST_VOICE_GENERATE: "${CREDITS_COST_VOICE_GENERATE:-8}"
+      CREDITS_COST_IMAGE_GENERATE: "${CREDITS_COST_IMAGE_GENERATE:-7}"
+      CREDITS_COST_VIDEO_RENDER: "${CREDITS_COST_VIDEO_RENDER:-20}"
+      CREDITS_COST_VIDEO_EXPORT: "${CREDITS_COST_VIDEO_EXPORT:-4}"
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
+      STRIPE_PRICE_ID_MODERATE: "${STRIPE_PRICE_ID_MODERATE:-}"
+      STRIPE_PRICE_ID_PRO: "${STRIPE_PRICE_ID_PRO:-}"
+      STRIPE_PRICE_ID_STUDIO: "${STRIPE_PRICE_ID_STUDIO:-}"
+      STRIPE_SUCCESS_URL: "${STRIPE_SUCCESS_URL:-http://localhost:3000/?checkout=success}"
+      STRIPE_CANCEL_URL: "${STRIPE_CANCEL_URL:-http://localhost:3000/?checkout=cancel}"
+      AUTO_LIPSYNC: "${AUTO_LIPSYNC:-true}"
+      RHUBARB_PATH: "${RHUBARB_PATH:-}"
+      RHUBARB_TIMEOUT: "${RHUBARB_TIMEOUT:-30}"
+    depends_on:
+      - redis
+      - backend
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
+      NEXT_PUBLIC_PROJECTS_BASE: http://localhost:9000/${S3_BUCKET:-pro-creator}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  minio_data:

@@ -1,0 +1,36 @@
+# Node
+node_modules/
+.npm/
+.pnpm/
+.yarn/
+
+# Next.js
+.next/
+out/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Env files
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# Build artifacts
+/dist/
+/build/
+
+# Local SQLite database
+backend/pro_creator.db
+
+# Local deployment secrets
+deploy/secrets/*
+!deploy/secrets/README.md

@@ -1,0 +1,12 @@
+{
+  "name": "pro-creator",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c magenta,cyan \"../.venv/bin/python -m uvicorn app.main:app --reload --port 8000 --app-dir backend\" \"npm --prefix frontend run dev\"",
+    "dev:backend": "../.venv/bin/python -m uvicorn app.main:app --reload --port 8000 --app-dir backend",
+    "dev:frontend": "npm --prefix frontend run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

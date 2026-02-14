@@ -1,0 +1,21 @@
+{
+  "name": "Pro Creator",
+  "short_name": "ProCreator",
+  "description": "AI-powered content creation platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020b2a",
+  "theme_color": "#020b2a",
+  "icons": [
+    {
+      "src": "/app-icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/app-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
