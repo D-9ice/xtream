@@ -1348,10 +1348,14 @@ export default function HomePage() {
                   id="script-duration"
                   className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
                   type="number"
-                  min={1}
+                  min={0.25}
+                  step={0.05}
                   value={scriptDuration}
                   onChange={(event) => setScriptDuration(Number(event.target.value))}
                 />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Common ad lengths: 0.25 = 15s, 0.5 = 30s, 1 = 60s.
+                </p>
               </div>
             </div>
             {scriptResult ? (
@@ -2893,7 +2897,8 @@ export default function HomePage() {
                         <input
                           className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-200"
                           type="number"
-                          min={1}
+                          min={0.25}
+                          step={0.05}
                           aria-label="Duration minutes"
                           value={queueDuration}
                           onChange={(event) =>

@@ -209,21 +209,28 @@ def _compose_visuals(beat_title: str, angle: str, scene_index: int) -> str:
     )
 
 
-def _normalize_duration_minutes(duration_minutes: float) -> int:
+def _normalize_duration_minutes(duration_minutes: float) -> float:
     try:
         minutes = float(duration_minutes)
     except Exception:
         minutes = 3.0
     if not math.isfinite(minutes):
         minutes = 3.0
-    # We accept fractional minutes from the UI, but the script layout expects an integer.
-    minutes_i = int(math.ceil(minutes))
-    return max(1, min(45, minutes_i))
+    # We accept fractional minutes (ads). Clamp but keep the fractional value.
+    return max(0.25, min(45.0, minutes))
 
 
 def _generate_script_template(topic: str, duration_minutes: float, tone: str) -> Dict:
-    duration_minutes_i = _normalize_duration_minutes(duration_minutes)
-    scene_count = max(6, min(10, math.ceil(duration_minutes_i / 5)))
+    duration_minutes_f = _normalize_duration_minutes(duration_minutes)
+    duration_seconds = int(round(duration_minutes_f * 60))
+    if duration_seconds <= 20:
+        scene_count = 4
+    elif duration_seconds <= 35:
+        scene_count = 5
+    elif duration_seconds <= 60:
+        scene_count = 6
+    else:
+        scene_count = max(6, min(10, math.ceil(duration_minutes_f / 5)))
 
     title, prompt = _parse_script_brief(topic)
     style_a, style_b = _tone_pack(tone)
@@ -233,7 +240,7 @@ def _generate_script_template(topic: str, duration_minutes: float, tone: str) ->
     script_lines = [
         f"Title: {title}",
         f"Tone: {tone}",
-        f"Duration: {duration_minutes_i} minutes",
+        f"Duration: {duration_minutes_f:g} minutes (~{duration_seconds}s)",
         "",
         f"Brief: {prompt}",
         "Overview: A human-sounding narration plan built for YouTube pacing, clarity, and trust.",
@@ -303,8 +310,16 @@ def _generate_script_llm(
 
     base_url = OPENAI_BASE_URL
     model = model_name.strip()
-    duration_minutes_i = _normalize_duration_minutes(duration_minutes)
-    scene_count = max(6, min(10, math.ceil(duration_minutes_i / 5)))
+    duration_minutes_f = _normalize_duration_minutes(duration_minutes)
+    duration_seconds = int(round(duration_minutes_f * 60))
+    if duration_seconds <= 20:
+        scene_count = 4
+    elif duration_seconds <= 35:
+        scene_count = 5
+    elif duration_seconds <= 60:
+        scene_count = 6
+    else:
+        scene_count = max(6, min(10, math.ceil(duration_minutes_f / 5)))
     title, prompt = _parse_script_brief(topic)
 
     system_prompt = (
@@ -316,7 +331,7 @@ def _generate_script_llm(
         f"Title: {title}\n"
         f"Brief: {prompt}\n"
         f"Tone: {tone}\n"
-        f"Duration minutes: {duration_minutes_i}\n"
+        f"Duration minutes: {duration_minutes_f:g} (~{duration_seconds}s)\n"
         f"Scene count: {scene_count}\n\n"
         "Return strict JSON with this shape:\n"
         "{\n"

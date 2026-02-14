@@ -58,9 +58,9 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-LocalAdminPass123!}
       ADMIN_DASHBOARD_PASSWORD: ${ADMIN_DASHBOARD_PASSWORD:-LocalAdminPass123!}
       ADMIN_2FA_ENABLED: "${ADMIN_2FA_ENABLED:-false}"
-      ALLOWED_ORIGINS: http://localhost:3000
+      ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
       TTS_PROVIDER: "${TTS_PROVIDER:-xtts}"
-      XTTS_ENDPOINT: "${XTTS_ENDPOINT:-}"
+      XTTS_ENDPOINT: "${XTTS_ENDPOINT:-http://xtts:8020/api/tts}"
       ELEVENLABS_API_KEY: "${ELEVENLABS_API_KEY:-}"
       ELEVENLABS_VOICE_ID: "${ELEVENLABS_VOICE_ID:-}"
       ELEVENLABS_MODEL: "${ELEVENLABS_MODEL:-eleven_multilingual_v2}"
@@ -99,6 +99,7 @@ services:
     depends_on:
       - redis
       - minio
+      - xtts
 
   worker:
     build:
@@ -129,7 +130,7 @@ services:
       ADMIN_DASHBOARD_PASSWORD: ${ADMIN_DASHBOARD_PASSWORD:-LocalAdminPass123!}
       ADMIN_2FA_ENABLED: "${ADMIN_2FA_ENABLED:-false}"
       TTS_PROVIDER: "${TTS_PROVIDER:-xtts}"
-      XTTS_ENDPOINT: "${XTTS_ENDPOINT:-}"
+      XTTS_ENDPOINT: "${XTTS_ENDPOINT:-http://xtts:8020/api/tts}"
       ELEVENLABS_API_KEY: "${ELEVENLABS_API_KEY:-}"
       ELEVENLABS_VOICE_ID: "${ELEVENLABS_VOICE_ID:-}"
       ELEVENLABS_MODEL: "${ELEVENLABS_MODEL:-eleven_multilingual_v2}"
@@ -161,6 +162,13 @@ services:
     depends_on:
       - redis
       - backend
+      - xtts
+
+  xtts:
+    image: ${XTTS_IMAGE:-ghcr.io/coqui-ai/xtts:latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8020:8020"
 
   frontend:
     build:

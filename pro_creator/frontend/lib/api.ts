@@ -505,7 +505,12 @@ export async function generateVoice(payload: {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to generate voice");
+    const detail = await response.json().catch(() => null);
+    const message =
+      detail?.detail ??
+      (Array.isArray(detail) ? detail?.[0]?.msg : null) ??
+      "Failed to generate voice";
+    throw new Error(message);
   }
   return response.json();
 }
