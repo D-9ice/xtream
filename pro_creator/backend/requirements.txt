@@ -18,3 +18,4 @@ passlib[bcrypt]
 bcrypt==3.2.2
 prometheus-client
 stripe
+alembic

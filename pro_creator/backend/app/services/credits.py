@@ -6,15 +6,21 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from app.models import CreditLedgerEntry, SubscriptionAccount, User, utc_now
+from app.tenant import current_tenant_id
 
 
 def get_or_create_subscription(session: Session, user: User) -> SubscriptionAccount:
+    tenant_id = current_tenant_id()
     subscription = session.exec(
-        select(SubscriptionAccount).where(SubscriptionAccount.user_id == (user.id or 0))
+        select(SubscriptionAccount).where(
+            SubscriptionAccount.user_id == (user.id or 0),
+            SubscriptionAccount.tenant_id == tenant_id,
+        )
     ).first()
     if subscription:
         return subscription
     subscription = SubscriptionAccount(
+        tenant_id=tenant_id,
         user_id=user.id or 0,
         plan_name="free",
         status="active",
@@ -43,7 +49,9 @@ def _append_ledger_entry(
     model: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
+    tenant_id = current_tenant_id()
     entry = CreditLedgerEntry(
+        tenant_id=tenant_id,
         user_id=user.id or 0,
         subscription_id=subscription.id or 0,
         kind=kind,

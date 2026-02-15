@@ -44,8 +44,16 @@ This runs the FastAPI backend on port 8000 and the Next.js frontend on port 3000
 
 ### Dependency lockfile policy
 
-We use a **single npm lockfile** at the repository root (`pro_creator/package-lock.json`).
-Avoid running `npm install` inside `frontend/` directly to prevent lockfile drift.
+Lockfiles are committed per package:
+
+- Repo root: `pro_creator/package-lock.json` (root dev tools like `concurrently`)
+- Frontend: `pro_creator/frontend/package-lock.json`
+
+Use `npm ci` in each package directory when possible for deterministic installs.
+
+### Experimental UI
+
+Some UI panels are gated behind `NEXT_PUBLIC_EXPERIMENTAL_FEATURES=true` (disabled by default).
 
 ## Production-ready stack (Docker Compose)
 
@@ -140,3 +148,7 @@ Build artifacts are saved to `desktop/dist/`.
 - Add dedicated monitoring dashboards (Grafana/Prometheus)
 - Expand orchestration templates and reporting
 - Harden production secrets management
+
+## Execution roadmap
+
+See `README_EXECUTION.md` for the step-by-step code checklist to ship single-tenant first and then evolve into multi-tenant SaaS.

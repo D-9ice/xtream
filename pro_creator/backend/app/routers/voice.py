@@ -16,6 +16,7 @@ from app.services.credits import consume_credits, record_usage_event
 from app.services.lipsync_engine import generate_lipsync
 from app.services.provider_routing import resolve_voice_provider
 from app.services.voice_engine import clone_voice_profile, generate_voice_for_scene
+from app.tenant import current_tenant_id
 from app.utils.file_manager import (
     delete_voice_profile,
     ensure_project_dirs,
@@ -39,9 +40,13 @@ def generate_voice_endpoint(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> VoiceResponse:
+    tenant_id = current_tenant_id()
     provider = resolve_voice_provider(payload.tts_provider)
     scenes = session.exec(
-        select(Scene).where(Scene.project_id == payload.project_id)
+        select(Scene).where(
+            Scene.project_id == payload.project_id,
+            Scene.tenant_id == tenant_id,
+        )
     ).all()
     result = generate_voice_for_scene(
         payload.project_id,

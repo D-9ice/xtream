@@ -1,4 +1,6 @@
 from datetime import datetime
+import shutil
+import subprocess
 import tempfile
 
 from fastapi import APIRouter, Query, Depends, HTTPException
@@ -377,17 +379,39 @@ def export_preset(
             source_path.write_bytes(storage_client.read_bytes(source_key))
 
         if source_path.exists():
-            try:
-                import ffmpeg
-
-                (
-                    ffmpeg.input(str(source_path))
-                    .filter("scale", width, height)
-                    .output(str(target_path), vcodec="libx264", acodec="aac")
-                    .overwrite_output()
-                    .run(quiet=True)
-                )
-            except Exception:
+            # Use a bounded ffmpeg subprocess instead of ffmpeg-python to avoid
+            # unbounded hangs during export.
+            ffmpeg_path = shutil.which("ffmpeg")
+            if ffmpeg_path:
+                try:
+                    subprocess.run(
+                        [
+                            ffmpeg_path,
+                            "-y",
+                            "-i",
+                            str(source_path),
+                            "-vf",
+                            f"scale={width}:{height}",
+                            "-c:v",
+                            "libx264",
+                            "-preset",
+                            "ultrafast",
+                            "-crf",
+                            "28",
+                            "-c:a",
+                            "aac",
+                            "-movflags",
+                            "+faststart",
+                            str(target_path),
+                        ],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=30,
+                    )
+                except Exception:
+                    target_path.write_bytes(source_path.read_bytes())
+            else:
                 target_path.write_bytes(source_path.read_bytes())
         export_key = project_key(payload.project_id, f"video/exports/{payload.preset}.mp4")
         storage_client.write_bytes(

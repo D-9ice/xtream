@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "dev": "NEXT_DISABLE_TURBOPACK=1 next dev",
+    "dev": "NODE_ENV=development env -u __NEXT_PRIVATE_STANDALONE_CONFIG -u __NEXT_PRIVATE_ORIGIN next dev --webpack -H 127.0.0.1 -p 3000",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",

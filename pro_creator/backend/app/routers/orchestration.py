@@ -38,6 +38,7 @@ from app import tasks as celery_tasks
 from app.utils.file_manager import ensure_project_dirs, write_scene_metadata, write_script
 from app.utils.logger import get_logger
 from app.routers.video import export_preset
+from app.tenant import current_tenant_id
 
 router = APIRouter(
     prefix="/orchestration",
@@ -45,9 +46,6 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 logger = get_logger(__name__)
-
-_runner_task: Optional[asyncio.Task] = None
-_runner_interval = 15
 
 _runner_task: Optional[asyncio.Task] = None
 _runner_interval = 15
@@ -94,20 +92,30 @@ def _parse_payload(job: OrchestrationJob) -> dict:
 
 
 def _run_script(payload: OrchestrationQueueRequest, session: Session) -> None:
+    tenant_id = current_tenant_id()
     result = generate_script(payload.topic or "Untitled", payload.duration_minutes, payload.tone)
     project_path = ensure_project_dirs(payload.project_id)
     write_script(project_path, result["full_script"])
     write_scene_metadata(project_path, result["scenes"])
 
-    session.exec(Scene.__table__.delete().where(Scene.project_id == payload.project_id))
+    session.exec(
+        Scene.__table__.delete().where(
+            Scene.project_id == payload.project_id,
+            Scene.tenant_id == tenant_id,
+        )
+    )
     for scene in result["scenes"]:
-        session.add(Scene(project_id=payload.project_id, text=scene["text"]))
+        session.add(Scene(tenant_id=tenant_id, project_id=payload.project_id, text=scene["text"]))
     session.commit()
 
 
 def _run_voice(payload: OrchestrationQueueRequest, session: Session) -> None:
+    tenant_id = current_tenant_id()
     scenes = session.exec(
-        select(Scene).where(Scene.project_id == payload.project_id)
+        select(Scene).where(
+            Scene.project_id == payload.project_id,
+            Scene.tenant_id == tenant_id,
+        )
     ).all()
     text = payload.voice_text or (scenes[0].text if scenes else "Provide a concise narration for this project.")
     result = generate_voice_for_scene(payload.project_id, 1, text)
@@ -125,8 +133,12 @@ def _run_voice(payload: OrchestrationQueueRequest, session: Session) -> None:
 
 
 def _run_image(payload: OrchestrationQueueRequest, session: Session) -> None:
+    tenant_id = current_tenant_id()
     scenes = session.exec(
-        select(Scene).where(Scene.project_id == payload.project_id)
+        select(Scene).where(
+            Scene.project_id == payload.project_id,
+            Scene.tenant_id == tenant_id,
+        )
     ).all()
     prompt = payload.image_prompt or (scenes[0].text if scenes else "Scene visual")
     result = generate_image_for_scene(payload.project_id, 1, prompt, "cinematic")
@@ -230,10 +242,14 @@ def _process_queue_internal(
     limit: int,
     session: Session,
 ) -> OrchestrationProcessResponse:
+    tenant_id = current_tenant_id()
     if ENABLE_CELERY:
         processing_jobs = session.exec(
             select(OrchestrationJob)
-            .where(OrchestrationJob.status == "processing")
+            .where(
+                OrchestrationJob.status == "processing",
+                OrchestrationJob.tenant_id == tenant_id,
+            )
         ).all()
         for job in processing_jobs:
             if not job.task_id:
@@ -252,7 +268,10 @@ def _process_queue_internal(
 
     jobs = session.exec(
         select(OrchestrationJob)
-        .where(OrchestrationJob.status == "queued")
+        .where(
+            OrchestrationJob.status == "queued",
+            OrchestrationJob.tenant_id == tenant_id,
+        )
         .order_by(OrchestrationJob.created_at.asc())
         .limit(limit)
     ).all()
@@ -306,7 +325,9 @@ async def _runner_loop(interval_seconds: int) -> None:
 def enqueue_job(
     payload: OrchestrationQueueRequest, session: Session = Depends(get_session)
 ) -> OrchestrationQueueItem:
+    tenant_id = current_tenant_id()
     job = OrchestrationJob(
+        tenant_id=tenant_id,
         project_id=payload.project_id,
         kind=payload.kind,
         status="queued",
@@ -334,9 +355,11 @@ def enqueue_job(
 def enqueue_batch(
     payload: OrchestrationQueueBatchRequest, session: Session = Depends(get_session)
 ) -> OrchestrationQueueResponse:
+    tenant_id = current_tenant_id()
     items: list[OrchestrationQueueItem] = []
     for entry in payload.items:
         job = OrchestrationJob(
+            tenant_id=tenant_id,
             project_id=entry.project_id,
             kind=entry.kind,
             status="queued",
@@ -365,7 +388,9 @@ def list_queue(
     status: Optional[str] = Query(None),
     session: Session = Depends(get_session),
 ) -> OrchestrationQueueResponse:
+    tenant_id = current_tenant_id()
     statement = select(OrchestrationJob)
+    statement = statement.where(OrchestrationJob.tenant_id == tenant_id)
     if status:
         statement = statement.where(OrchestrationJob.status == status)
     jobs = session.exec(statement.order_by(OrchestrationJob.created_at.desc())).all()
@@ -384,6 +409,11 @@ def process_queue(
 async def start_runner(
     interval_seconds: int = Query(15, ge=5, le=300)
 ) -> OrchestrationRunnerStatus:
+    if ENABLE_CELERY:
+        raise HTTPException(
+            status_code=400,
+            detail="In-process runner is disabled when ENABLE_CELERY=true. Run a worker and a scheduler/beat instead.",
+        )
     global _runner_task, _runner_interval
     _runner_interval = interval_seconds
     if _runner_task is None or _runner_task.done():
@@ -394,6 +424,8 @@ async def start_runner(
 
 @router.post("/queue/runner/stop", response_model=OrchestrationRunnerStatus)
 async def stop_runner() -> OrchestrationRunnerStatus:
+    if ENABLE_CELERY:
+        raise HTTPException(status_code=400, detail="In-process runner is disabled when ENABLE_CELERY=true.")
     global _runner_task
     if _runner_task is not None:
         _runner_task.cancel()
@@ -403,14 +435,18 @@ async def stop_runner() -> OrchestrationRunnerStatus:
 
 @router.get("/queue/runner/status", response_model=OrchestrationRunnerStatus)
 def runner_status() -> OrchestrationRunnerStatus:
+    if ENABLE_CELERY:
+        # Keep the endpoint for UI compatibility, but make it explicit this runner is disabled in production mode.
+        return OrchestrationRunnerStatus(running=False, interval_seconds=_runner_interval)
     running = _runner_task is not None and not _runner_task.done()
     return OrchestrationRunnerStatus(running=running, interval_seconds=_runner_interval)
 
 
 @router.post("/queue/{job_id}/retry", response_model=OrchestrationQueueItem)
 def retry_job(job_id: int, session: Session = Depends(get_session)) -> OrchestrationQueueItem:
+    tenant_id = current_tenant_id()
     job = session.get(OrchestrationJob, job_id)
-    if not job:
+    if not job or job.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Job not found")
     if job.status != "failed":
         raise HTTPException(status_code=400, detail="Job is not failed")
@@ -426,7 +462,9 @@ def retry_job(job_id: int, session: Session = Depends(get_session)) -> Orchestra
 def create_schedule(
     payload: OrchestrationScheduleRequest, session: Session = Depends(get_session)
 ) -> OrchestrationScheduleItem:
+    tenant_id = current_tenant_id()
     schedule = OrchestrationSchedule(
+        tenant_id=tenant_id,
         project_id=payload.project_id,
         cadence_days=payload.cadence_days,
         next_run_at=utc_now_naive() + timedelta(days=payload.cadence_days),
@@ -440,8 +478,11 @@ def create_schedule(
 
 @router.get("/schedules", response_model=OrchestrationScheduleResponse)
 def list_schedules(session: Session = Depends(get_session)) -> OrchestrationScheduleResponse:
+    tenant_id = current_tenant_id()
     schedules = session.exec(
-        select(OrchestrationSchedule).order_by(OrchestrationSchedule.created_at.desc())
+        select(OrchestrationSchedule)
+        .where(OrchestrationSchedule.tenant_id == tenant_id)
+        .order_by(OrchestrationSchedule.created_at.desc())
     ).all()
     return OrchestrationScheduleResponse(
         items=[_schedule_to_item(schedule) for schedule in schedules]
@@ -450,11 +491,15 @@ def list_schedules(session: Session = Depends(get_session)) -> OrchestrationSche
 
 @router.post("/schedules/run", response_model=OrchestrationScheduleResponse)
 def run_schedules(session: Session = Depends(get_session)) -> OrchestrationScheduleResponse:
+    tenant_id = current_tenant_id()
     now = utc_now_naive()
-    schedules = session.exec(select(OrchestrationSchedule)).all()
+    schedules = session.exec(
+        select(OrchestrationSchedule).where(OrchestrationSchedule.tenant_id == tenant_id)
+    ).all()
     for schedule in schedules:
         if schedule.enabled and schedule.next_run_at <= now:
             job = OrchestrationJob(
+                tenant_id=tenant_id,
                 project_id=schedule.project_id,
                 kind="full",
                 status="queued",

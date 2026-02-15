@@ -9,6 +9,7 @@ from app.schemas import ImageRequest, ImageResponse
 from app.services.credits import consume_credits
 from app.services.image_engine import generate_image_for_scene
 from app.services.provider_routing import resolve_image_provider
+from app.tenant import current_tenant_id
 from app.utils.logger import get_logger
 
 router = APIRouter(
@@ -25,9 +26,13 @@ def generate_image_endpoint(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> ImageResponse:
+    tenant_id = current_tenant_id()
     provider = resolve_image_provider()
     scenes = session.exec(
-        select(Scene).where(Scene.project_id == payload.project_id)
+        select(Scene).where(
+            Scene.project_id == payload.project_id,
+            Scene.tenant_id == tenant_id,
+        )
     ).all()
     result = generate_image_for_scene(payload.project_id, 1, payload.prompt, payload.style)
     if scenes:

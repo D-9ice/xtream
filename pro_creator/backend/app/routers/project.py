@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from app.auth import get_current_user, require_role
 from app.database import get_session
-from app.models import Project, Scene
+from app.models import Clip, OrchestrationJob, OrchestrationSchedule, Project, Scene
 from app.schemas import (
     ProjectBulkDeleteResponse,
     ProjectCreateRequest,
@@ -21,6 +21,7 @@ from app.schemas import (
     SceneResponse,
 )
 from app.storage import storage_client
+from app.tenant import current_tenant_id
 from app.utils.file_manager import (
     delete_project_dir,
     ensure_project_dirs,
@@ -42,10 +43,12 @@ logger = get_logger(__name__)
 def create_project(
     payload: ProjectCreateRequest, session: Session = Depends(get_session)
 ) -> ProjectResponse:
+    tenant_id = current_tenant_id()
     project_id = str(uuid4())
     ensure_project_dirs(project_id)
 
     project = Project(
+        tenant_id=tenant_id,
         project_id=project_id,
         title=payload.title,
         topic=payload.topic,
@@ -65,7 +68,11 @@ def create_project(
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 def get_project(project_id: str, session: Session = Depends(get_session)) -> ProjectResponse:
-    statement = select(Project).where(Project.project_id == project_id)
+    tenant_id = current_tenant_id()
+    statement = select(Project).where(
+        Project.project_id == project_id,
+        Project.tenant_id == tenant_id,
+    )
     project = session.exec(statement).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -80,7 +87,8 @@ def get_project(project_id: str, session: Session = Depends(get_session)) -> Pro
 
 @router.get("/", response_model=list[ProjectResponse])
 def list_projects(session: Session = Depends(get_session)) -> list[ProjectResponse]:
-    projects = session.exec(select(Project)).all()
+    tenant_id = current_tenant_id()
+    projects = session.exec(select(Project).where(Project.tenant_id == tenant_id)).all()
     return [
         ProjectResponse(
             project_id=project.project_id,
@@ -102,7 +110,11 @@ def get_project_script(project_id: str) -> dict:
 def get_project_scenes(
     project_id: str, session: Session = Depends(get_session)
 ) -> list[SceneResponse]:
-    statement = select(Scene).where(Scene.project_id == project_id)
+    tenant_id = current_tenant_id()
+    statement = select(Scene).where(
+        Scene.project_id == project_id,
+        Scene.tenant_id == tenant_id,
+    )
     scenes = session.exec(statement).all()
     if scenes:
         return [
@@ -156,13 +168,39 @@ def download_project_bundle(project_id: str) -> FileResponse:
 
 @router.delete("/{project_id}", response_model=ProjectDeleteResponse)
 def delete_project(project_id: str, session: Session = Depends(get_session)) -> ProjectDeleteResponse:
-    statement = select(Project).where(Project.project_id == project_id)
+    tenant_id = current_tenant_id()
+    statement = select(Project).where(
+        Project.project_id == project_id,
+        Project.tenant_id == tenant_id,
+    )
     project = session.exec(statement).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
     session.exec(
-        Scene.__table__.delete().where(Scene.project_id == project_id)
+        Scene.__table__.delete().where(
+            Scene.project_id == project_id,
+            Scene.tenant_id == tenant_id,
+        )
+    )
+    # Delete any related editor/orchestration rows (these tables don't have DB-level cascades).
+    session.exec(
+        Clip.__table__.delete().where(
+            Clip.project_id == project_id,
+            Clip.tenant_id == tenant_id,
+        )
+    )
+    session.exec(
+        OrchestrationJob.__table__.delete().where(
+            OrchestrationJob.project_id == project_id,
+            OrchestrationJob.tenant_id == tenant_id,
+        )
+    )
+    session.exec(
+        OrchestrationSchedule.__table__.delete().where(
+            OrchestrationSchedule.project_id == project_id,
+            OrchestrationSchedule.tenant_id == tenant_id,
+        )
     )
     session.delete(project)
     session.commit()
@@ -176,11 +214,15 @@ def delete_all_projects(
     session: Session = Depends(get_session),
     _: object = Depends(require_role("admin")),
 ) -> ProjectBulkDeleteResponse:
-    projects = session.exec(select(Project)).all()
+    tenant_id = current_tenant_id()
+    projects = session.exec(select(Project).where(Project.tenant_id == tenant_id)).all()
     deleted_ids = [project.project_id for project in projects]
     if deleted_ids:
-        session.exec(Scene.__table__.delete())
-        session.exec(Project.__table__.delete())
+        session.exec(Scene.__table__.delete().where(Scene.tenant_id == tenant_id))
+        session.exec(Clip.__table__.delete().where(Clip.tenant_id == tenant_id))
+        session.exec(OrchestrationJob.__table__.delete().where(OrchestrationJob.tenant_id == tenant_id))
+        session.exec(OrchestrationSchedule.__table__.delete().where(OrchestrationSchedule.tenant_id == tenant_id))
+        session.exec(Project.__table__.delete().where(Project.tenant_id == tenant_id))
         session.commit()
         for project_id in deleted_ids:
             delete_project_dir(project_id)
@@ -194,8 +236,9 @@ def purge_stale_projects(
     session: Session = Depends(get_session),
     _: object = Depends(require_role("admin")),
 ) -> ProjectPurgeResponse:
+    tenant_id = current_tenant_id()
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=payload.min_age_days)
-    projects = session.exec(select(Project)).all()
+    projects = session.exec(select(Project).where(Project.tenant_id == tenant_id)).all()
     stale_ids: list[str] = []
     for project in projects:
         if project.created_at <= cutoff and not project_has_assets(project.project_id):
@@ -203,10 +246,34 @@ def purge_stale_projects(
 
     if stale_ids:
         session.exec(
-            Scene.__table__.delete().where(Scene.project_id.in_(stale_ids))
+            Scene.__table__.delete().where(
+                Scene.tenant_id == tenant_id,
+                Scene.project_id.in_(stale_ids),
+            )
         )
         session.exec(
-            Project.__table__.delete().where(Project.project_id.in_(stale_ids))
+            Clip.__table__.delete().where(
+                Clip.tenant_id == tenant_id,
+                Clip.project_id.in_(stale_ids),
+            )
+        )
+        session.exec(
+            OrchestrationJob.__table__.delete().where(
+                OrchestrationJob.tenant_id == tenant_id,
+                OrchestrationJob.project_id.in_(stale_ids),
+            )
+        )
+        session.exec(
+            OrchestrationSchedule.__table__.delete().where(
+                OrchestrationSchedule.tenant_id == tenant_id,
+                OrchestrationSchedule.project_id.in_(stale_ids),
+            )
+        )
+        session.exec(
+            Project.__table__.delete().where(
+                Project.tenant_id == tenant_id,
+                Project.project_id.in_(stale_ids),
+            )
         )
         session.commit()
         for project_id in stale_ids:

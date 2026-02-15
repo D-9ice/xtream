@@ -10,6 +10,7 @@ def utc_now() -> datetime:
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
     project_id: str = Field(index=True, unique=True)
     title: str
     topic: str
@@ -21,6 +22,7 @@ class Project(SQLModel, table=True):
 
 class Scene(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
     project_id: str = Field(foreign_key="project.project_id", index=True)
     text: str
     image_path: Optional[str] = None
@@ -31,6 +33,7 @@ class Scene(SQLModel, table=True):
 
 class OrchestrationJob(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
     project_id: str = Field(index=True)
     kind: str
     status: str = Field(default="queued", index=True)
@@ -45,6 +48,7 @@ class OrchestrationJob(SQLModel, table=True):
 
 class OrchestrationSchedule(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
     project_id: str = Field(index=True)
     cadence_days: int = Field(default=1)
     next_run_at: datetime
@@ -55,6 +59,7 @@ class OrchestrationSchedule(SQLModel, table=True):
 
 class Clip(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
     project_id: str = Field(index=True)
     title: str
     start_time: float = Field(default=0.0)
@@ -79,6 +84,7 @@ class User(SQLModel, table=True):
 
 class SubscriptionAccount(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
     user_id: int = Field(foreign_key="user.id", index=True, unique=True)
     plan_name: str = Field(default="free")
     status: str = Field(default="active")
@@ -94,6 +100,7 @@ class SubscriptionAccount(SQLModel, table=True):
 
 class CreditLedgerEntry(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
     user_id: int = Field(foreign_key="user.id", index=True)
     subscription_id: int = Field(foreign_key="subscriptionaccount.id", index=True)
     kind: str = Field(index=True)  # grant | reserve | consume | refund | expire | adjust

@@ -105,6 +105,8 @@ type LogEntry = {
 };
 
 export default function HomePage() {
+  const experimentalEnabled =
+    process.env.NEXT_PUBLIC_EXPERIMENTAL_FEATURES === "true";
   const [activePanel, setActivePanel] = useState("overview");
   const [signedIn, setSignedIn] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
@@ -126,6 +128,8 @@ export default function HomePage() {
   const [logFilter, setLogFilter] = useState<"all" | "ok" | "error">("all");
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [projectsRefreshToken, setProjectsRefreshToken] = useState(0);
+  const projectsFetchSeq = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
@@ -250,6 +254,11 @@ export default function HomePage() {
 
   const accessAllowed = signedIn || authGateStatus?.enabled === false;
   const authGateLocked = authGateStatus?.source === "env";
+
+  const refreshProjects = useCallback(() => {
+    // Forces a refetch without coupling project loading to selection changes.
+    setProjectsRefreshToken((prev) => prev + 1);
+  }, []);
 
   useEffect(() => {
     setHasMounted(true);
@@ -509,33 +518,47 @@ export default function HomePage() {
   };
 
   useEffect(() => {
+    if (!accessAllowed) {
+      setProjects([]);
+      setSelectedProjectId("");
+      return;
+    }
+
     let active = true;
+    const seq = (projectsFetchSeq.current += 1);
     const loadProjects = async () => {
       setLoading(true);
       setError(null);
       try {
         const data = await fetchProjects();
-        if (active) {
-          setProjects(data);
-          if (!selectedProjectId && data.length > 0) {
-            setSelectedProjectId(data[0].project_id);
+        if (!active || seq !== projectsFetchSeq.current) {
+          return;
+        }
+        setProjects(data);
+        setSelectedProjectId((prev) => {
+          if (prev && data.some((p) => p.project_id === prev)) {
+            return prev;
           }
-        }
+          return data[0]?.project_id ?? "";
+        });
       } catch (err) {
-        if (active) {
-          setError(err instanceof Error ? err.message : "Failed to load projects");
+        if (!active || seq !== projectsFetchSeq.current) {
+          // stale request
+          return;
         }
+        setError(err instanceof Error ? err.message : "Failed to load projects");
       } finally {
-        if (active) {
+        if (active && seq === projectsFetchSeq.current) {
           setLoading(false);
         }
       }
     };
+
     loadProjects();
     return () => {
       active = false;
     };
-  }, [selectedProjectId]);
+  }, [accessAllowed, projectsRefreshToken]);
 
   useEffect(() => {
     let active = true;
@@ -1057,9 +1080,12 @@ export default function HomePage() {
     setPipelineLoading(true);
     try {
       const response = await deleteAllProjects();
+      // Invalidate any in-flight project fetches so stale responses can't repopulate the UI.
+      projectsFetchSeq.current += 1;
       setProjects([]);
       setSelectedProjectId("");
       setPipelineMessage(`Deleted ${response.deleted_count} projects.`);
+      refreshProjects();
     } catch (err) {
       setPipelineError(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -1074,8 +1100,7 @@ export default function HomePage() {
     try {
       const response = await purgeStaleProjects({ min_age_days: stalePurgeDays });
       setPipelineMessage(`Purged ${response.deleted_count} projects.`);
-      const data = await fetchProjects();
-      setProjects(data);
+      refreshProjects();
     } catch (err) {
       setPipelineError(err instanceof Error ? err.message : "Purge failed");
     } finally {
@@ -1267,8 +1292,12 @@ export default function HomePage() {
           { key: "voice", label: "Voice" },
           { key: "image", label: "Image" },
           { key: "video", label: "Video" },
-          { key: "media", label: "Media" },
-          { key: "lab", label: "Lab" },
+          ...(experimentalEnabled
+            ? [
+                { key: "media", label: "Media" },
+                { key: "lab", label: "Lab" },
+              ]
+            : []),
         ].map((tab) => (
           <button
             key={tab.key}
@@ -1841,7 +1870,7 @@ export default function HomePage() {
         {[
           { key: "captions", label: "Captions" },
           { key: "editor", label: "Editor" },
-          { key: "lab", label: "AI Lab" },
+          ...(experimentalEnabled ? [{ key: "lab", label: "AI Lab" }] : []),
           { key: "exports", label: "Exports" },
         ].map((tab) => (
           <button
@@ -2607,8 +2636,8 @@ export default function HomePage() {
         ) : null}
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        <aside className="w-60 border-r border-slate-800 bg-slate-950/80 px-4 py-4">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <aside className="w-60 min-h-0 overflow-y-auto border-r border-slate-800 bg-slate-950/80 px-4 py-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">
               Navigation
@@ -2683,8 +2712,8 @@ export default function HomePage() {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-hidden">
-          <div className="h-full space-y-4 overflow-hidden px-4 py-4 text-sm">
+        <main className="flex-1 min-h-0 overflow-y-auto">
+          <div className="space-y-4 px-4 py-4 text-sm">
             {activePanel === "overview" ? (
               <section className="grid gap-4">
                 <div className="grid gap-4 md:grid-cols-2">
@@ -2737,8 +2766,8 @@ export default function HomePage() {
             ) : null}
 
             {activePanel === "projects" ? (
-              <section className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <section className="grid gap-4 lg:grid-cols-[1fr_1.4fr] lg:h-[calc(100dvh-10rem)] lg:min-h-0">
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 lg:sticky lg:top-4 lg:self-start">
                   <h2 className="text-xl font-semibold">Create a new project</h2>
                   <p className="mt-2 text-sm text-slate-400">
                     Start a production run by registering a project. The backend
@@ -2784,7 +2813,7 @@ export default function HomePage() {
                   ) : null}
                 </div>
 
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 flex min-h-0 flex-col lg:h-full">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                       <h2 className="text-xl font-semibold">
@@ -2835,36 +2864,36 @@ export default function HomePage() {
                   {pipelineError ? (
                     <p className="mt-3 text-xs text-red-300">{pipelineError}</p>
                   ) : null}
-                  {loading ? (
-                    <p className="mt-6 text-sm text-slate-500">
-                      Loading projects…
-                    </p>
-                  ) : (
-                    <div className="mt-6 grid gap-4">
-                      {projects.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-slate-700 p-6 text-sm text-slate-400">
-                          No projects yet. Create one to get started.
-                        </div>
-                      ) : (
-                        projects.map((project) => (
-                          <ProjectCard
-                            key={project.project_id}
-                            project={project}
-                            scriptRefreshToken={scriptRefreshToken}
-                            onScriptCleared={() => {
-                              setScriptResult(null);
-                              setScriptEditText("");
-                            }}
-                            onProjectDeleted={(projectId) =>
-                              setProjects((prev) =>
-                                prev.filter((item) => item.project_id !== projectId)
-                              )
-                            }
-                          />
-                        ))
-                      )}
-                    </div>
-                  )}
+                  <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
+                    {loading ? (
+                      <p className="text-sm text-slate-500">Loading projects…</p>
+                    ) : (
+                      <div className="grid gap-4">
+                        {projects.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-slate-700 p-6 text-sm text-slate-400">
+                            No projects yet. Create one to get started.
+                          </div>
+                        ) : (
+                          projects.map((project) => (
+                            <ProjectCard
+                              key={project.project_id}
+                              project={project}
+                              scriptRefreshToken={scriptRefreshToken}
+                              onScriptCleared={() => {
+                                setScriptResult(null);
+                                setScriptEditText("");
+                              }}
+                              onProjectDeleted={(projectId) =>
+                                setProjects((prev) =>
+                                  prev.filter((item) => item.project_id !== projectId)
+                                )
+                              }
+                            />
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </section>
             ) : null}

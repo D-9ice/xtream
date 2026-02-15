@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import List
 import json
+import os
 import shutil
 
 from app.config import PROJECTS_DIR
@@ -56,13 +57,36 @@ def clear_script_assets(project_id: str) -> None:
 
 
 def delete_project_dir(project_id: str) -> None:
-    if storage_client.backend == "s3":
-        storage_client.delete_prefix(f"{project_id}/")
-    else:
-        project_path = PROJECTS_DIR / project_id
-        if project_path.exists():
-            shutil.rmtree(project_path)
-    logger.info("Deleted project directory for %s", project_id)
+    """
+    Best-effort cleanup.
+
+    Deleting a project should not fail just because the on-disk directory (or an
+    object-store prefix) can't be fully removed.
+    """
+
+    def _rmtree_best_effort(path: Path) -> None:
+        def _onerror(func, p, _exc_info):
+            # Retry after making the path writable (common when deleting read-only artifacts).
+            try:
+                os.chmod(p, 0o700)
+                func(p)
+            except Exception:
+                raise
+
+        shutil.rmtree(path, onerror=_onerror)
+
+    try:
+        if storage_client.backend == "s3":
+            storage_client.delete_prefix(f"{project_id}/")
+        else:
+            project_path = PROJECTS_DIR / project_id
+            if project_path.exists():
+                _rmtree_best_effort(project_path)
+        logger.info("Deleted project directory for %s", project_id)
+    except Exception:
+        logger.warning(
+            "Failed to delete project directory for %s (continuing)", project_id, exc_info=True
+        )
 
 
 def project_has_assets(project_id: str) -> bool:

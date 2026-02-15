@@ -125,7 +125,9 @@ export async function deleteProject(projectId: string): Promise<{ deleted: boole
     method: "DELETE",
   });
   if (!response.ok) {
-    throw new Error("Failed to delete project");
+    const detail = await response.json().catch(() => null);
+    const message = detail?.detail ?? "Failed to delete project";
+    throw new Error(message);
   }
   return response.json();
 }
@@ -138,7 +140,9 @@ export async function deleteAllProjects(): Promise<{
     method: "DELETE",
   });
   if (!response.ok) {
-    throw new Error("Failed to delete all projects");
+    const detail = await response.json().catch(() => null);
+    const message = detail?.detail ?? "Failed to delete all projects";
+    throw new Error(message);
   }
   return response.json();
 }
@@ -152,7 +156,9 @@ export async function purgeStaleProjects(payload: {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to purge stale projects");
+    const detail = await response.json().catch(() => null);
+    const message = detail?.detail ?? "Failed to purge stale projects";
+    throw new Error(message);
   }
   return response.json();
 }

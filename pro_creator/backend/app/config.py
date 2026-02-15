@@ -14,6 +14,8 @@ AWS_SECRETS_ENABLED = os.getenv("AWS_SECRETS_ENABLED", "false").lower() == "true
 AWS_SECRETS_REGION = os.getenv("AWS_SECRETS_REGION", os.getenv("AWS_REGION", "us-east-1"))
 AWS_SECRET_PREFIX = os.getenv("AWS_SECRET_PREFIX", "").strip("/")
 
+DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "default").strip() or "default"
+
 
 @lru_cache(maxsize=128)
 def _read_aws_secret(secret_id: str) -> str:

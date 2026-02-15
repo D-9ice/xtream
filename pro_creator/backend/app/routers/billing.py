@@ -44,6 +44,7 @@ from app.services.credits import (
     refund_credits,
     reserve_credits,
 )
+from app.tenant import current_tenant_id
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 ADMIN_ACCESS_TOKEN_TTL_SECONDS = 15 * 60
@@ -247,6 +248,7 @@ async def stripe_webhook(
 
     already_applied = session.exec(
         select(CreditLedgerEntry).where(
+            CreditLedgerEntry.tenant_id == current_tenant_id(),
             CreditLedgerEntry.action == "billing.purchase.stripe",
             CreditLedgerEntry.reference_id == stripe_session_id,
         )

@@ -1,4 +1,5 @@
-const CACHE_NAME = "pro-creator-v1";
+// Keep this conservative: caching dev bundles (/_next/*) will break Next.js development.
+const CACHE_NAME = "pro-creator-v2";
 const PRECACHE_URLS = ["/", "/manifest.webmanifest", "/app-icon.png", "/favicon.ico"];
 
 self.addEventListener("install", (event) => {
@@ -27,6 +28,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Never cache Next internals.
+  if (url.pathname.startsWith("/_next/")) {
+    return;
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).catch(() => caches.match("/"))
@@ -34,18 +45,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-      return fetch(request)
-        .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
-          return response;
-        })
-        .catch(() => caches.match("/"));
-    })
-  );
+  // Only cache a small precache set; fetch everything else directly.
+  if (!PRECACHE_URLS.includes(url.pathname)) {
+    return;
+  }
+
+  event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
 });

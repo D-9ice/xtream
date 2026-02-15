@@ -15,6 +15,15 @@ npm install
 npm run dev
 ```
 
+## Lockfile
+
+This package commits its own lockfile: `frontend/package-lock.json`.
+Prefer `npm ci` for deterministic installs:
+
+```zsh
+npm ci
+```
+
 ## Run backend + frontend together (VS Code task)
 
 Use the workspace task to launch both servers in one step:

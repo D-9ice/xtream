@@ -20,6 +20,7 @@ from app.services.credits import (
 )
 from app.services.provider_routing import resolve_script_route
 from app.services.script_engine import generate_script
+from app.tenant import current_tenant_id
 from app.utils.file_manager import (
     clear_script_assets,
     ensure_project_dirs,
@@ -42,6 +43,7 @@ def generate_script_endpoint(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> ScriptResponse:
+    tenant_id = current_tenant_id()
     subscription = get_or_create_subscription(session, current_user)
     script_provider, script_model = resolve_script_route(subscription.plan_name)
     result = generate_script(
@@ -57,7 +59,7 @@ def generate_script_endpoint(
 
     scene_models = []
     for scene in result["scenes"]:
-        scene_model = Scene(project_id=payload.project_id, text=scene["text"])
+        scene_model = Scene(tenant_id=tenant_id, project_id=payload.project_id, text=scene["text"])
         session.add(scene_model)
         scene_models.append(scene_model)
     session.commit()
@@ -94,6 +96,7 @@ def import_script_endpoint(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> ScriptResponse:
+    tenant_id = current_tenant_id()
     project_path = ensure_project_dirs(payload.project_id)
     script_text = payload.script.strip()
     if not script_text:
@@ -110,11 +113,14 @@ def import_script_endpoint(
     write_scene_metadata(project_path, scenes)
 
     session.exec(
-        Scene.__table__.delete().where(Scene.project_id == payload.project_id)
+        Scene.__table__.delete().where(
+            Scene.project_id == payload.project_id,
+            Scene.tenant_id == tenant_id,
+        )
     )
     scene_models = []
     for scene in scenes:
-        scene_model = Scene(project_id=payload.project_id, text=scene["text"])
+        scene_model = Scene(tenant_id=tenant_id, project_id=payload.project_id, text=scene["text"])
         session.add(scene_model)
         scene_models.append(scene_model)
     session.commit()
@@ -149,6 +155,7 @@ def live_script_endpoint(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> ScriptResponse:
+    tenant_id = current_tenant_id()
     project_path = ensure_project_dirs(payload.project_id)
     script_text = payload.script.strip() or "(empty script)"
     write_script(project_path, script_text)
@@ -163,11 +170,14 @@ def live_script_endpoint(
             scenes = [{"id": 1, "text": script_text[:200]}]
         write_scene_metadata(project_path, scenes)
         session.exec(
-            Scene.__table__.delete().where(Scene.project_id == payload.project_id)
+            Scene.__table__.delete().where(
+                Scene.project_id == payload.project_id,
+                Scene.tenant_id == tenant_id,
+            )
         )
         scene_models = []
         for scene in scenes:
-            scene_model = Scene(project_id=payload.project_id, text=scene["text"])
+            scene_model = Scene(tenant_id=tenant_id, project_id=payload.project_id, text=scene["text"])
             session.add(scene_model)
             scene_models.append(scene_model)
         session.commit()
@@ -199,7 +209,10 @@ def live_script_endpoint(
     )
 
     existing_scenes = session.exec(
-        select(Scene).where(Scene.project_id == payload.project_id)
+        select(Scene).where(
+            Scene.project_id == payload.project_id,
+            Scene.tenant_id == tenant_id,
+        )
     ).all()
     return ScriptResponse(
         full_script=script_text,
@@ -219,10 +232,14 @@ def live_script_endpoint(
 def clear_script_endpoint(
     payload: ScriptClearRequest, session: Session = Depends(get_session)
 ) -> ScriptResponse:
+    tenant_id = current_tenant_id()
     clear_script_assets(payload.project_id)
 
     session.exec(
-        Scene.__table__.delete().where(Scene.project_id == payload.project_id)
+        Scene.__table__.delete().where(
+            Scene.project_id == payload.project_id,
+            Scene.tenant_id == tenant_id,
+        )
     )
     session.commit()
 

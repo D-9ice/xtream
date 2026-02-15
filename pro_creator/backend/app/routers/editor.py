@@ -5,6 +5,7 @@ from app.auth import get_current_user
 from app.database import get_session
 from app.models import Clip
 from app.schemas import ClipCreateRequest, ClipResponse, ClipUpdateRequest
+from app.tenant import current_tenant_id
 
 router = APIRouter(
     prefix="/editor",
@@ -29,9 +30,13 @@ def _to_response(clip: Clip) -> ClipResponse:
 
 @router.get("/{project_id}/clips", response_model=list[ClipResponse])
 def list_clips(project_id: str, session: Session = Depends(get_session)) -> list[ClipResponse]:
+    tenant_id = current_tenant_id()
     clips = session.exec(
         select(Clip)
-        .where(Clip.project_id == project_id)
+        .where(
+            Clip.project_id == project_id,
+            Clip.tenant_id == tenant_id,
+        )
         .order_by(Clip.order_index.asc())
     ).all()
     return [_to_response(clip) for clip in clips]
@@ -43,7 +48,9 @@ def create_clip(
     payload: ClipCreateRequest,
     session: Session = Depends(get_session),
 ) -> ClipResponse:
+    tenant_id = current_tenant_id()
     clip = Clip(
+        tenant_id=tenant_id,
         project_id=project_id,
         title=payload.title,
         start_time=payload.start_time,
@@ -65,8 +72,9 @@ def update_clip(
     payload: ClipUpdateRequest,
     session: Session = Depends(get_session),
 ) -> ClipResponse:
+    tenant_id = current_tenant_id()
     clip = session.get(Clip, clip_id)
-    if not clip or clip.project_id != project_id:
+    if not clip or clip.project_id != project_id or clip.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Clip not found")
     data = payload.dict(exclude_unset=True)
     for key, value in data.items():
@@ -83,8 +91,9 @@ def delete_clip(
     clip_id: int,
     session: Session = Depends(get_session),
 ) -> dict:
+    tenant_id = current_tenant_id()
     clip = session.get(Clip, clip_id)
-    if not clip or clip.project_id != project_id:
+    if not clip or clip.project_id != project_id or clip.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Clip not found")
     session.delete(clip)
     session.commit()
