@@ -39,6 +39,7 @@ def project_key(project_id: str, relative_path: str) -> str:
 class StorageClient:
     def __init__(self) -> None:
         self.backend = STORAGE_BACKEND
+        self._bucket_ready = False
         if self.backend == "s3":
             self._s3 = boto3.client(
                 "s3",
@@ -51,6 +52,24 @@ class StorageClient:
             )
         else:
             self._s3 = None
+
+    def _ensure_bucket(self) -> None:
+        if self.backend != "s3" or self._bucket_ready:
+            return
+        try:
+            self._s3.head_bucket(Bucket=S3_BUCKET)
+        except ClientError as exc:
+            code = (exc.response or {}).get("Error", {}).get("Code", "")
+            if str(code) in {"404", "NoSuchBucket", "NotFound"}:
+                create_kwargs = {"Bucket": S3_BUCKET}
+                if S3_REGION and S3_REGION != "us-east-1":
+                    create_kwargs["CreateBucketConfiguration"] = {
+                        "LocationConstraint": S3_REGION
+                    }
+                self._s3.create_bucket(**create_kwargs)
+            else:
+                raise
+        self._bucket_ready = True
 
     def ensure_project_dirs(self, project_id: str) -> Path:
         if self.backend != "local":
@@ -66,6 +85,7 @@ class StorageClient:
 
     def write_text(self, key: str, content: str) -> None:
         if self.backend == "s3":
+            self._ensure_bucket()
             self._s3.put_object(Bucket=S3_BUCKET, Key=key, Body=content.encode("utf-8"))
         else:
             path = PROJECTS_DIR / key
@@ -74,6 +94,7 @@ class StorageClient:
 
     def write_bytes(self, key: str, content: bytes, content_type: Optional[str] = None) -> None:
         if self.backend == "s3":
+            self._ensure_bucket()
             extra = {"ContentType": content_type} if content_type else {}
             self._s3.put_object(Bucket=S3_BUCKET, Key=key, Body=content, **extra)
         else:
@@ -83,6 +104,7 @@ class StorageClient:
 
     def read_text(self, key: str) -> str:
         if self.backend == "s3":
+            self._ensure_bucket()
             try:
                 response = self._s3.get_object(Bucket=S3_BUCKET, Key=key)
                 return response["Body"].read().decode("utf-8")
@@ -98,6 +120,7 @@ class StorageClient:
 
     def read_bytes(self, key: str) -> bytes:
         if self.backend == "s3":
+            self._ensure_bucket()
             try:
                 response = self._s3.get_object(Bucket=S3_BUCKET, Key=key)
                 return response["Body"].read()
@@ -113,6 +136,7 @@ class StorageClient:
 
     def exists(self, key: str) -> bool:
         if self.backend == "s3":
+            self._ensure_bucket()
             try:
                 self._s3.head_object(Bucket=S3_BUCKET, Key=key)
                 return True
@@ -122,6 +146,7 @@ class StorageClient:
 
     def delete_prefix(self, prefix: str) -> None:
         if self.backend == "s3":
+            self._ensure_bucket()
             paginator = self._s3.get_paginator("list_objects_v2")
             for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix):
                 for obj in page.get("Contents", []):
@@ -138,6 +163,7 @@ class StorageClient:
 
     def delete_key(self, key: str) -> None:
         if self.backend == "s3":
+            self._ensure_bucket()
             self._s3.delete_object(Bucket=S3_BUCKET, Key=key)
         else:
             path = PROJECTS_DIR / key
@@ -146,6 +172,7 @@ class StorageClient:
 
     def list_keys(self, prefix: str) -> Iterable[str]:
         if self.backend == "s3":
+            self._ensure_bucket()
             paginator = self._s3.get_paginator("list_objects_v2")
             for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix):
                 for obj in page.get("Contents", []):

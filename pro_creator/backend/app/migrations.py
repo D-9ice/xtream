@@ -28,7 +28,7 @@ def upgrade_head(engine: Engine) -> None:
         _fallback_schema_sync(engine)
         return
 
-    base_dir = Path(__file__).resolve().parents[1]  # backend/app
+    base_dir = Path(__file__).resolve().parents[0]  # backend/app
     backend_dir = base_dir.parent  # backend/
     ini_path = backend_dir / "alembic.ini"
 
