@@ -1,5 +1,6 @@
 from app.config import (
     IMAGE_PROVIDER,
+    OPENAI_API_KEY,
     OPENAI_MODEL_DRAFT,
     OPENAI_MODEL_PREMIUM,
     OPENAI_MODEL_STANDARD,
@@ -29,7 +30,10 @@ def resolve_script_route(plan_name: str | None) -> tuple[str, str]:
 
 
 def resolve_image_provider() -> str:
-    return IMAGE_PROVIDER
+    provider = (IMAGE_PROVIDER or "local").strip().lower()
+    if provider == "auto":
+        return "openai" if OPENAI_API_KEY.strip() else "local"
+    return provider
 
 
 def resolve_voice_provider(requested_provider: str | None) -> str:

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from app.auth import get_current_user
@@ -34,15 +34,31 @@ def generate_image_endpoint(
             Scene.tenant_id == tenant_id,
         )
     ).all()
-    result = generate_image_for_scene(payload.project_id, 1, payload.prompt, payload.style)
+    try:
+        result = generate_image_for_scene(
+            payload.project_id,
+            1,
+            payload.prompt,
+            payload.style,
+            provider=provider,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Image generation failed: {exc}") from exc
     if scenes:
         for scene in scenes:
-            scene_result = generate_image_for_scene(
-                payload.project_id,
-                scene.id or 1,
-                scene.text or payload.prompt,
-                payload.style,
-            )
+            try:
+                scene_result = generate_image_for_scene(
+                    payload.project_id,
+                    scene.id or 1,
+                    scene.text or payload.prompt,
+                    payload.style,
+                    provider=provider,
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Image generation failed for scene {scene.id or 1}: {exc}",
+                ) from exc
             scene.image_path = scene_result["image_path"]
             session.add(scene)
         session.commit()

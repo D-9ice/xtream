@@ -130,6 +130,9 @@ OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstr
 OPENAI_MODEL_DRAFT = os.getenv("OPENAI_MODEL_DRAFT", "gpt-4o-mini")
 OPENAI_MODEL_STANDARD = os.getenv("OPENAI_MODEL_STANDARD", "gpt-4o-mini")
 OPENAI_MODEL_PREMIUM = os.getenv("OPENAI_MODEL_PREMIUM", "gpt-4.1")
+OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1").strip()
+OPENAI_IMAGE_SIZE = os.getenv("OPENAI_IMAGE_SIZE", "1536x1024").strip()
+OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "high").strip().lower()
 
 # Billing / Stripe
 STRIPE_SECRET_KEY = _env_file_or_aws("STRIPE_SECRET_KEY", "")

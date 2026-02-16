@@ -102,6 +102,16 @@ The frontend runs on **Next.js 16 + TypeScript + Tailwind CSS**. See `frontend/R
 You can switch between XTTS (self-hosted) and ElevenLabs via `TTS_PROVIDER` and the Voice panel selector.
 Set `XTTS_ENDPOINT` for XTTS or `ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` for ElevenLabs.
 
+### Image generation provider
+
+Image generation supports OpenAI Images with quality-first defaults. Set:
+
+- `IMAGE_PROVIDER=openai`
+- `OPENAI_API_KEY=<your key>`
+- Optional tuning: `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_SIZE`, `OPENAI_IMAGE_QUALITY`
+
+If `IMAGE_PROVIDER=auto`, the backend uses OpenAI when a key is configured, otherwise local placeholder generation.
+
 ### Lip sync (Rhubarb)
 
 Lip sync artifacts are generated automatically after voice generation. For higher
