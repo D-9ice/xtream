@@ -17,6 +17,18 @@ def _parse_script_brief(raw_topic: str) -> Tuple[str, str]:
     if not text:
         return ("Untitled Story", "a clear and useful story brief")
 
+    inline = re.sub(r"\s+", " ", text)
+    title_match = re.search(r"(?i)\btitle\s*:\s*(.+?)(?=\bprompt\s*:|$)", inline)
+    prompt_match = re.search(r"(?i)\bprompt\s*:\s*(.+)$", inline)
+    if title_match or prompt_match:
+        title = (title_match.group(1).strip() if title_match else "").strip(" -,:;")
+        prompt = (prompt_match.group(1).strip() if prompt_match else "").strip()
+        if not prompt:
+            prompt = title or inline
+        if not title:
+            title = re.sub(r"\s+", " ", prompt).strip()[:90].strip(" -,:;")
+        return (title or "Untitled Story", prompt or "a clear and useful story brief")
+
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     title = ""
     prompt_lines: List[str] = []
@@ -50,6 +62,9 @@ def _phrase_chunks(prompt: str, limit: int = 8) -> List[str]:
     unique: List[str] = []
     seen: set[str] = set()
     for part in parts:
+        lowered = part.lower()
+        if lowered.startswith(("write ", "create ", "include ", "structure ", "keep ", "use ")):
+            continue
         key = part.lower()
         if key in seen:
             continue
@@ -63,33 +78,33 @@ def _phrase_chunks(prompt: str, limit: int = 8) -> List[str]:
 def _build_angles(prompt: str) -> List[str]:
     prompt_l = prompt.lower()
     mapped: List[str] = []
-    if "safety" in prompt_l:
-        mapped.append("real-world safety outcomes")
-    if "comfort" in prompt_l or "cabin" in prompt_l:
-        mapped.append("daily comfort and cabin usability")
-    if "design" in prompt_l or "aesthetic" in prompt_l:
-        mapped.append("design choices that affect daily life")
-    if "fsd" in prompt_l or "autopilot" in prompt_l or "driver-assist" in prompt_l:
-        mapped.append("driver-assist expectations versus reality")
-    if "ota" in prompt_l or "update" in prompt_l or "software" in prompt_l:
-        mapped.append("software updates and long-term improvements")
-    if "charging" in prompt_l or "range" in prompt_l:
-        mapped.append("charging behavior and trip planning")
+    if "creator" in prompt_l or "content" in prompt_l:
+        mapped.append("creator productivity and workflow speed")
+    if "marketing" in prompt_l or "brand" in prompt_l:
+        mapped.append("campaign performance and brand consistency")
+    if "script" in prompt_l:
+        mapped.append("from idea to script in minutes")
+    if "voice" in prompt_l or "narration" in prompt_l:
+        mapped.append("studio-style narration without recording bottlenecks")
+    if "image" in prompt_l or "visual" in prompt_l:
+        mapped.append("on-brand visuals generated on demand")
+    if "video" in prompt_l or "export" in prompt_l:
+        mapped.append("final video output ready for every channel")
     if "cost" in prompt_l or "price" in prompt_l or "value" in prompt_l:
-        mapped.append("ownership cost over time")
+        mapped.append("production cost efficiency at scale")
 
     base = [chunk for chunk in _phrase_chunks(prompt, limit=6) if not chunk.lower().startswith("write ")]
     defaults = [
-        "real-world safety outcomes",
-        "daily comfort and cabin usability",
-        "software updates and long-term improvements",
-        "charging behavior and trip planning",
-        "performance when it actually matters",
-        "ownership cost over time",
-        "design choices that affect daily life",
-        "driver-assist expectations versus reality",
-        "resale and ecosystem value",
-        "trade-offs every buyer should know",
+        "creator productivity and workflow speed",
+        "from idea to script in minutes",
+        "studio-style narration without recording bottlenecks",
+        "on-brand visuals generated on demand",
+        "final video output ready for every channel",
+        "production cost efficiency at scale",
+        "faster publishing cadence with fewer tools",
+        "consistent output quality across formats",
+        "time saved per campaign and content sprint",
+        "clear call-to-action that drives installs",
     ]
     angles = mapped + base + defaults
     deduped: List[str] = []
@@ -156,35 +171,36 @@ def _compose_narration(
     scene_index: int,
     scene_count: int,
 ) -> str:
-    intent_clean = beat_intent.rstrip(". ")
     brief_focus = " ".join(prompt.split()[:20]).strip()
     openers = [
-        f"Start this beat by framing {title} around {angle}, then immediately show why it matters to everyday drivers.",
-        f"Open with a concrete ownership moment tied to {angle}, so the audience feels the stakes before the explanation begins.",
-        f"Lead with the central claim on {angle}, then test it with practical context instead of marketing language.",
-        f"Introduce {angle} as a real decision point, not a feature list, and keep the delivery {style_a}.",
+        f"Creators are moving fast, and {title} is built for exactly that speed.",
+        f"If your content pipeline is slowing you down, {title} fixes the bottleneck at {angle}.",
+        f"Imagine launching your next campaign with {angle} handled in one flow.",
+        f"This is where {title} turns {angle} into publish-ready output.",
     ]
     development = [
-        f"Build the section with one clear example, one measurable signal, and one honest limitation. Keep the perspective anchored in: {brief_focus}.",
-        "Move from first-impression excitement to long-term ownership reality, and explain where expectations should be adjusted.",
-        "Translate technical points into plain outcomes: confidence, convenience, cost, and stress level over time.",
-        "Use contrast: what sounds great on paper versus what still holds up months later in daily use.",
+        f"Start with a clear message, shape it fast, and keep the story anchored in {brief_focus}.",
+        f"Then move from concept to execution with {angle} and no handoff friction.",
+        "Every step keeps quality high while reducing the time between idea and publish.",
+        "The result is cleaner output, faster iteration, and stronger performance per release.",
     ]
     credibility = [
-        f"Keep the narration {style_b}: short transitions, specific verbs, and no absolute claims.",
-        "Ask one skeptical question on behalf of the viewer, answer it directly, and show the trade-off clearly.",
-        "Treat the audience as informed buyers by showing both upside and friction in the same breath.",
-        "Close each claim with a practical implication viewers can use in their own buying decision.",
+        f"The tone stays {style_b}, with short, punchy lines that are ready for voiceover.",
+        "No bloated workflow, no tool-hopping, just one production path from start to finish.",
+        "Built for creators, marketers, and brands who need speed without sacrificing polish.",
+        "Everything is designed to ship content consistently and confidently.",
     ]
     p1 = openers[(scene_index - 1) % len(openers)]
     p2 = development[(scene_index - 1) % len(development)]
     p3 = credibility[(scene_index - 1) % len(credibility)]
     if scene_index < scene_count:
         p4 = (
-            f"End this section by bridging naturally into {next_angle}, setting up scene {scene_index + 1} with momentum."
+            f"Next, we move into {next_angle} to keep momentum into scene {scene_index + 1}."
         )
     else:
-        p4 = "Finish with a grounded takeaway and a specific next action viewers can evaluate today."
+        p4 = (
+            f"Now launch faster with {title}. Install Pro Creator and publish your next standout video today."
+        )
     return "\n\n".join([p1, p2, p3, p4])
 
 
@@ -297,6 +313,22 @@ def _extract_json_object(text: str) -> Dict | None:
     return None
 
 
+def _is_low_quality_script(full_script: str, scenes: List[Dict[str, str]]) -> bool:
+    lowered = full_script.lower()
+    banned_phrases = [
+        "start this beat by framing",
+        "end this section by bridging naturally",
+        "keep the narration plain-spoken and credible",
+        "everyday drivers",
+    ]
+    if any(phrase in lowered for phrase in banned_phrases):
+        return True
+    if not scenes:
+        return True
+    avg_scene_len = sum(len(scene.get("text", "")) for scene in scenes) / len(scenes)
+    return avg_scene_len < 120
+
+
 def _generate_script_llm(
     topic: str,
     duration_minutes: float,
@@ -389,6 +421,8 @@ def _generate_script_llm(
                 scene_id = idx
             normalized_scenes.append({"id": scene_id, "text": text.strip()})
         if not normalized_scenes:
+            return None
+        if _is_low_quality_script(full_script, normalized_scenes):
             return None
         logger.info("Generated script via LLM for title: %s", title)
         return {"full_script": full_script.strip(), "scenes": normalized_scenes}
