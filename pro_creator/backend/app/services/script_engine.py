@@ -18,8 +18,8 @@ def _parse_script_brief(raw_topic: str) -> Tuple[str, str]:
         return ("Untitled Story", "a clear and useful story brief")
 
     inline = re.sub(r"\s+", " ", text)
-    title_match = re.search(r"(?i)\btitle\s*:\s*(.+?)(?=\bprompt\s*:|$)", inline)
-    prompt_match = re.search(r"(?i)\bprompt\s*:\s*(.+)$", inline)
+    title_match = re.search(r"(?i)\btitle\b\s*:?\s*(.+?)(?=\bprompt\b\s*:?\s*|$)", inline)
+    prompt_match = re.search(r"(?i)\bprompt\b\s*:?\s*(.+)$", inline)
     if title_match or prompt_match:
         title = (title_match.group(1).strip() if title_match else "").strip(" -,:;")
         prompt = (prompt_match.group(1).strip() if prompt_match else "").strip()
@@ -49,6 +49,59 @@ def _parse_script_brief(raw_topic: str) -> Tuple[str, str]:
     if not prompt:
         prompt = title
     return (title or "Untitled Story", prompt or "a clear and useful story brief")
+
+
+def _is_promo_ad_prompt(prompt: str) -> bool:
+    lowered = (prompt or "").lower()
+    promo_markers = [
+        "promotional",
+        "promotion",
+        "advertisement",
+        "ad script",
+        "launch",
+        "ultimate app",
+        "call-to-action",
+        "cta",
+        "install",
+    ]
+    return any(marker in lowered for marker in promo_markers)
+
+
+def _normalize_subject_title(title: str) -> str:
+    cleaned = re.sub(r"\s+", " ", (title or "")).strip(" -,:;")
+    if not cleaned:
+        return ""
+    # Handle prefixes like "Promotional Ad for X".
+    cleaned = re.sub(
+        r"(?i)^(?:promotional|promotion|launch|marketing|campaign)?\s*ad(?:vertisement)?\s*(?:for)?\s+",
+        "",
+        cleaned,
+    ).strip(" -,:;")
+    # Handle suffixes like "X Launch Ad", "X Promo", "X Campaign".
+    cleaned = re.sub(
+        r"(?i)\s+(?:launch\s+ad|promotional\s+ad|promotion(?:al)?|campaign|advertisement|ad)$",
+        "",
+        cleaned,
+    ).strip(" -,:;")
+    return cleaned
+
+
+def _infer_subject(title: str, prompt: str) -> str:
+    title_clean = _normalize_subject_title(title)
+    if title_clean and title_clean.lower() not in {"untitled story", "untitled"}:
+        return title_clean
+
+    prompt_clean = re.sub(r"\s+", " ", (prompt or "")).strip()
+    if not prompt_clean:
+        return "this project"
+
+    # Prefer short noun-like fragments after explicit "for ...".
+    m = re.search(r"(?i)\bfor\s+([a-z0-9][a-z0-9 '&+\\-/]{2,80})", prompt_clean)
+    if m:
+        candidate = m.group(1).strip(" .,:;")
+        if candidate:
+            return candidate[:80]
+    return prompt_clean[:80].strip(" -,:;") or "this project"
 
 
 def _phrase_chunks(prompt: str, limit: int = 8) -> List[str]:
@@ -95,16 +148,16 @@ def _build_angles(prompt: str) -> List[str]:
 
     base = [chunk for chunk in _phrase_chunks(prompt, limit=6) if not chunk.lower().startswith("write ")]
     defaults = [
-        "creator productivity and workflow speed",
-        "from idea to script in minutes",
-        "studio-style narration without recording bottlenecks",
-        "on-brand visuals generated on demand",
-        "final video output ready for every channel",
-        "production cost efficiency at scale",
-        "faster publishing cadence with fewer tools",
-        "consistent output quality across formats",
-        "time saved per campaign and content sprint",
-        "clear call-to-action that drives installs",
+        "clear value proposition in the first five seconds",
+        "from idea to publish-ready output in one workflow",
+        "consistent quality across short-form and long-form formats",
+        "faster turnaround with fewer production bottlenecks",
+        "audience retention through stronger hooks and pacing",
+        "brand consistency across campaigns and channels",
+        "lower production friction for solo creators and teams",
+        "conversion-focused call-to-action that feels natural",
+        "content velocity without sacrificing polish",
+        "repeatable workflow for reliable publishing cadence",
     ]
     angles = mapped + base + defaults
     deduped: List[str] = []
@@ -204,6 +257,46 @@ def _compose_narration(
     return "\n\n".join([p1, p2, p3, p4])
 
 
+def _compose_promo_narration(
+    *,
+    title: str,
+    prompt: str,
+    angle: str,
+    next_angle: str,
+    scene_index: int,
+    scene_count: int,
+) -> str:
+    subject = _infer_subject(title, prompt)
+    openers = [
+        f"Meet {subject}, built to turn raw ideas into publish-ready content fast.",
+        f"When creators need speed and consistency, {subject} keeps each production step in sync.",
+        f"{subject} brings concept, production, and delivery into one clean workflow.",
+        f"If your content process feels fragmented, {subject} brings it together quickly.",
+        f"{subject} gives creators and teams a single control center for end-to-end production.",
+        f"Launch-ready output starts with {subject} and ends with platform-ready assets.",
+        f"With {subject}, teams can scale quality output without scaling workflow chaos.",
+        f"{subject} is built for faster delivery, cleaner output, and stronger creative control.",
+    ]
+    proofs = [
+        "Generate a sharp script in minutes, then convert it to narration with production-ready voice.",
+        "Create on-brand visuals instantly, sync scenes, and assemble polished edits for every platform.",
+        "Cut tool-switching, reduce production overhead, and publish more campaigns with less effort.",
+        "Stay in flow from first prompt to final export while keeping your creative standard high.",
+        "Move from idea to script, script to voice, voice to visuals, and visuals to final video in one flow.",
+        "Keep your brand voice consistent across content formats while reducing production turnaround time.",
+        "Go from rough concept to polished campaign asset with fewer handoffs and better output control.",
+        "Ship faster without sacrificing quality by running your creative pipeline end-to-end in one app.",
+    ]
+    opener = openers[(scene_index - 1) % len(openers)]
+    proof = proofs[(scene_index - 1) % len(proofs)]
+    cta = (
+        f"Next, we push into {next_angle} to keep momentum."
+        if scene_index < scene_count
+        else f"Start creating with {subject} now and launch your next high-performing piece today."
+    )
+    return "\n\n".join([opener, proof, cta])
+
+
 def _compose_visuals(beat_title: str, angle: str, scene_index: int) -> str:
     shot = [
         "Begin with a tangible action shot before any talking-head explanation.",
@@ -252,6 +345,7 @@ def _generate_script_template(topic: str, duration_minutes: float, tone: str) ->
     style_a, style_b = _tone_pack(tone)
     angles = _build_angles(prompt)
     plan = _scene_plan(scene_count)
+    promo_mode = _is_promo_ad_prompt(prompt)
 
     script_lines = [
         f"Title: {title}",
@@ -280,6 +374,15 @@ def _generate_script_template(topic: str, duration_minutes: float, tone: str) ->
             scene_index=idx,
             scene_count=scene_count,
         )
+        if promo_mode:
+            narration = _compose_promo_narration(
+                title=title,
+                prompt=prompt,
+                angle=angle,
+                next_angle=next_angle,
+                scene_index=idx,
+                scene_count=scene_count,
+            )
 
         visuals = _compose_visuals(beat_title, angle, idx)
         scene_text = (
@@ -451,5 +554,8 @@ def generate_script(
         if llm_result:
             return llm_result
         if provider == "openai":
-            logger.warning("OpenAI provider selected but unavailable, falling back to template")
+            raise RuntimeError(
+                "SCRIPT_PROVIDER=openai but LLM generation failed. "
+                "Check OPENAI_API_KEY / OPENAI_BASE_URL / model configuration."
+            )
     return _generate_script_template(topic, duration_minutes, tone)

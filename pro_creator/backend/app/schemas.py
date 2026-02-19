@@ -120,6 +120,46 @@ class VideoImportResponse(BaseModel):
     video_path: str
 
 
+class ThumbnailGenerateRequest(BaseModel):
+    project_id: str
+    mode: str = "classic"  # classic | ai
+    title: Optional[str] = None
+    subtitle: Optional[str] = None
+    ai_prompt: Optional[str] = None
+    style: str = "cinematic"
+    source: str = "auto"  # auto | video | image
+    scene_id: int = 1
+    timestamp_seconds: float = 1.0
+    variant_count: int = 1
+    format: str = "png"  # png | jpg
+    width: int = 1280
+    height: int = 720
+
+
+class ThumbnailVariantResponse(BaseModel):
+    variant_id: int
+    thumbnail_key: str
+    thumbnail_path: str
+    source_used: str
+    width: int
+    height: int
+
+
+class ThumbnailGenerateResponse(BaseModel):
+    thumbnail_path: str
+    thumbnail_key: str
+    mode_used: str
+    source_used: str
+    width: int
+    height: int
+    variants: List[ThumbnailVariantResponse] = []
+
+
+class ThumbnailSetPrimaryRequest(BaseModel):
+    project_id: str
+    thumbnail_key: str
+
+
 class ExportPresetRequest(BaseModel):
     project_id: str
     preset: str

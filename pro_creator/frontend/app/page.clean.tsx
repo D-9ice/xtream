@@ -13,6 +13,7 @@ import type {
   OrchestrationScheduleItem,
   Project,
   ScriptResponse,
+  ThumbnailResponse,
   VideoResponse,
   VoiceResponse,
 } from "../lib/api";
@@ -41,6 +42,7 @@ import {
   fetchVoiceProfiles,
   generateImage,
   generateScript,
+  generateThumbnail,
   generateVoice,
   importScript,
   importVideoUrl,
@@ -49,6 +51,7 @@ import {
   renderVideo,
   retryOrchestrationJob,
   runOrchestrationSchedules,
+  setPrimaryThumbnail,
   startOrchestrationRunner,
   stopOrchestrationRunner,
   triggerFeature,
@@ -181,6 +184,17 @@ export default function HomePage() {
   const [videoResult, setVideoResult] = useState<VideoResponse | null>(null);
   const [videoImportUrl, setVideoImportUrl] = useState("");
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [thumbnailResult, setThumbnailResult] = useState<ThumbnailResponse | null>(null);
+  const [thumbnailMode, setThumbnailMode] = useState<"classic" | "ai">("classic");
+  const [thumbnailTitle, setThumbnailTitle] = useState("");
+  const [thumbnailSubtitle, setThumbnailSubtitle] = useState("");
+  const [thumbnailAiPrompt, setThumbnailAiPrompt] = useState("");
+  const [thumbnailStyle, setThumbnailStyle] = useState("cinematic");
+  const [thumbnailVariantCount, setThumbnailVariantCount] = useState(3);
+  const [thumbnailSource, setThumbnailSource] = useState<"auto" | "video" | "image">(
+    "auto"
+  );
+  const [thumbnailTimestamp, setThumbnailTimestamp] = useState(1);
 
   const [editRanges, setEditRanges] = useState("");
 
@@ -962,6 +976,61 @@ export default function HomePage() {
       await refreshCredits();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Video import failed");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleGenerateThumbnail = async () => {
+    if (!selectedProjectId) {
+      setActionError("Select a project first.");
+      return;
+    }
+    setActionError(null);
+    setActionLoading(true);
+    try {
+      const response = await generateThumbnail({
+        project_id: selectedProjectId,
+        mode: thumbnailMode,
+        title: thumbnailTitle || undefined,
+        subtitle: thumbnailSubtitle || undefined,
+        ai_prompt: thumbnailMode === "ai" ? thumbnailAiPrompt || undefined : undefined,
+        style: thumbnailStyle || "cinematic",
+        variant_count: thumbnailMode === "ai" ? thumbnailVariantCount : 1,
+        source: thumbnailSource,
+        timestamp_seconds: thumbnailTimestamp,
+        format: "png",
+        width: 1280,
+        height: 720,
+      });
+      setThumbnailResult(response);
+      await refreshCredits();
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Thumbnail generation failed"
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSetPrimaryThumbnail = async (thumbnailKey: string) => {
+    if (!selectedProjectId) {
+      setActionError("Select a project first.");
+      return;
+    }
+    setActionError(null);
+    setActionLoading(true);
+    try {
+      const response = await setPrimaryThumbnail({
+        project_id: selectedProjectId,
+        thumbnail_key: thumbnailKey,
+      });
+      setThumbnailResult(response);
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Set primary thumbnail failed"
+      );
     } finally {
       setActionLoading(false);
     }
@@ -1765,6 +1834,169 @@ export default function HomePage() {
                 Render or import a video to see the preview.
               </p>
             )}
+            <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <h5 className="text-sm font-semibold">Thumbnail generator</h5>
+                <button
+                  className="rounded-lg border border-aurora/40 px-3 py-1.5 text-xs text-aurora"
+                  type="button"
+                  onClick={handleGenerateThumbnail}
+                  disabled={actionLoading}
+                >
+                  Generate thumbnail
+                </button>
+              </div>
+              <div className="mt-3 grid gap-2">
+                <select
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+                  value={thumbnailMode}
+                  onChange={(event) =>
+                    setThumbnailMode(event.target.value as "classic" | "ai")
+                  }
+                >
+                  <option value="classic">Classic thumbnail (from project media)</option>
+                  <option value="ai">AI thumbnail (OpenAI quality mode)</option>
+                </select>
+                <input
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+                  value={thumbnailTitle}
+                  onChange={(event) => setThumbnailTitle(event.target.value)}
+                  placeholder="Thumbnail title"
+                />
+                <input
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+                  value={thumbnailSubtitle}
+                  onChange={(event) => setThumbnailSubtitle(event.target.value)}
+                  placeholder="Thumbnail subtitle (optional)"
+                />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {thumbnailMode === "classic" ? (
+                    <select
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+                      value={thumbnailSource}
+                      onChange={(event) =>
+                        setThumbnailSource(
+                          event.target.value as "auto" | "video" | "image"
+                        )
+                      }
+                    >
+                      <option value="auto">Auto source (video then image)</option>
+                      <option value="video">Video frame</option>
+                      <option value="image">Scene image</option>
+                    </select>
+                  ) : (
+                    <input
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+                      value={thumbnailStyle}
+                      onChange={(event) => setThumbnailStyle(event.target.value)}
+                      placeholder="Style (cinematic, bold, dramatic, etc.)"
+                    />
+                  )}
+                  <input
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+                    type="number"
+                    min={0}
+                    step={0.25}
+                    value={thumbnailTimestamp}
+                    onChange={(event) =>
+                      setThumbnailTimestamp(Number(event.target.value))
+                    }
+                    placeholder="Frame second"
+                  />
+                </div>
+                {thumbnailMode === "ai" ? (
+                  <>
+                    <input
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+                      type="number"
+                      min={1}
+                      max={4}
+                      value={thumbnailVariantCount}
+                      onChange={(event) =>
+                        setThumbnailVariantCount(
+                          Math.max(1, Math.min(4, Number(event.target.value) || 1))
+                        )
+                      }
+                      placeholder="A/B variant count (1-4)"
+                    />
+                    <textarea
+                      className="min-h-[74px] w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+                      value={thumbnailAiPrompt}
+                      onChange={(event) => setThumbnailAiPrompt(event.target.value)}
+                      placeholder="AI creative direction (subject, emotion, framing, color palette, visual motif)"
+                    />
+                  </>
+                ) : null}
+              </div>
+              {thumbnailResult ? (
+                <div className="mt-3">
+                  <p className="text-[11px] text-slate-400">
+                    Mode: {thumbnailResult.mode_used} • Source: {thumbnailResult.source_used} • {thumbnailResult.width}x
+                    {thumbnailResult.height}
+                  </p>
+                  <img
+                    className="mt-2 w-full rounded-lg border border-slate-800"
+                    src={resolveMediaUrl(thumbnailResult.thumbnail_path) ?? undefined}
+                    alt="Generated thumbnail"
+                  />
+                  <a
+                    className="mt-2 inline-flex text-[11px] text-aurora hover:underline"
+                    href={
+                      resolveMediaUrl(thumbnailResult.thumbnail_path) ??
+                      thumbnailResult.thumbnail_path
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open thumbnail file
+                  </a>
+                  {thumbnailResult.variants && thumbnailResult.variants.length > 1 ? (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {thumbnailResult.variants.map((variant) => (
+                        <div
+                          key={variant.variant_id}
+                          className="rounded-lg border border-slate-800 bg-slate-900/60 p-2 hover:border-aurora/50"
+                        >
+                          <p className="text-[11px] text-slate-300">
+                            Variant {variant.variant_id}
+                          </p>
+                          <img
+                            className="mt-1 w-full rounded border border-slate-800"
+                            src={
+                              resolveMediaUrl(variant.thumbnail_path) ?? undefined
+                            }
+                            alt={`Thumbnail variant ${variant.variant_id}`}
+                          />
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <a
+                              className="text-[11px] text-aurora hover:underline"
+                              href={
+                                resolveMediaUrl(variant.thumbnail_path) ??
+                                variant.thumbnail_path
+                              }
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Open
+                            </a>
+                            <button
+                              className="rounded border border-aurora/40 px-2 py-1 text-[10px] text-aurora"
+                              type="button"
+                              onClick={() =>
+                                handleSetPrimaryThumbnail(variant.thumbnail_key)
+                              }
+                              disabled={actionLoading}
+                            >
+                              Set as primary
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

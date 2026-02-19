@@ -31,6 +31,23 @@ export type VideoResponse = {
   video_path: string;
 };
 
+export type ThumbnailResponse = {
+  thumbnail_path: string;
+  thumbnail_key: string;
+  mode_used: string;
+  source_used: string;
+  width: number;
+  height: number;
+  variants?: Array<{
+    variant_id: number;
+    thumbnail_key: string;
+    thumbnail_path: string;
+    source_used: string;
+    width: number;
+    height: number;
+  }>;
+};
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -547,6 +564,49 @@ export async function renderVideo(payload: {
   });
   if (!response.ok) {
     throw new Error("Failed to render video");
+  }
+  return response.json();
+}
+
+export async function generateThumbnail(payload: {
+  project_id: string;
+  mode?: "classic" | "ai";
+  title?: string;
+  subtitle?: string;
+  ai_prompt?: string;
+  style?: string;
+  variant_count?: number;
+  source?: "auto" | "video" | "image";
+  scene_id?: number;
+  timestamp_seconds?: number;
+  format?: "png" | "jpg";
+  width?: number;
+  height?: number;
+}): Promise<ThumbnailResponse> {
+  const response = await fetch(`${API_BASE}/video/thumbnail/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? "Failed to generate thumbnail");
+  }
+  return response.json();
+}
+
+export async function setPrimaryThumbnail(payload: {
+  project_id: string;
+  thumbnail_key: string;
+}): Promise<ThumbnailResponse> {
+  const response = await fetch(`${API_BASE}/video/thumbnail/set-primary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? "Failed to set primary thumbnail");
   }
   return response.json();
 }

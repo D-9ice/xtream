@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from app.auth import get_current_user
@@ -46,13 +46,16 @@ def generate_script_endpoint(
     tenant_id = current_tenant_id()
     subscription = get_or_create_subscription(session, current_user)
     script_provider, script_model = resolve_script_route(subscription.plan_name)
-    result = generate_script(
-        payload.topic,
-        payload.duration_minutes,
-        payload.tone,
-        script_provider=script_provider,
-        model_name=script_model,
-    )
+    try:
+        result = generate_script(
+            payload.topic,
+            payload.duration_minutes,
+            payload.tone,
+            script_provider=script_provider,
+            model_name=script_model,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Script generation failed: {exc}") from exc
     project_path = ensure_project_dirs(payload.project_id)
     write_script(project_path, result["full_script"])
     write_scene_metadata(project_path, result["scenes"])

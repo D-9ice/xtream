@@ -1,19 +1,29 @@
 from datetime import datetime
+import io
 import shutil
 import subprocess
 import tempfile
 
 from fastapi import APIRouter, Query, Depends, HTTPException
+from PIL import Image, ImageDraw
 from sqlmodel import Session
 
 import requests
 from pathlib import Path
 
 from app.auth import get_current_user
-from app.config import CREDITS_COST_VIDEO_EXPORT, CREDITS_COST_VIDEO_RENDER, PROJECTS_DIR
+from app.config import (
+    CREDITS_COST_THUMBNAIL_AI_GENERATE,
+    CREDITS_COST_THUMBNAIL_GENERATE,
+    CREDITS_COST_VIDEO_EXPORT,
+    CREDITS_COST_VIDEO_RENDER,
+    OPENAI_API_KEY,
+    PROJECTS_DIR,
+)
 from app.database import get_session
 from app.models import User
 from app.services.credits import consume_credits, record_usage_event
+from app.services.image_engine import generate_image_bytes
 from app.storage import project_key, storage_client
 from app.schemas import (
     EditByTextRequest,
@@ -25,6 +35,10 @@ from app.schemas import (
     ExportStatusEntry,
     ExportStatusResponse,
     FeatureStubResponse,
+    ThumbnailGenerateRequest,
+    ThumbnailGenerateResponse,
+    ThumbnailSetPrimaryRequest,
+    ThumbnailVariantResponse,
     VideoImportRequest,
     VideoImportResponse,
     VideoRequest,
@@ -41,6 +55,213 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 logger = get_logger(__name__)
+
+_THUMBNAIL_EXTENSIONS = ("png", "jpg", "jpeg")
+
+
+def _find_scene_image_key(project_id: str, scene_id: int) -> str | None:
+    preferred = project_key(project_id, f"images/scene_{scene_id}.png")
+    if storage_client.exists(preferred):
+        return preferred
+    fallback = project_key(project_id, "images/scene_1.png")
+    if storage_client.exists(fallback):
+        return fallback
+    for key in storage_client.list_keys(f"{project_id}/images/"):
+        if key.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+            return key
+    return None
+
+
+def _load_video_frame(
+    project_id: str,
+    timestamp_seconds: float,
+) -> Image.Image | None:
+    source_candidates = [
+        project_key(project_id, "video/final.mp4"),
+        project_key(project_id, "video/imported.mp4"),
+    ]
+    source_key = next((key for key in source_candidates if storage_client.exists(key)), None)
+    if not source_key:
+        return None
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        raise ValueError("ffmpeg is required for video-based thumbnail generation.")
+
+    with tempfile.TemporaryDirectory(prefix="pro_creator_thumbnail_") as temp_dir:
+        temp_path = Path(temp_dir)
+        source_path = temp_path / "source.mp4"
+        frame_path = temp_path / "frame.png"
+        source_path.write_bytes(storage_client.read_bytes(source_key))
+        subprocess.run(
+            [
+                ffmpeg_path,
+                "-y",
+                "-ss",
+                str(max(0.0, timestamp_seconds)),
+                "-i",
+                str(source_path),
+                "-frames:v",
+                "1",
+                str(frame_path),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=20,
+        )
+        if not frame_path.exists():
+            return None
+        return Image.open(frame_path).convert("RGB")
+
+
+def _load_thumbnail_base(
+    project_id: str,
+    source: str,
+    scene_id: int,
+    timestamp_seconds: float,
+) -> tuple[Image.Image, str]:
+    source_mode = source.lower().strip()
+    if source_mode not in {"auto", "video", "image"}:
+        raise ValueError("source must be one of: auto, video, image")
+
+    if source_mode in {"auto", "video"}:
+        try:
+            frame = _load_video_frame(project_id, timestamp_seconds)
+        except Exception:
+            if source_mode == "video":
+                raise
+            frame = None
+        if frame is not None:
+            return frame, "video"
+        if source_mode == "video":
+            raise ValueError("No source video found. Render or import a video first.")
+
+    image_key = _find_scene_image_key(project_id, scene_id)
+    if not image_key:
+        raise ValueError(
+            "No source media found. Generate images or render/import a video first."
+        )
+    image_bytes = storage_client.read_bytes(image_key)
+    if not image_bytes:
+        raise ValueError("Source image exists but is empty.")
+    return Image.open(io.BytesIO(image_bytes)).convert("RGB"), "image"
+
+
+def _build_ai_thumbnail_prompt(
+    payload: ThumbnailGenerateRequest,
+    variant_id: int = 1,
+    variant_count: int = 1,
+) -> str:
+    title = (payload.title or "").strip()
+    subtitle = (payload.subtitle or "").strip()
+    custom = (payload.ai_prompt or "").strip()
+    base_lines = [
+        "Design a high-converting social-media video thumbnail.",
+        "Prioritize bold composition, clean focal subject, strong contrast, and platform-ready clarity.",
+    ]
+    if title:
+        base_lines.append(f"Primary headline to support: {title}")
+    if subtitle:
+        base_lines.append(f"Secondary subheadline to support: {subtitle}")
+    if custom:
+        base_lines.append(f"Creative direction: {custom}")
+    if variant_count > 1:
+        base_lines.append(
+            f"Create variation {variant_id}/{variant_count} with a distinct composition and focal framing."
+        )
+    base_lines.append(
+        f"Target aspect ratio {payload.width}:{payload.height}. Avoid watermarks, logos, and unreadable tiny text."
+    )
+    return "\n".join(base_lines)
+
+
+def _generate_ai_thumbnail_base(
+    payload: ThumbnailGenerateRequest,
+    variant_id: int = 1,
+    variant_count: int = 1,
+) -> tuple[Image.Image, str]:
+    prompt = _build_ai_thumbnail_prompt(payload, variant_id=variant_id, variant_count=variant_count)
+    preferred_provider = "openai" if OPENAI_API_KEY.strip() else "local"
+    image_bytes, provider_used = generate_image_bytes(
+        prompt=prompt,
+        style=payload.style,
+        scene_id=max(1, payload.scene_id),
+        provider=preferred_provider,
+    )
+    if not image_bytes:
+        raise ValueError("AI thumbnail generation returned empty image bytes.")
+    return Image.open(io.BytesIO(image_bytes)).convert("RGB"), provider_used
+
+
+def _cover_resize(image: Image.Image, width: int, height: int) -> Image.Image:
+    width = max(64, min(width, 3840))
+    height = max(64, min(height, 3840))
+    src_w, src_h = image.size
+    if src_w <= 0 or src_h <= 0:
+        raise ValueError("Invalid source image dimensions.")
+    scale = max(width / src_w, height / src_h)
+    resized = image.resize((int(src_w * scale), int(src_h * scale)), Image.Resampling.LANCZOS)
+    left = (resized.width - width) // 2
+    top = (resized.height - height) // 2
+    return resized.crop((left, top, left + width, top + height))
+
+
+def _wrap_text(text: str, max_chars: int) -> list[str]:
+    words = [word for word in text.split() if word]
+    if not words:
+        return []
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        if len(candidate) <= max_chars:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return lines
+
+
+def _apply_text_overlay(
+    image: Image.Image,
+    title: str | None,
+    subtitle: str | None,
+) -> Image.Image:
+    title_text = (title or "").strip()
+    subtitle_text = (subtitle or "").strip()
+    if not title_text and not subtitle_text:
+        return image
+
+    canvas = image.convert("RGBA")
+    draw = ImageDraw.Draw(canvas)
+    width, height = canvas.size
+
+    overlay_height = int(height * 0.38)
+    overlay_top = max(0, height - overlay_height)
+    draw.rectangle(
+        [(0, overlay_top), (width, height)],
+        fill=(8, 10, 26, 190),
+    )
+
+    max_title_chars = max(24, width // 24)
+    max_subtitle_chars = max(28, width // 28)
+    title_lines = _wrap_text(title_text[:220], max_title_chars)[:3]
+    subtitle_lines = _wrap_text(subtitle_text[:320], max_subtitle_chars)[:3]
+
+    y = overlay_top + int(height * 0.05)
+    x = int(width * 0.05)
+    for line in title_lines:
+        draw.text((x, y), line, fill=(242, 248, 255, 255))
+        y += 28
+    if title_lines and subtitle_lines:
+        y += 10
+    for line in subtitle_lines:
+        draw.text((x, y), line, fill=(184, 201, 219, 255))
+        y += 22
+
+    return canvas.convert("RGB")
 
 
 @router.post("/render", response_model=VideoResponse)
@@ -65,6 +286,172 @@ def render_video_endpoint(
     )
     logger.info("Rendered video for project %s", payload.project_id)
     return VideoResponse(**result)
+
+
+@router.post("/thumbnail/generate", response_model=ThumbnailGenerateResponse)
+def generate_thumbnail_endpoint(
+    payload: ThumbnailGenerateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> ThumbnailGenerateResponse:
+    output_format = payload.format.lower().strip()
+    mode = payload.mode.lower().strip()
+    variant_count = max(1, min(payload.variant_count, 4))
+    if output_format not in _THUMBNAIL_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="format must be png or jpg")
+    if mode not in {"classic", "ai"}:
+        raise HTTPException(status_code=400, detail="mode must be classic or ai")
+    if mode == "classic" and variant_count > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="variant_count > 1 is supported only in ai mode",
+        )
+    variants: list[ThumbnailVariantResponse] = []
+    first_key: str | None = None
+    first_source_used = ""
+    try:
+        for variant_id in range(1, variant_count + 1):
+            if mode == "ai":
+                base_image, ai_provider = _generate_ai_thumbnail_base(
+                    payload,
+                    variant_id=variant_id,
+                    variant_count=variant_count,
+                )
+                source_used = f"ai:{ai_provider}"
+            else:
+                base_image, source_used = _load_thumbnail_base(
+                    payload.project_id,
+                    payload.source,
+                    payload.scene_id,
+                    payload.timestamp_seconds,
+                )
+            sized = _cover_resize(base_image, payload.width, payload.height)
+            with_text = _apply_text_overlay(sized, payload.title, payload.subtitle)
+
+            buffer = io.BytesIO()
+            if output_format in {"jpg", "jpeg"}:
+                with_text.save(buffer, format="JPEG", quality=92, optimize=True)
+                ext = "jpg"
+                content_type = "image/jpeg"
+            else:
+                with_text.save(buffer, format="PNG", optimize=True)
+                ext = "png"
+                content_type = "image/png"
+
+            key_suffix = "thumbnail_latest" if variant_count == 1 else f"thumbnail_v{variant_id}"
+            key = project_key(payload.project_id, f"thumbnails/{key_suffix}.{ext}")
+            storage_client.write_bytes(key, buffer.getvalue(), content_type=content_type)
+            if first_key is None:
+                first_key = key
+                first_source_used = source_used
+            variants.append(
+                ThumbnailVariantResponse(
+                    variant_id=variant_id,
+                    thumbnail_key=key,
+                    thumbnail_path=storage_client.public_url(key),
+                    source_used=source_used,
+                    width=payload.width,
+                    height=payload.height,
+                )
+            )
+
+        if first_key and variant_count > 1:
+            latest_key = project_key(payload.project_id, f"thumbnails/thumbnail_latest.{ext}")
+            storage_client.write_bytes(
+                latest_key,
+                storage_client.read_bytes(first_key),
+                content_type=content_type,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Thumbnail generation failed: {exc}") from exc
+
+    consume_credits(
+        session=session,
+        user=current_user,
+        amount=(
+            CREDITS_COST_THUMBNAIL_AI_GENERATE
+            if mode == "ai"
+            else CREDITS_COST_THUMBNAIL_GENERATE
+        )
+        * variant_count,
+        reason="thumbnail generation",
+        action="thumbnail.generate.ai" if mode == "ai" else "thumbnail.generate",
+        reference_id=payload.project_id,
+        provider=(first_source_used.split(":", 1)[-1] if mode == "ai" else "local"),
+        model=first_source_used if mode == "ai" else payload.source,
+        metadata={
+            "mode": mode,
+            "source": first_source_used,
+            "format": ext,
+            "width": payload.width,
+            "height": payload.height,
+            "style": payload.style,
+            "variant_count": variant_count,
+        },
+    )
+    logger.info(
+        "Generated %s thumbnail(s) for project %s using %s source (variants=%s)",
+        mode,
+        payload.project_id,
+        first_source_used,
+        variant_count,
+    )
+    if not variants:
+        raise HTTPException(status_code=502, detail="No thumbnail variants were generated.")
+    return ThumbnailGenerateResponse(
+        thumbnail_path=variants[0].thumbnail_path,
+        thumbnail_key=variants[0].thumbnail_key,
+        mode_used=mode,
+        source_used=variants[0].source_used,
+        width=payload.width,
+        height=payload.height,
+        variants=variants,
+    )
+
+
+@router.post("/thumbnail/set-primary", response_model=ThumbnailGenerateResponse)
+def set_primary_thumbnail_endpoint(
+    payload: ThumbnailSetPrimaryRequest,
+) -> ThumbnailGenerateResponse:
+    key = payload.thumbnail_key.strip().lstrip("/")
+    allowed_prefix = f"{payload.project_id}/thumbnails/"
+    if not key.startswith(allowed_prefix):
+        raise HTTPException(status_code=400, detail="thumbnail_key must belong to project thumbnails")
+    if not storage_client.exists(key):
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+    ext = Path(key).suffix.lower().lstrip(".")
+    if ext not in _THUMBNAIL_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported thumbnail extension")
+
+    content_type = "image/png" if ext == "png" else "image/jpeg"
+    latest_key = project_key(payload.project_id, f"thumbnails/thumbnail_latest.{ext}")
+    storage_client.write_bytes(
+        latest_key,
+        storage_client.read_bytes(key),
+        content_type=content_type,
+    )
+
+    return ThumbnailGenerateResponse(
+        thumbnail_path=storage_client.public_url(latest_key),
+        thumbnail_key=latest_key,
+        mode_used="set-primary",
+        source_used=key,
+        width=1280,
+        height=720,
+        variants=[
+            ThumbnailVariantResponse(
+                variant_id=1,
+                thumbnail_key=latest_key,
+                thumbnail_path=storage_client.public_url(latest_key),
+                source_used=key,
+                width=1280,
+                height=720,
+            )
+        ],
+    )
 
 
 @router.post("/import", response_model=VideoImportResponse)

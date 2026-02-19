@@ -113,12 +113,12 @@ def generate_image_for_scene(
     style: str,
     provider: str | None = None,
 ) -> dict:
-    selected_provider = (provider or resolve_image_provider()).strip().lower()
-    if selected_provider == "openai":
-        image_bytes = _generate_openai_image(prompt, style)
-    else:
-        image_bytes = _generate_local_placeholder(prompt, scene_id)
-
+    image_bytes, selected_provider = generate_image_bytes(
+        prompt=prompt,
+        style=style,
+        scene_id=scene_id,
+        provider=provider,
+    )
     key = project_key(project_id, f"images/scene_{scene_id}.png")
     storage_client.write_bytes(key, image_bytes, content_type="image/png")
     logger.info(
@@ -128,6 +128,21 @@ def generate_image_for_scene(
         selected_provider,
     )
     return {"image_path": storage_client.public_url(key)}
+
+
+def generate_image_bytes(
+    prompt: str,
+    style: str,
+    scene_id: int = 1,
+    provider: str | None = None,
+) -> tuple[bytes, str]:
+    selected_provider = (provider or resolve_image_provider()).strip().lower()
+    if selected_provider == "openai":
+        image_bytes = _generate_openai_image(prompt, style)
+    else:
+        image_bytes = _generate_local_placeholder(prompt, scene_id)
+    return image_bytes, selected_provider
+
 
 
 def generate_image(project_id: str, prompt: str, style: str) -> dict:

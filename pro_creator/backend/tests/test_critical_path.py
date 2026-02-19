@@ -75,6 +75,51 @@ def test_auth_project_pipeline_and_export_flow() -> None:
     assert image_res.status_code == 200
     assert project_id in image_res.json()["image_path"]
 
+    thumbnail_res = client.post(
+        "/video/thumbnail/generate",
+        json={
+            "project_id": project_id,
+            "title": "Pipeline Thumbnail",
+            "subtitle": "Critical path validation",
+            "source": "image",
+            "scene_id": 1,
+            "format": "png",
+        },
+        headers=headers,
+    )
+    assert thumbnail_res.status_code == 200
+    assert project_id in thumbnail_res.json()["thumbnail_path"]
+    assert thumbnail_res.json()["mode_used"] == "classic"
+    assert thumbnail_res.json()["source_used"] == "image"
+
+    thumbnail_ai_res = client.post(
+        "/video/thumbnail/generate",
+        json={
+            "project_id": project_id,
+            "mode": "ai",
+            "title": "AI Thumbnail",
+            "subtitle": "Critical path validation",
+            "ai_prompt": "Bold social media composition with strong contrast",
+            "style": "cinematic",
+            "variant_count": 3,
+            "format": "png",
+        },
+        headers=headers,
+    )
+    assert thumbnail_ai_res.status_code == 200
+    assert project_id in thumbnail_ai_res.json()["thumbnail_path"]
+    assert thumbnail_ai_res.json()["mode_used"] == "ai"
+    assert len(thumbnail_ai_res.json().get("variants", [])) == 3
+
+    first_variant_key = thumbnail_ai_res.json()["variants"][0]["thumbnail_key"]
+    set_primary_res = client.post(
+        "/video/thumbnail/set-primary",
+        json={"project_id": project_id, "thumbnail_key": first_variant_key},
+        headers=headers,
+    )
+    assert set_primary_res.status_code == 200
+    assert project_id in set_primary_res.json()["thumbnail_path"]
+
     voice_res = client.post(
         "/voice/generate",
         json={
