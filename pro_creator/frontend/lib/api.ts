@@ -119,6 +119,18 @@ const fetchWithAuth = (
 
 const fetch: FetchType = fetchWithAuth as FetchType;
 
+const throwApiError = async (
+  response: Response,
+  fallback: string
+): Promise<never> => {
+  const detail = await response.json().catch(() => null);
+  const message =
+    detail?.detail ??
+    (Array.isArray(detail) ? detail?.[0]?.msg : null) ??
+    fallback;
+  throw new Error(message);
+};
+
 export async function fetchProjects(): Promise<Project[]> {
   const response = await fetch(`${API_BASE}/project/`, { cache: "no-store" });
   if (!response.ok) {
@@ -264,7 +276,7 @@ export async function enqueueOrchestrationJob(payload: {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to enqueue job");
+    await throwApiError(response, "Failed to enqueue job");
   }
   return response.json();
 }
@@ -287,7 +299,7 @@ export async function enqueueOrchestrationBatch(payload: {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to enqueue batch");
+    await throwApiError(response, "Failed to enqueue batch");
   }
   return response.json();
 }
@@ -315,7 +327,7 @@ export async function processOrchestrationQueue(payload?: {
     method: "POST",
   });
   if (!response.ok) {
-    throw new Error("Failed to process queue");
+    await throwApiError(response, "Failed to process queue");
   }
   return response.json();
 }
@@ -325,7 +337,7 @@ export async function retryOrchestrationJob(jobId: number): Promise<Orchestratio
     method: "POST",
   });
   if (!response.ok) {
-    throw new Error("Failed to retry job");
+    await throwApiError(response, "Failed to retry job");
   }
   return response.json();
 }
@@ -343,7 +355,7 @@ export async function startOrchestrationRunner(payload?: {
     }
   );
   if (!response.ok) {
-    throw new Error("Failed to start runner");
+    await throwApiError(response, "Failed to start runner");
   }
   return response.json();
 }
@@ -356,7 +368,7 @@ export async function stopOrchestrationRunner(): Promise<{
     method: "POST",
   });
   if (!response.ok) {
-    throw new Error("Failed to stop runner");
+    await throwApiError(response, "Failed to stop runner");
   }
   return response.json();
 }
@@ -384,7 +396,7 @@ export async function createOrchestrationSchedule(payload: {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to create schedule");
+    await throwApiError(response, "Failed to create schedule");
   }
   return response.json();
 }
@@ -408,7 +420,7 @@ export async function runOrchestrationSchedules(): Promise<{
     method: "POST",
   });
   if (!response.ok) {
-    throw new Error("Failed to run schedules");
+    await throwApiError(response, "Failed to run schedules");
   }
   return response.json();
 }
@@ -549,7 +561,7 @@ export async function generateImage(payload: {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to generate image");
+    await throwApiError(response, "Failed to generate image");
   }
   return response.json();
 }
@@ -563,7 +575,7 @@ export async function renderVideo(payload: {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to render video");
+    await throwApiError(response, "Failed to render video");
   }
   return response.json();
 }
@@ -621,7 +633,7 @@ export async function importVideoUrl(payload: {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to import video");
+    await throwApiError(response, "Failed to import video");
   }
   return response.json();
 }
@@ -637,7 +649,7 @@ export async function triggerFeature(payload: {
     method: "POST",
   });
   if (!response.ok) {
-    throw new Error("Failed to run feature");
+    await throwApiError(response, "Failed to run feature");
   }
   return response.json();
 }
@@ -676,7 +688,7 @@ export async function exportPreset(payload: {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to export preset");
+    await throwApiError(response, "Failed to export preset");
   }
   return response.json();
 }
@@ -691,7 +703,7 @@ export async function exportBatch(payload: {
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error("Failed to export batch");
+    await throwApiError(response, "Failed to export batch");
   }
   return response.json();
 }

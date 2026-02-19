@@ -227,11 +227,14 @@ def _dispatch_job(job: OrchestrationJob) -> str:
             payload.get("export_preset") or "youtube",
         )
     elif job.kind == "full":
-        result = celery_tasks.generate_script_task.delay(
+        result = celery_tasks.full_pipeline_task.delay(
             job.project_id,
             payload.get("topic") or "",
             payload.get("duration_minutes") or 3,
             payload.get("tone") or "neutral",
+            payload.get("export_preset") or "youtube",
+            payload.get("voice_text"),
+            payload.get("image_prompt"),
         )
     else:
         raise ValueError(f"Unknown job kind: {job.kind}")

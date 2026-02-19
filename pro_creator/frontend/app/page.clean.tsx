@@ -136,6 +136,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
+  const [autoCreateLoading, setAutoCreateLoading] = useState(false);
+  const [autoCreateStatus, setAutoCreateStatus] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
   const [pipelineLoading, setPipelineLoading] = useState(false);
@@ -642,6 +644,49 @@ export default function HomePage() {
       setError(err instanceof Error ? err.message : "Failed to create project");
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  const handleAutoCreate = async () => {
+    if (!title.trim() || !topic.trim()) {
+      setError("Provide title and topic to auto-create a project.");
+      return;
+    }
+    setError(null);
+    setAutoCreateStatus(null);
+    setAutoCreateLoading(true);
+    try {
+      const project = await createProject({ title, topic });
+      setProjects((prev) => [project, ...prev]);
+      setSelectedProjectId(project.project_id);
+      setTitle("");
+      setTopic("");
+
+      const queued = await enqueueOrchestrationJob({
+        project_id: project.project_id,
+        kind: "full",
+        topic: topic.trim(),
+        duration_minutes: queueDuration,
+        tone: queueTone,
+        export_preset: queuePreset || "youtube",
+      });
+      setQueueItems((prev) => [queued, ...prev]);
+
+      try {
+        // Triggers immediate execution for non-celery mode and dispatch for celery mode.
+        await processOrchestrationQueue({ limit: 1 });
+      } catch {
+        // Queue already has the full job; runner/worker can continue processing.
+      }
+      setAutoCreateStatus(
+        "Auto-create started. Full pipeline is running to review/export readiness."
+      );
+      setQueueStatus("Auto-create full pipeline queued.");
+      refreshProjects();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Auto-create failed");
+    } finally {
+      setAutoCreateLoading(false);
     }
   };
 
@@ -3037,7 +3082,22 @@ export default function HomePage() {
                     >
                       {createLoading ? "Creating..." : "Create project"}
                     </button>
+                    <button
+                      className="w-full rounded-xl border border-aurora/40 px-4 py-3 text-sm font-semibold text-aurora transition hover:border-aurora"
+                      type="button"
+                      onClick={handleAutoCreate}
+                      disabled={autoCreateLoading || createLoading}
+                    >
+                      {autoCreateLoading
+                        ? "Starting full auto-create..."
+                        : "Auto-create full project"}
+                    </button>
                   </form>
+                  {autoCreateStatus ? (
+                    <p className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                      {autoCreateStatus}
+                    </p>
+                  ) : null}
                   {error ? (
                     <p className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
                       {error}

@@ -2,6 +2,9 @@
   "name": "pro-creator-frontend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20 <22"
+  },
   "scripts": {
     "dev": "NODE_ENV=development env -u __NEXT_PRIVATE_STANDALONE_CONFIG -u __NEXT_PRIVATE_ORIGIN next dev --webpack -H 127.0.0.1 -p 3000",
     "build": "next build --webpack",
