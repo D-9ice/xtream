@@ -38,6 +38,25 @@ jobs:
           PC_SMOKE_MODE: full
         run: ./scripts/integration_smoke.sh
 
+  stress_harness:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stress Harness (Tenant + Queue + Billing)
+        env:
+          PC_STRESS_REQUESTS_PER_TENANT: "10"
+          PC_STRESS_CONCURRENCY: "4"
+          PC_EXPECT_RATE_LIMIT: "true"
+        run: ./scripts/stress_harness.sh
+      - name: Upload stress report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-report
+          path: artifacts/stress-report.json
+          if-no-files-found: warn
+
   backend:
     runs-on: ubuntu-latest
     defaults:

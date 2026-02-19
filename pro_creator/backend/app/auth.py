@@ -20,6 +20,7 @@ from app.config import (
 from app.database import get_session
 from app.models import User
 from app.services.app_settings import get_or_create_settings
+from app.tenant import current_tenant_id
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -34,9 +35,9 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password[:72])
 
 
-def create_access_token(subject: str, role: str) -> str:
+def create_access_token(subject: str, role: str, tenant_id: str | None = None) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode = {"sub": subject, "role": role, "exp": expire}
+    to_encode = {"sub": subject, "role": role, "tenant_id": tenant_id or current_tenant_id(), "exp": expire}
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -90,8 +91,11 @@ def get_current_user(
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         email = payload.get("sub")
+        token_tenant = str(payload.get("tenant_id") or "").strip().lower()
         if email is None:
             raise credentials_exception
+        if token_tenant and token_tenant != current_tenant_id():
+            raise HTTPException(status_code=403, detail="Token tenant does not match request tenant")
     except JWTError as exc:
         raise credentials_exception from exc
 

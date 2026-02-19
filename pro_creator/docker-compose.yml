@@ -38,6 +38,7 @@ services:
       - backend_data:/data
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      STRICT_PROVIDER_VALIDATION: "${STRICT_PROVIDER_VALIDATION:-false}"
       DATABASE_URL: ${DATABASE_URL:-sqlite:////data/pro_creator.db}
       STORAGE_BACKEND: s3
       S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://127.0.0.1:9000/${S3_BUCKET:-pro-creator}}
@@ -53,6 +54,8 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       ENABLE_CELERY: "true"
       AUTH_REQUIRED: "${AUTH_REQUIRED:-false}"
+      DEFAULT_TENANT_ID: "${DEFAULT_TENANT_ID:-default}"
+      TENANT_HEADER_NAME: "${TENANT_HEADER_NAME:-X-Tenant-ID}"
       JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@procreator.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-LocalAdminPass123!}
@@ -93,6 +96,8 @@ services:
       RATE_LIMIT_AUTH_REQUESTS: "${RATE_LIMIT_AUTH_REQUESTS:-15}"
       RATE_LIMIT_HEAVY_REQUESTS: "${RATE_LIMIT_HEAVY_REQUESTS:-30}"
       RATE_LIMIT_WINDOW_SECONDS: "${RATE_LIMIT_WINDOW_SECONDS:-60}"
+      PROVIDER_RETRY_ATTEMPTS: "${PROVIDER_RETRY_ATTEMPTS:-2}"
+      PROVIDER_RETRY_BACKOFF_SECONDS: "${PROVIDER_RETRY_BACKOFF_SECONDS:-0.25}"
       UVICORN_WORKERS: "${UVICORN_WORKERS:-1}"
     ports:
       - "127.0.0.1:8000:8000"
@@ -123,6 +128,10 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       ENABLE_CELERY: "true"
       AUTH_REQUIRED: "${AUTH_REQUIRED:-false}"
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      STRICT_PROVIDER_VALIDATION: "${STRICT_PROVIDER_VALIDATION:-false}"
+      DEFAULT_TENANT_ID: "${DEFAULT_TENANT_ID:-default}"
+      TENANT_HEADER_NAME: "${TENANT_HEADER_NAME:-X-Tenant-ID}"
       JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@procreator.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-LocalAdminPass123!}
@@ -158,6 +167,8 @@ services:
       AUTO_LIPSYNC: "${AUTO_LIPSYNC:-true}"
       RHUBARB_PATH: "${RHUBARB_PATH:-}"
       RHUBARB_TIMEOUT: "${RHUBARB_TIMEOUT:-30}"
+      PROVIDER_RETRY_ATTEMPTS: "${PROVIDER_RETRY_ATTEMPTS:-2}"
+      PROVIDER_RETRY_BACKOFF_SECONDS: "${PROVIDER_RETRY_BACKOFF_SECONDS:-0.25}"
     depends_on:
       - redis
       - backend

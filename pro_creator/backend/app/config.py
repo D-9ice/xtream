@@ -15,6 +15,7 @@ AWS_SECRETS_REGION = os.getenv("AWS_SECRETS_REGION", os.getenv("AWS_REGION", "us
 AWS_SECRET_PREFIX = os.getenv("AWS_SECRET_PREFIX", "").strip("/")
 
 DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "default").strip() or "default"
+TENANT_HEADER_NAME = os.getenv("TENANT_HEADER_NAME", "X-Tenant-ID").strip() or "X-Tenant-ID"
 
 
 @lru_cache(maxsize=128)
@@ -168,3 +169,46 @@ else:
 RATE_LIMIT_AUTH_REQUESTS = int(os.getenv("RATE_LIMIT_AUTH_REQUESTS", "15"))
 RATE_LIMIT_HEAVY_REQUESTS = int(os.getenv("RATE_LIMIT_HEAVY_REQUESTS", "30"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+PROVIDER_RETRY_ATTEMPTS = max(1, int(os.getenv("PROVIDER_RETRY_ATTEMPTS", "2")))
+PROVIDER_RETRY_BACKOFF_SECONDS = float(os.getenv("PROVIDER_RETRY_BACKOFF_SECONDS", "0.25"))
+
+# Validation behavior
+STRICT_PROVIDER_VALIDATION = os.getenv("STRICT_PROVIDER_VALIDATION", "false").lower() == "true"
+
+
+def validate_external_service_config() -> None:
+    """
+    Fail fast for known-invalid provider/billing combinations.
+    Strict by default in production, optional in non-production via STRICT_PROVIDER_VALIDATION=true.
+    """
+    if not (ENVIRONMENT == "production" or STRICT_PROVIDER_VALIDATION):
+        return
+
+    errors: list[str] = []
+
+    if SCRIPT_PROVIDER == "openai" and not OPENAI_API_KEY.strip():
+        errors.append("SCRIPT_PROVIDER=openai requires OPENAI_API_KEY.")
+    if IMAGE_PROVIDER == "openai" and not OPENAI_API_KEY.strip():
+        errors.append("IMAGE_PROVIDER=openai requires OPENAI_API_KEY.")
+    if TTS_PROVIDER == "elevenlabs" and not ELEVENLABS_API_KEY.strip():
+        errors.append("TTS_PROVIDER=elevenlabs requires ELEVENLABS_API_KEY.")
+
+    any_stripe_price = any(
+        [
+            STRIPE_PRICE_ID_MODERATE.strip(),
+            STRIPE_PRICE_ID_PRO.strip(),
+            STRIPE_PRICE_ID_STUDIO.strip(),
+        ]
+    )
+    if any_stripe_price and not STRIPE_SECRET_KEY.strip():
+        errors.append(
+            "Stripe price IDs are configured but STRIPE_SECRET_KEY is missing."
+        )
+    if any_stripe_price and not STRIPE_WEBHOOK_SECRET.strip():
+        errors.append(
+            "Stripe price IDs are configured but STRIPE_WEBHOOK_SECRET is missing."
+        )
+
+    if errors:
+        detail = "\n- ".join(["Invalid external service configuration:", *errors])
+        raise RuntimeError(detail)

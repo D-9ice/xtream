@@ -1,6 +1,7 @@
 import base64
 import io
 import math
+import time
 import wave
 
 import requests
@@ -9,6 +10,8 @@ from app.config import (
     ELEVENLABS_API_KEY,
     ELEVENLABS_MODEL,
     ELEVENLABS_VOICE_ID,
+    PROVIDER_RETRY_ATTEMPTS,
+    PROVIDER_RETRY_BACKOFF_SECONDS,
     TTS_PROVIDER,
     XTTS_ENDPOINT,
 )
@@ -72,11 +75,18 @@ def _generate_with_elevenlabs(text: str, voice_id: str | None) -> bytes:
             "similarity_boost": 0.75,
         },
     }
-    response = requests.post(url, json=payload, headers=headers, timeout=30)
-    if not response.ok:
-        logger.warning("ElevenLabs request failed: %s", response.text)
-        return _write_tone(max(2.0, len(text.split()) / 2.0))
-    return response.content
+    attempts = max(1, PROVIDER_RETRY_ATTEMPTS)
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            if response.ok:
+                return response.content
+            logger.warning("ElevenLabs request failed (attempt %s/%s): %s", attempt, attempts, response.text)
+        except Exception as exc:
+            logger.warning("ElevenLabs request error (attempt %s/%s): %s", attempt, attempts, exc)
+        if attempt < attempts:
+            time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
+    return _write_tone(max(2.0, len(text.split()) / 2.0))
 
 
 def _generate_with_xtts(text: str, speaker_wav_b64: str | None) -> bytes:
@@ -88,20 +98,24 @@ def _generate_with_xtts(text: str, speaker_wav_b64: str | None) -> bytes:
         "speaker_wav": speaker_wav_b64,
         "language": "en",
     }
-    try:
-        response = requests.post(XTTS_ENDPOINT, json=payload, timeout=60)
-        if not response.ok:
-            logger.warning("XTTS request failed: %s", response.text)
-            return _write_tone(max(2.0, len(text.split()) / 2.0))
-        if response.headers.get("content-type", "").startswith("application/json"):
-            data = response.json()
-            audio_b64 = data.get("audio") or data.get("wav")
-            if audio_b64:
-                return base64.b64decode(audio_b64)
-        return response.content
-    except Exception as exc:
-        logger.warning("XTTS request error, using tone fallback: %s", exc)
-        return _write_tone(max(2.0, len(text.split()) / 2.0))
+    attempts = max(1, PROVIDER_RETRY_ATTEMPTS)
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.post(XTTS_ENDPOINT, json=payload, timeout=60)
+            if not response.ok:
+                logger.warning("XTTS request failed (attempt %s/%s): %s", attempt, attempts, response.text)
+            else:
+                if response.headers.get("content-type", "").startswith("application/json"):
+                    data = response.json()
+                    audio_b64 = data.get("audio") or data.get("wav")
+                    if audio_b64:
+                        return base64.b64decode(audio_b64)
+                return response.content
+        except Exception as exc:
+            logger.warning("XTTS request error (attempt %s/%s): %s", attempt, attempts, exc)
+        if attempt < attempts:
+            time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
+    return _write_tone(max(2.0, len(text.split()) / 2.0))
 
 
 def clone_voice_profile(profile_name: str, sample_bytes: bytes, provider: str | None) -> dict:

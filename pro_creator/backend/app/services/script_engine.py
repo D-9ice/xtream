@@ -3,10 +3,17 @@ import math
 import re
 import json
 import os
+import time
 
 import requests
 
-from app.config import OPENAI_API_KEY, OPENAI_BASE_URL, SCRIPT_PROVIDER
+from app.config import (
+    OPENAI_API_KEY,
+    OPENAI_BASE_URL,
+    PROVIDER_RETRY_ATTEMPTS,
+    PROVIDER_RETRY_BACKOFF_SECONDS,
+    SCRIPT_PROVIDER,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -480,7 +487,7 @@ def _generate_script_llm(
         "- No repeated boilerplate sentences across scenes.\n"
     )
 
-    try:
+    def _run_once() -> Dict | None:
         response = requests.post(
             f"{base_url}/chat/completions",
             headers={
@@ -527,11 +534,21 @@ def _generate_script_llm(
             return None
         if _is_low_quality_script(full_script, normalized_scenes):
             return None
-        logger.info("Generated script via LLM for title: %s", title)
         return {"full_script": full_script.strip(), "scenes": normalized_scenes}
-    except Exception as exc:
-        logger.warning("LLM script generation failed, falling back to template: %s", exc)
-        return None
+
+    attempts = max(1, PROVIDER_RETRY_ATTEMPTS)
+    for attempt in range(1, attempts + 1):
+        try:
+            result = _run_once()
+            if result:
+                logger.info("Generated script via LLM for title: %s", title)
+            return result
+        except Exception as exc:
+            if attempt == attempts:
+                logger.warning("LLM script generation failed, falling back to template: %s", exc)
+                return None
+            time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
+    return None
 
 
 def generate_script(

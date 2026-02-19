@@ -50,6 +50,7 @@ from app.services.credits import (
     reserve_credits,
 )
 from app.tenant import current_tenant_id
+from app.tenant import reset_current_tenant_id, set_current_tenant_id
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 ADMIN_ACCESS_TOKEN_TTL_SECONDS = 15 * 60
@@ -226,6 +227,7 @@ def create_checkout_session(
     if not plan.stripe_price_id:
         raise HTTPException(status_code=400, detail="Selected plan has no Stripe price configured")
 
+    tenant_id = current_tenant_id()
     stripe.api_key = STRIPE_SECRET_KEY
     try:
         checkout_session = stripe.checkout.Session.create(
@@ -239,6 +241,7 @@ def create_checkout_session(
                 "credits": str(plan.credits),
                 "user_id": str(current_user.id),
                 "user_email": current_user.email,
+                "tenant_id": tenant_id,
             },
         )
     except Exception as exc:
@@ -296,41 +299,50 @@ async def stripe_webhook(
     if not stripe_session_id or payment_status != "paid":
         return {"received": True}
 
+    metadata = checkout_session.get("metadata") or {}
+    tenant_id = str(metadata.get("tenant_id", "")).strip().lower() or current_tenant_id()
+    tenant_token = set_current_tenant_id(tenant_id)
     already_applied = session.exec(
         select(CreditLedgerEntry).where(
-            CreditLedgerEntry.tenant_id == current_tenant_id(),
+            CreditLedgerEntry.tenant_id == tenant_id,
             CreditLedgerEntry.action == "billing.purchase.stripe",
             CreditLedgerEntry.reference_id == stripe_session_id,
         )
     ).first()
     if already_applied:
+        reset_current_tenant_id(tenant_token)
         return {"received": True, "idempotent": True}
 
-    metadata = checkout_session.get("metadata") or {}
     plan_id = str(metadata.get("plan_id", "")).strip().lower()
     user_email = str(metadata.get("user_email", "")).strip().lower()
     plan = next((item for item in PLAN_CATALOG if item.id == plan_id), None)
     if not plan or not user_email:
+        reset_current_tenant_id(tenant_token)
         return {"received": True, "ignored": "missing metadata"}
 
     user = session.exec(select(User).where(User.email == user_email)).first()
     if not user:
+        reset_current_tenant_id(tenant_token)
         return {"received": True, "ignored": "user not found"}
 
-    grant_credits(
-        session=session,
-        user=user,
-        amount=plan.credits,
-        reason=f"stripe purchase {plan.id}",
-        action="billing.purchase.stripe",
-        reference_id=stripe_session_id,
-        metadata={
-            "stripe_session_id": stripe_session_id,
-            "stripe_customer": checkout_session.get("customer"),
-            "stripe_payment_intent": checkout_session.get("payment_intent"),
-            "plan_id": plan.id,
-        },
-    )
+    try:
+        grant_credits(
+            session=session,
+            user=user,
+            amount=plan.credits,
+            reason=f"stripe purchase {plan.id}",
+            action="billing.purchase.stripe",
+            reference_id=stripe_session_id,
+            metadata={
+                "stripe_session_id": stripe_session_id,
+                "stripe_customer": checkout_session.get("customer"),
+                "stripe_payment_intent": checkout_session.get("payment_intent"),
+                "plan_id": plan.id,
+                "tenant_id": tenant_id,
+            },
+        )
+    finally:
+        reset_current_tenant_id(tenant_token)
     return {"received": True, "granted": True}
 
 

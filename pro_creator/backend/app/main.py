@@ -24,10 +24,13 @@ from app.config import (
     RATE_LIMIT_HEAVY_REQUESTS,
     RATE_LIMIT_WINDOW_SECONDS,
     STORAGE_BACKEND,
+    TENANT_HEADER_NAME,
+    validate_external_service_config,
 )
 from app.database import init_db
 from app.seed import seed_admin_user
 from app.routers import auth, billing, editor, image, orchestration, project, script, video, voice
+from app.tenant import current_tenant_id, reset_current_tenant_id, set_current_tenant_id
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -38,6 +41,7 @@ async def lifespan(_: FastAPI):
             raise RuntimeError("ADMIN_PASSWORD must be set for production")
         if "change-me-db-password" in DATABASE_URL:
             raise RuntimeError("DATABASE_URL must use a non-default DB password")
+    validate_external_service_config()
     init_db()
     seed_admin_user()
     yield
@@ -81,40 +85,46 @@ def _rate_limit_hit(key: str, limit: int) -> bool:
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    if not RATE_LIMIT_ENABLED:
-        return await call_next(request)
+    tenant_token = set_current_tenant_id(request.headers.get(TENANT_HEADER_NAME))
+    try:
+        if not RATE_LIMIT_ENABLED:
+            return await call_next(request)
 
-    path = request.url.path
-    method = request.method.upper()
-    ip = request.client.host if request.client else "unknown"
+        path = request.url.path
+        method = request.method.upper()
+        ip = request.client.host if request.client else "unknown"
 
-    auth_paths = ("/auth/login", "/auth/register", "/auth/change-password")
-    heavy_prefixes = (
-        "/script/",
-        "/voice/",
-        "/image/",
-        "/video/",
-        "/orchestration/",
-    )
+        auth_paths = ("/auth/login", "/auth/register", "/auth/change-password")
+        heavy_prefixes = (
+            "/script/",
+            "/voice/",
+            "/image/",
+            "/video/",
+            "/orchestration/",
+        )
 
-    if method == "POST" and path in auth_paths:
-        if _rate_limit_hit(f"auth:{ip}:{path}", RATE_LIMIT_AUTH_REQUESTS):
-            response = JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
-            http_requests_total.labels(method=method, path=path, status="429").inc()
-            return response
-    elif method == "POST" and path.startswith(heavy_prefixes):
-        if _rate_limit_hit(f"heavy:{ip}", RATE_LIMIT_HEAVY_REQUESTS):
-            response = JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
-            http_requests_total.labels(method=method, path=path, status="429").inc()
-            return response
+        tenant_id = current_tenant_id()
 
-    response = await call_next(request)
-    http_requests_total.labels(
-        method=method,
-        path=path,
-        status=str(response.status_code),
-    ).inc()
-    return response
+        if method == "POST" and path in auth_paths:
+            if _rate_limit_hit(f"auth:{tenant_id}:{ip}:{path}", RATE_LIMIT_AUTH_REQUESTS):
+                response = JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
+                http_requests_total.labels(method=method, path=path, status="429").inc()
+                return response
+        elif method == "POST" and path.startswith(heavy_prefixes):
+            if _rate_limit_hit(f"heavy:{tenant_id}:{ip}", RATE_LIMIT_HEAVY_REQUESTS):
+                response = JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
+                http_requests_total.labels(method=method, path=path, status="429").inc()
+                return response
+
+        response = await call_next(request)
+        http_requests_total.labels(
+            method=method,
+            path=path,
+            status=str(response.status_code),
+        ).inc()
+        return response
+    finally:
+        reset_current_tenant_id(tenant_token)
 
 
 @app.get("/")

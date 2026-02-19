@@ -1,6 +1,7 @@
 import base64
 import io
 from typing import Any
+import time
 
 import requests
 
@@ -10,6 +11,8 @@ from app.config import (
     OPENAI_IMAGE_MODEL,
     OPENAI_IMAGE_QUALITY,
     OPENAI_IMAGE_SIZE,
+    PROVIDER_RETRY_ATTEMPTS,
+    PROVIDER_RETRY_BACKOFF_SECONDS,
 )
 from app.services.provider_routing import resolve_image_provider
 from app.storage import project_key, storage_client
@@ -74,19 +77,28 @@ def _generate_openai_image(prompt: str, style: str) -> bytes:
     ]
 
     last_error: str | None = None
+    attempts_count = max(1, PROVIDER_RETRY_ATTEMPTS)
     for payload in attempts:
-        response = requests.post(request_url, headers=headers, json=payload, timeout=90)
-        if response.status_code >= 400:
-            # Some models reject unsupported keys like quality/response_format; try fallback payloads.
-            if response.status_code in {400, 404, 422}:
-                last_error = response.text
-                continue
-            response.raise_for_status()
-        body = response.json()
-        image_bytes = _extract_image_bytes(body)
-        if image_bytes:
-            return image_bytes
-        last_error = f"No image payload returned: {body}"
+        for attempt in range(1, attempts_count + 1):
+            try:
+                response = requests.post(request_url, headers=headers, json=payload, timeout=90)
+                if response.status_code >= 400:
+                    # Some models reject unsupported keys like quality/response_format; try fallback payloads.
+                    if response.status_code in {400, 404, 422}:
+                        last_error = response.text
+                        break
+                    response.raise_for_status()
+                body = response.json()
+                image_bytes = _extract_image_bytes(body)
+                if image_bytes:
+                    return image_bytes
+                last_error = f"No image payload returned: {body}"
+                break
+            except Exception as exc:
+                last_error = str(exc)
+                if attempt >= attempts_count:
+                    break
+                time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
 
     raise RuntimeError(f"OpenAI image generation failed: {last_error or 'unknown error'}")
 

@@ -112,6 +112,21 @@ Image generation supports OpenAI Images with quality-first defaults. Set:
 
 If `IMAGE_PROVIDER=auto`, the backend uses OpenAI when a key is configured, otherwise local placeholder generation.
 
+### External-provider fail-fast validation
+
+In production, invalid provider/billing env combinations now fail at startup with explicit errors.
+You can enable the same behavior locally:
+
+```zsh
+STRICT_PROVIDER_VALIDATION=true
+```
+
+Examples:
+- `SCRIPT_PROVIDER=openai` requires `OPENAI_API_KEY`
+- `IMAGE_PROVIDER=openai` requires `OPENAI_API_KEY`
+- `TTS_PROVIDER=elevenlabs` requires `ELEVENLABS_API_KEY`
+- Stripe price IDs require both `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`
+
 ### Lip sync (Rhubarb)
 
 Lip sync artifacts are generated automatically after voice generation. For higher
@@ -152,6 +167,17 @@ npm run build
 ```
 
 Build artifacts are saved to `desktop/dist/`.
+
+## Stress harness
+
+Tenant-aware stress testing (API + queue + billing + rate limits):
+
+```zsh
+cd pro_creator
+./scripts/stress_harness.sh
+```
+
+Report output is written to `artifacts/stress-report.json`.
 
 ## Next steps
 

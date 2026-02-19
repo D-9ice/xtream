@@ -65,6 +65,23 @@ def _fallback_schema_sync(engine: Engine) -> None:
                 # Best effort only; schema drift should be fixed by Alembic in real deployments.
                 pass
 
+    def _drop_index_if_exists(index_name: str) -> None:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text(f"DROP INDEX IF EXISTS {index_name}"))
+                conn.commit()
+            except Exception:
+                pass
+
+    def _create_unique_index(table: str, index_name: str, cols: list[str]) -> None:
+        joined = ", ".join(cols)
+        with engine.connect() as conn:
+            try:
+                conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table} ({joined})"))
+                conn.commit()
+            except Exception:
+                pass
+
     # Legacy fields previously maintained via ad-hoc alters.
     _ensure_column("orchestrationjob", "task_id", "ALTER TABLE orchestrationjob ADD COLUMN task_id TEXT")
     _ensure_column(
@@ -89,3 +106,12 @@ def _fallback_schema_sync(engine: Engine) -> None:
             "tenant_id",
             f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'",
         )
+
+    # Newer tenant-aware billing model: one subscription per (tenant_id, user_id).
+    _drop_index_if_exists("ix_subscriptionaccount_user_id")
+    _drop_index_if_exists("ix_subscriptionaccount_tenant_user_id")
+    _create_unique_index(
+        "subscriptionaccount",
+        "ix_subscriptionaccount_tenant_user_id",
+        ["tenant_id", "user_id"],
+    )

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -83,9 +84,13 @@ class User(SQLModel, table=True):
 
 
 class SubscriptionAccount(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", name="uq_subscriptionaccount_tenant_user"),
+    )
+
     id: Optional[int] = Field(default=None, primary_key=True)
     tenant_id: str = Field(default="default", index=True)
-    user_id: int = Field(foreign_key="user.id", index=True, unique=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
     plan_name: str = Field(default="free")
     status: str = Field(default="active")
     credits_balance: int = Field(default=1000)
