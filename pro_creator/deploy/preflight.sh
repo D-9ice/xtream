@@ -134,6 +134,10 @@ if [[ "${auto_lipsync}" == "true" ]]; then
     echo "ERROR: RHUBARB_PATH is not executable on host: ${rhubarb_host_path}"
     exit 1
   fi
+  if ! "${rhubarb_host_path}" --version >/dev/null 2>&1; then
+    echo "ERROR: RHUBARB_PATH is present but failed to execute --version: ${rhubarb_host_path}"
+    exit 1
+  fi
 fi
 
 echo "Validating compose configuration..."

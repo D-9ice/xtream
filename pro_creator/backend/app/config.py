@@ -81,6 +81,7 @@ JWT_SECRET = _env_file_or_aws("JWT_SECRET", "dev-secret-change-me")
 ADMIN_PASSWORD = _env_file_or_aws("ADMIN_PASSWORD", "ChangeMe123!")
 ADMIN_DASHBOARD_PASSWORD = _env_file_or_aws("ADMIN_DASHBOARD_PASSWORD", ADMIN_PASSWORD)
 ADMIN_2FA_ENABLED = os.getenv("ADMIN_2FA_ENABLED", "false").lower() == "true"
+ADMIN_2FA_TOTP_SECRET = _env_file_or_aws("ADMIN_2FA_TOTP_SECRET", "").strip()
 
 # Owner / super-admin controls
 OWNER_EMAIL_ALLOWLIST = [

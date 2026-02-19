@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.routers import billing
 
 
 def test_billing_me_and_consume_flow() -> None:
@@ -49,3 +50,44 @@ def test_admin_subscription_list_and_update() -> None:
     updated = update_res.json()
     assert updated["email"] == email
     assert updated["plan_name"] == "pro"
+
+
+def test_admin_access_verify_with_totp(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(billing, "ADMIN_2FA_ENABLED", True)
+    monkeypatch.setattr(billing, "ADMIN_2FA_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+    monkeypatch.setattr(billing, "ADMIN_DASHBOARD_PASSWORD", "ChangeMe123!")
+
+    current_ts = 1_800_000_000
+    code = billing._totp_code(
+        billing._normalize_totp_secret("JBSWY3DPEHPK3PXP"),
+        current_ts,
+    )
+
+    class _FixedDatetime:
+        @staticmethod
+        def now(_tz=None):
+            import datetime as _dt
+
+            return _dt.datetime.fromtimestamp(current_ts, tz=_dt.timezone.utc)
+
+    monkeypatch.setattr(billing, "datetime", _FixedDatetime)
+
+    missing_otp_res = client.post(
+        "/billing/admin/access/verify",
+        json={"password": "ChangeMe123!"},
+    )
+    assert missing_otp_res.status_code == 400
+
+    bad_otp_res = client.post(
+        "/billing/admin/access/verify",
+        json={"password": "ChangeMe123!", "otp_code": "000000"},
+    )
+    assert bad_otp_res.status_code == 401
+
+    ok_res = client.post(
+        "/billing/admin/access/verify",
+        json={"password": "ChangeMe123!", "otp_code": code},
+    )
+    assert ok_res.status_code == 200
+    assert ok_res.json()["access_token"]

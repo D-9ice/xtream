@@ -1,5 +1,9 @@
 from datetime import datetime, timedelta, timezone
+import base64
+import binascii
+import hashlib
 import hmac
+import struct
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from jose import JWTError, jwt
@@ -8,6 +12,7 @@ from sqlmodel import Session, select
 from app.auth import get_current_user, require_owner, require_role
 from app.config import (
     ADMIN_2FA_ENABLED,
+    ADMIN_2FA_TOTP_SECRET,
     ADMIN_DASHBOARD_PASSWORD,
     JWT_ALGORITHM,
     JWT_SECRET,
@@ -48,6 +53,8 @@ from app.tenant import current_tenant_id
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 ADMIN_ACCESS_TOKEN_TTL_SECONDS = 15 * 60
+TOTP_STEP_SECONDS = 30
+TOTP_DIGITS = 6
 
 try:
     import stripe
@@ -102,6 +109,49 @@ def _create_admin_access_token(email: str) -> str:
         "exp": expires_at,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def _normalize_totp_secret(secret: str) -> bytes:
+    cleaned = "".join(secret.strip().split()).upper()
+    if not cleaned:
+        raise ValueError("empty TOTP secret")
+    padding = "=" * ((8 - len(cleaned) % 8) % 8)
+    try:
+        return base64.b32decode(cleaned + padding, casefold=True)
+    except binascii.Error as exc:
+        raise ValueError("invalid base32 TOTP secret") from exc
+
+
+def _totp_code(secret: bytes, timestamp: int) -> str:
+    counter = timestamp // TOTP_STEP_SECONDS
+    msg = struct.pack(">Q", counter)
+    digest = hmac.new(secret, msg, hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    binary = (
+        ((digest[offset] & 0x7F) << 24)
+        | (digest[offset + 1] << 16)
+        | (digest[offset + 2] << 8)
+        | digest[offset + 3]
+    )
+    otp = binary % (10 ** TOTP_DIGITS)
+    return str(otp).zfill(TOTP_DIGITS)
+
+
+def _verify_totp(secret_text: str, otp_code: str, now: datetime | None = None) -> bool:
+    try:
+        secret = _normalize_totp_secret(secret_text)
+    except ValueError:
+        return False
+
+    cleaned_code = "".join((otp_code or "").strip().split())
+    if not cleaned_code.isdigit() or len(cleaned_code) != TOTP_DIGITS:
+        return False
+    current = int((now or datetime.now(timezone.utc)).timestamp())
+    # Accept one step drift in each direction for clock skew.
+    for delta in (-TOTP_STEP_SECONDS, 0, TOTP_STEP_SECONDS):
+        if hmac.compare_digest(_totp_code(secret, current + delta), cleaned_code):
+            return True
+    return False
 
 
 def require_admin_dashboard_access(
@@ -341,6 +391,12 @@ def refund_my_credits(
 )
 def get_admin_2fa_status() -> Admin2FAStatusResponse:
     if ADMIN_2FA_ENABLED:
+        if not ADMIN_2FA_TOTP_SECRET:
+            return Admin2FAStatusResponse(
+                enabled=True,
+                method="totp",
+                detail="2FA is enabled but ADMIN_2FA_TOTP_SECRET is missing.",
+            )
         return Admin2FAStatusResponse(
             enabled=True,
             method="totp",
@@ -362,12 +418,15 @@ def verify_admin_dashboard_access(
     payload: AdminAccessVerifyRequest,
     current_user: User = Depends(get_current_user),
 ) -> AdminAccessVerifyResponse:
-    if ADMIN_2FA_ENABLED:
-        if not payload.otp_code:
-            raise HTTPException(status_code=400, detail="OTP code is required")
-        raise HTTPException(status_code=501, detail="Admin 2FA verification is not implemented yet")
     if not hmac.compare_digest(payload.password, ADMIN_DASHBOARD_PASSWORD):
         raise HTTPException(status_code=401, detail="Invalid admin dashboard password")
+    if ADMIN_2FA_ENABLED:
+        if not ADMIN_2FA_TOTP_SECRET:
+            raise HTTPException(status_code=500, detail="Admin 2FA secret is not configured")
+        if not payload.otp_code:
+            raise HTTPException(status_code=400, detail="OTP code is required")
+        if not _verify_totp(ADMIN_2FA_TOTP_SECRET, payload.otp_code):
+            raise HTTPException(status_code=401, detail="Invalid OTP code")
     token = _create_admin_access_token(current_user.email)
     return AdminAccessVerifyResponse(access_token=token, expires_in_seconds=ADMIN_ACCESS_TOKEN_TTL_SECONDS)
 
