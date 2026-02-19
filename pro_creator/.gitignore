@@ -36,3 +36,6 @@ backend/pro_creator.db
 # Local deployment secrets
 deploy/secrets/*
 !deploy/secrets/README.md
+
+# Local binary dependencies (installed per-machine)
+deploy/bin/rhubarb

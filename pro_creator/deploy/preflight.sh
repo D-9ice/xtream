@@ -138,7 +138,7 @@ fi
 
 echo "Validating compose configuration..."
 cd "${ROOT_DIR}"
-docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml config >/dev/null
+docker compose --env-file "${ENV_FILE}" -f docker-compose.yml -f deploy/docker-compose.prod.yml config >/dev/null
 
 if grep -Eq "^OBSERVABILITY_ENABLED=true$" "${ENV_FILE}"; then
   grafana_password="$(get_env_value "GRAFANA_ADMIN_PASSWORD")"
@@ -146,7 +146,7 @@ if grep -Eq "^OBSERVABILITY_ENABLED=true$" "${ENV_FILE}"; then
     echo "ERROR: OBSERVABILITY_ENABLED=true requires GRAFANA_ADMIN_PASSWORD"
     exit 1
   fi
-  docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --profile observability config >/dev/null
+  docker compose --env-file "${ENV_FILE}" -f docker-compose.yml -f deploy/docker-compose.prod.yml --profile observability config >/dev/null
 fi
 
 echo "Preflight checks passed."
