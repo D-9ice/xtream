@@ -112,6 +112,24 @@ Image generation supports OpenAI Images with quality-first defaults. Set:
 
 If `IMAGE_PROVIDER=auto`, the backend uses OpenAI when a key is configured, otherwise local placeholder generation.
 
+### AI video generation strategy (Runway + FFmpeg fallback)
+
+The render pipeline supports an optional hybrid mode:
+- Default scene model: `gen4_turbo` (cost-efficient)
+- Premium override for hero scenes: `gen4.5`
+- Automatic fallback to FFmpeg image-motion rendering if Runway fails/timeouts
+
+Configure:
+
+```zsh
+RUNWAY_VIDEO_ENABLED=true
+RUNWAY_API_KEY=<your_runway_key>
+RUNWAY_VIDEO_MODEL_DEFAULT=gen4_turbo
+RUNWAY_VIDEO_MODEL_PREMIUM=gen4.5
+RUNWAY_HERO_SCENES=first,last
+RUNWAY_VIDEO_DURATION_SECONDS=5
+```
+
 ### External-provider fail-fast validation
 
 In production, invalid provider/billing env combinations now fail at startup with explicit errors.

@@ -105,6 +105,7 @@ class ImageResponse(BaseModel):
 
 class VideoRequest(BaseModel):
     project_id: str
+    render_provider: str = "ffmpeg"  # ffmpeg | runway_gen4_turbo | runway_gen4_5
 
 
 class VideoResponse(BaseModel):

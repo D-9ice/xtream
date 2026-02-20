@@ -271,9 +271,15 @@ def render_video_endpoint(
     current_user: User = Depends(get_current_user),
 ) -> VideoResponse:
     try:
-        result = render_video(payload.project_id)
+        result = render_video(payload.project_id, render_provider=payload.render_provider)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    provider_label = (payload.render_provider or "ffmpeg").strip().lower()
+    model_label = "ffmpeg"
+    if provider_label == "runway_gen4_turbo":
+        model_label = "gen4_turbo"
+    elif provider_label == "runway_gen4_5":
+        model_label = "gen4.5"
     consume_credits(
         session=session,
         user=current_user,
@@ -281,10 +287,15 @@ def render_video_endpoint(
         reason="video render",
         action="video.render",
         reference_id=payload.project_id,
-        provider="local",
-        model="ffmpeg",
+        provider="runway" if provider_label.startswith("runway_") else "local",
+        model=model_label,
     )
-    logger.info("Rendered video for project %s", payload.project_id)
+    logger.info(
+        "Rendered video for project %s provider=%s model=%s",
+        payload.project_id,
+        provider_label,
+        model_label,
+    )
     return VideoResponse(**result)
 
 

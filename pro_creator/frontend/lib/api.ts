@@ -568,6 +568,7 @@ export async function generateImage(payload: {
 
 export async function renderVideo(payload: {
   project_id: string;
+  render_provider?: "ffmpeg" | "runway_gen4_turbo" | "runway_gen4_5";
 }): Promise<VideoResponse> {
   const response = await fetch(`${API_BASE}/video/render`, {
     method: "POST",

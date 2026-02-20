@@ -184,6 +184,9 @@ export default function HomePage() {
   const [imageResult, setImageResult] = useState<ImageResponse | null>(null);
 
   const [videoResult, setVideoResult] = useState<VideoResponse | null>(null);
+  const [videoRenderProvider, setVideoRenderProvider] = useState<
+    "ffmpeg" | "runway_gen4_turbo" | "runway_gen4_5"
+  >("ffmpeg");
   const [videoImportUrl, setVideoImportUrl] = useState("");
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [thumbnailResult, setThumbnailResult] = useState<ThumbnailResponse | null>(null);
@@ -993,7 +996,10 @@ export default function HomePage() {
     setActionError(null);
     setActionLoading(true);
     try {
-      const response = await renderVideo({ project_id: selectedProjectId });
+      const response = await renderVideo({
+        project_id: selectedProjectId,
+        render_provider: videoRenderProvider,
+      });
       setVideoResult(response);
       setVideoPreviewUrl(resolveMediaUrl(response.video_path));
       await refreshCredits();
@@ -1833,6 +1839,29 @@ export default function HomePage() {
               Render a full mp4 and review it below or in the project preview
               screen.
             </p>
+            <label
+              className="mt-3 block text-xs uppercase tracking-wide text-slate-400"
+              htmlFor="video-render-provider"
+            >
+              Render provider
+            </label>
+            <select
+              id="video-render-provider"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+              value={videoRenderProvider}
+              onChange={(event) =>
+                setVideoRenderProvider(
+                  event.target.value as
+                    | "ffmpeg"
+                    | "runway_gen4_turbo"
+                    | "runway_gen4_5"
+                )
+              }
+            >
+              <option value="ffmpeg">FFmpeg</option>
+              <option value="runway_gen4_turbo">Runway gen4_turbo</option>
+              <option value="runway_gen4_5">Runway gen4.5</option>
+            </select>
             {videoResult ? (
               <p className="mt-2 text-xs text-slate-400">
                 Video ready: {videoResult.video_path}

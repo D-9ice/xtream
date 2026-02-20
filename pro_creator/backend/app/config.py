@@ -136,6 +136,21 @@ OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1").strip()
 OPENAI_IMAGE_SIZE = os.getenv("OPENAI_IMAGE_SIZE", "1536x1024").strip()
 OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "high").strip().lower()
 
+# AI video generation (Runway) + FFmpeg fallback
+RUNWAY_VIDEO_ENABLED = os.getenv("RUNWAY_VIDEO_ENABLED", "false").lower() == "true"
+RUNWAY_API_KEY = _env_file_or_aws("RUNWAY_API_KEY", "").strip()
+RUNWAY_API_BASE = os.getenv("RUNWAY_API_BASE", "https://api.dev.runwayml.com").strip()
+RUNWAY_API_VERSION = os.getenv("RUNWAY_API_VERSION", "2024-11-06").strip()
+RUNWAY_VIDEO_MODEL_DEFAULT = os.getenv("RUNWAY_VIDEO_MODEL_DEFAULT", "gen4_turbo").strip()
+RUNWAY_VIDEO_MODEL_PREMIUM = os.getenv("RUNWAY_VIDEO_MODEL_PREMIUM", "gen4.5").strip()
+RUNWAY_HERO_SCENES = os.getenv("RUNWAY_HERO_SCENES", "first,last").strip()
+RUNWAY_VIDEO_DURATION_SECONDS = max(
+    5,
+    min(10, int(os.getenv("RUNWAY_VIDEO_DURATION_SECONDS", "5"))),
+)
+RUNWAY_POLL_TIMEOUT_SECONDS = int(os.getenv("RUNWAY_POLL_TIMEOUT_SECONDS", "240"))
+RUNWAY_POLL_INTERVAL_SECONDS = float(os.getenv("RUNWAY_POLL_INTERVAL_SECONDS", "4"))
+
 # Billing / Stripe
 STRIPE_SECRET_KEY = _env_file_or_aws("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = _env_file_or_aws("STRIPE_WEBHOOK_SECRET", "")
@@ -192,6 +207,8 @@ def validate_external_service_config() -> None:
         errors.append("IMAGE_PROVIDER=openai requires OPENAI_API_KEY.")
     if TTS_PROVIDER == "elevenlabs" and not ELEVENLABS_API_KEY.strip():
         errors.append("TTS_PROVIDER=elevenlabs requires ELEVENLABS_API_KEY.")
+    if RUNWAY_VIDEO_ENABLED and not RUNWAY_API_KEY.strip():
+        errors.append("RUNWAY_VIDEO_ENABLED=true requires RUNWAY_API_KEY.")
 
     any_stripe_price = any(
         [
