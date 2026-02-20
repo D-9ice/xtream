@@ -333,7 +333,7 @@ def _normalize_duration_minutes(duration_minutes: float) -> float:
     if not math.isfinite(minutes):
         minutes = 3.0
     # We accept fractional minutes (ads). Clamp but keep the fractional value.
-    return max(0.25, min(45.0, minutes))
+    return max(0.25, min(90.0, minutes))
 
 
 def _generate_script_template(topic: str, duration_minutes: float, tone: str) -> Dict:
