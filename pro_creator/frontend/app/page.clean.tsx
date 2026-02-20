@@ -1175,7 +1175,7 @@ export default function HomePage() {
     try {
       await exportBatch({
         project_id: selectedProjectId,
-        presets: ["youtube", "tiktok", "instagram"],
+        presets: ["youtube", "tiktok", "instagram", "facebook", "x"],
       });
       const status = await fetchExportStatus({ project_id: selectedProjectId });
       setExportQueue(status.exports ?? []);
@@ -2417,6 +2417,7 @@ export default function HomePage() {
               { key: "tiktok", label: "TikTok" },
               { key: "instagram", label: "Instagram" },
               { key: "facebook", label: "Facebook" },
+              { key: "x", label: "X" },
             ].map((preset) => (
               <button
                 key={preset.key}

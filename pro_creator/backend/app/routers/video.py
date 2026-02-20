@@ -746,6 +746,7 @@ def export_preset(
         "tiktok": (1080, 1920),
         "instagram": (1080, 1350),
         "facebook": (1280, 720),
+        "x": (1920, 1080),
     }
     width, height = presets.get(payload.preset, (1280, 720))
     source_key = project_key(payload.project_id, "video/final.mp4")
@@ -843,7 +844,7 @@ def export_status(
     project_id: str,
     presets: list[str] | None = Query(default=None),
 ) -> ExportStatusResponse:
-    default_presets = ["youtube", "tiktok", "instagram", "facebook"]
+    default_presets = ["youtube", "tiktok", "instagram", "facebook", "x"]
     requested = presets or default_presets
     entries: list[ExportStatusEntry] = []
 
@@ -1040,6 +1041,7 @@ def export_presets(project_id: str) -> FeatureStubResponse:
         {"preset": "tiktok", "resolution": "1080x1920", "fps": 30, "audio": "aac"},
         {"preset": "instagram", "resolution": "1080x1350", "fps": 30, "audio": "aac"},
         {"preset": "facebook", "resolution": "1280x720", "fps": 30, "audio": "aac"},
+        {"preset": "x", "resolution": "1920x1080", "fps": 30, "audio": "aac"},
     ]
     template_path = PROJECTS_DIR / project_id / "video" / "template_plan.json"
     template_plan = read_json_artifact(template_path)
