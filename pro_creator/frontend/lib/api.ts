@@ -23,6 +23,36 @@ export type VoiceResponse = {
   duration_seconds: number;
 };
 
+export type CharacterVoiceProfile = {
+  character_id: string;
+  display_name: string;
+  voice_profile: string;
+  tts_provider?: string | null;
+  voice_id?: string | null;
+};
+
+export type DialogueLine = {
+  speaker_id: string;
+  text: string;
+  pause_ms?: number;
+  voice_profile?: string;
+  tts_provider?: string;
+  voice_id?: string;
+};
+
+export type DialogueSceneRequest = {
+  scene_id: number;
+  lines: DialogueLine[];
+};
+
+export type DialogueRenderResponse = {
+  scenes: Array<{
+    scene_id: number;
+    audio_path: string;
+    line_count: number;
+  }>;
+};
+
 export type ImageResponse = {
   image_path: string;
 };
@@ -546,6 +576,69 @@ export async function generateVoice(payload: {
       (Array.isArray(detail) ? detail?.[0]?.msg : null) ??
       "Failed to generate voice";
     throw new Error(message);
+  }
+  return response.json();
+}
+
+export async function listCharacterVoiceProfiles(
+  projectId: string
+): Promise<CharacterVoiceProfile[]> {
+  const response = await fetch(`${API_BASE}/voice/characters/${projectId}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load character voice profiles");
+  }
+  const payload = await response.json();
+  return payload.characters ?? [];
+}
+
+export async function upsertCharacterVoiceProfile(
+  projectId: string,
+  payload: CharacterVoiceProfile
+): Promise<CharacterVoiceProfile[]> {
+  const response = await fetch(`${API_BASE}/voice/characters/${projectId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to save character profile");
+  }
+  const body = await response.json();
+  return body.characters ?? [];
+}
+
+export async function deleteCharacterVoiceProfile(
+  projectId: string,
+  characterId: string
+): Promise<CharacterVoiceProfile[]> {
+  const response = await fetch(
+    `${API_BASE}/voice/characters/${projectId}/${encodeURIComponent(characterId)}`,
+    {
+      method: "DELETE",
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to delete character profile");
+  }
+  const body = await response.json();
+  return body.characters ?? [];
+}
+
+export async function renderDialogue(payload: {
+  project_id: string;
+  scenes: DialogueSceneRequest[];
+  default_tts_provider?: string;
+  write_scene_audio_paths?: boolean;
+}): Promise<DialogueRenderResponse> {
+  const response = await fetch(`${API_BASE}/voice/dialogue/render`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to render dialogue");
   }
   return response.json();
 }

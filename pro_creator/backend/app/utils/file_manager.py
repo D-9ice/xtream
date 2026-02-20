@@ -114,6 +114,10 @@ def _voice_metadata_key(project_id: str) -> str:
     return project_key(project_id, "voice_profiles/metadata.json")
 
 
+def _character_metadata_key(project_id: str) -> str:
+    return project_key(project_id, "voice_profiles/characters.json")
+
+
 def read_voice_profile_metadata(project_id: str) -> dict:
     content = storage_client.read_text(_voice_metadata_key(project_id))
     if not content:
@@ -162,6 +166,58 @@ def delete_voice_profile(project_id: str, profile_name: str) -> bool:
         return True
     delete_voice_profile_metadata(project_id, profile_name)
     return False
+
+
+def read_character_voice_profiles(project_id: str) -> list[dict]:
+    content = storage_client.read_text(_character_metadata_key(project_id))
+    if not content:
+        return []
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse character voice metadata for %s", project_id)
+        return []
+    if isinstance(parsed, list):
+        return [item for item in parsed if isinstance(item, dict)]
+    return []
+
+
+def write_character_voice_profiles(project_id: str, characters: list[dict]) -> None:
+    storage_client.write_text(
+        _character_metadata_key(project_id),
+        json.dumps(characters, indent=2),
+    )
+
+
+def upsert_character_voice_profile(project_id: str, payload: dict) -> list[dict]:
+    character_id = str(payload.get("character_id", "")).strip()
+    if not character_id:
+        return read_character_voice_profiles(project_id)
+    existing = read_character_voice_profiles(project_id)
+    next_items: list[dict] = []
+    replaced = False
+    for item in existing:
+        if str(item.get("character_id", "")).strip() == character_id:
+            next_items.append(payload)
+            replaced = True
+        else:
+            next_items.append(item)
+    if not replaced:
+        next_items.append(payload)
+    write_character_voice_profiles(project_id, next_items)
+    return next_items
+
+
+def delete_character_voice_profile(project_id: str, character_id: str) -> list[dict]:
+    target = character_id.strip()
+    existing = read_character_voice_profiles(project_id)
+    next_items = [
+        item
+        for item in existing
+        if str(item.get("character_id", "")).strip() != target
+    ]
+    write_character_voice_profiles(project_id, next_items)
+    return next_items
 
 
 def write_json_artifact(path: Path, payload: dict | list) -> None:

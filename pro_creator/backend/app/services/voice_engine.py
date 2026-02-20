@@ -182,3 +182,29 @@ def generate_voice_for_scene(
 
 def generate_voice(project_id: str, text: str, voice_profile: str, provider: str | None) -> dict:
     return generate_voice_for_scene(project_id, 1, text, voice_profile, provider)
+
+
+def generate_voice_bytes(
+    *,
+    project_id: str,
+    text: str,
+    voice_profile: str | None = None,
+    provider: str | None = None,
+    override_voice_id: str | None = None,
+) -> tuple[bytes, str, str]:
+    """
+    Generate raw audio bytes without writing scene files.
+    Returns: (audio_bytes, extension, content_type)
+    """
+    metadata = read_voice_profile_metadata(project_id)
+    resolved_provider = _resolve_provider(provider)
+    profile_data = metadata.get(voice_profile or "", {})
+    if resolved_provider == "elevenlabs":
+        voice_id = override_voice_id or profile_data.get("voice_id") or ELEVENLABS_VOICE_ID
+        return _generate_with_elevenlabs(text, voice_id), "mp3", "audio/mpeg"
+
+    speaker_key = profile_data.get("sample_key")
+    speaker_b64 = None
+    if speaker_key and storage_client.exists(speaker_key):
+        speaker_b64 = base64.b64encode(storage_client.read_bytes(speaker_key)).decode("utf-8")
+    return _generate_with_xtts(text, speaker_b64), "wav", "audio/wav"

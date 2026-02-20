@@ -81,6 +81,49 @@ class VoiceResponse(BaseModel):
     duration_seconds: float
 
 
+class CharacterVoiceProfile(BaseModel):
+    character_id: str
+    display_name: str
+    voice_profile: str = "default"
+    tts_provider: Optional[str] = None
+    voice_id: Optional[str] = None
+
+
+class CharacterVoiceProfileListResponse(BaseModel):
+    characters: List[CharacterVoiceProfile]
+
+
+class DialogueLine(BaseModel):
+    speaker_id: str
+    text: str
+    pause_ms: int = 250
+    voice_profile: Optional[str] = None
+    tts_provider: Optional[str] = None
+    voice_id: Optional[str] = None
+
+
+class DialogueSceneRequest(BaseModel):
+    scene_id: int
+    lines: List[DialogueLine]
+
+
+class DialogueRenderRequest(BaseModel):
+    project_id: str
+    scenes: List[DialogueSceneRequest]
+    default_tts_provider: Optional[str] = None
+    write_scene_audio_paths: bool = True
+
+
+class DialogueSceneResult(BaseModel):
+    scene_id: int
+    audio_path: str
+    line_count: int
+
+
+class DialogueRenderResponse(BaseModel):
+    scenes: List[DialogueSceneResult]
+
+
 class VoiceCloneResponse(BaseModel):
     profile_path: str
 

@@ -6,7 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ProjectCard from "../components/ProjectCard";
 import type {
   AuthGateStatus,
+  CharacterVoiceProfile,
   CreditPlan,
+  DialogueSceneRequest,
   ExportStatusEntry,
   ImageResponse,
   OrchestrationQueueItem,
@@ -23,6 +25,7 @@ import {
   createStripeCheckoutSession,
   createOrchestrationSchedule,
   createProject,
+  deleteCharacterVoiceProfile,
   deleteAllProjects,
   deleteVoiceProfile,
   editByText,
@@ -40,6 +43,7 @@ import {
   fetchMyCredits,
   fetchProjects,
   fetchVoiceProfiles,
+  listCharacterVoiceProfiles,
   generateImage,
   generateScript,
   generateThumbnail,
@@ -50,6 +54,7 @@ import {
   purgeStaleProjects,
   renderVideo,
   retryOrchestrationJob,
+  renderDialogue,
   runOrchestrationSchedules,
   setPrimaryThumbnail,
   startOrchestrationRunner,
@@ -58,6 +63,7 @@ import {
   updateAuthGateStatus,
   updateLiveScript,
   uploadVoiceProfile,
+  upsertCharacterVoiceProfile,
 } from "../lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
@@ -178,6 +184,26 @@ export default function HomePage() {
   const [voiceProfileFile, setVoiceProfileFile] = useState<File | null>(null);
   const [voiceProfilePath, setVoiceProfilePath] = useState<string | null>(null);
   const [voiceCloneStatus, setVoiceCloneStatus] = useState<string | null>(null);
+  const [characterProfiles, setCharacterProfiles] = useState<CharacterVoiceProfile[]>([]);
+  const [characterIdInput, setCharacterIdInput] = useState("");
+  const [characterNameInput, setCharacterNameInput] = useState("");
+  const [characterVoiceProfileInput, setCharacterVoiceProfileInput] = useState("default");
+  const [dialogueJson, setDialogueJson] = useState(
+    JSON.stringify(
+      [
+        {
+          scene_id: 1,
+          lines: [
+            { speaker_id: "host", text: "Welcome to our story.", pause_ms: 200 },
+            { speaker_id: "guest", text: "Let us dive in.", pause_ms: 250 },
+          ],
+        },
+      ],
+      null,
+      2
+    )
+  );
+  const [dialogueStatus, setDialogueStatus] = useState<string | null>(null);
 
   const [imagePrompt, setImagePrompt] = useState("");
   const [imageStyle, setImageStyle] = useState("cinematic");
@@ -584,20 +610,26 @@ export default function HomePage() {
     if (!selectedProjectId) {
       setVoiceProfiles(["default"]);
       setSelectedVoiceProfile("default");
+      setCharacterProfiles([]);
       return;
     }
     const loadProfiles = async () => {
       try {
-        const profiles = await fetchVoiceProfiles(selectedProjectId);
+        const [profiles, characters] = await Promise.all([
+          fetchVoiceProfiles(selectedProjectId),
+          listCharacterVoiceProfiles(selectedProjectId),
+        ]);
         if (active) {
           const nextProfiles = profiles.length ? profiles : ["default"];
           setVoiceProfiles(nextProfiles);
           setSelectedVoiceProfile(nextProfiles[0]);
+          setCharacterProfiles(characters);
         }
       } catch {
         if (active) {
           setVoiceProfiles(["default"]);
           setSelectedVoiceProfile("default");
+          setCharacterProfiles([]);
         }
       }
     };
@@ -880,6 +912,87 @@ export default function HomePage() {
       setVoiceProfileFile(null);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Voice clone failed");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSaveCharacterProfile = async () => {
+    if (!selectedProjectId) {
+      setActionError("Select a project first.");
+      return;
+    }
+    if (!characterIdInput.trim()) {
+      setActionError("Character ID is required.");
+      return;
+    }
+    setActionError(null);
+    setActionLoading(true);
+    try {
+      const updated = await upsertCharacterVoiceProfile(selectedProjectId, {
+        character_id: characterIdInput.trim(),
+        display_name: characterNameInput.trim() || characterIdInput.trim(),
+        voice_profile: characterVoiceProfileInput.trim() || "default",
+        tts_provider: voiceProvider,
+      });
+      setCharacterProfiles(updated);
+      setCharacterIdInput("");
+      setCharacterNameInput("");
+      setDialogueStatus("Character profile saved.");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save character");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteCharacterProfile = async (characterId: string) => {
+    if (!selectedProjectId) {
+      return;
+    }
+    setActionError(null);
+    setActionLoading(true);
+    try {
+      const updated = await deleteCharacterVoiceProfile(selectedProjectId, characterId);
+      setCharacterProfiles(updated);
+      setDialogueStatus(`Deleted character: ${characterId}`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to delete character");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRenderDialogue = async () => {
+    if (!selectedProjectId) {
+      setActionError("Select a project first.");
+      return;
+    }
+    setActionError(null);
+    setActionLoading(true);
+    try {
+      const parsed = JSON.parse(dialogueJson) as DialogueSceneRequest[];
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error("Dialogue JSON must be a non-empty array.");
+      }
+      const response = await renderDialogue({
+        project_id: selectedProjectId,
+        scenes: parsed,
+        default_tts_provider: voiceProvider,
+        write_scene_audio_paths: true,
+      });
+      if (response.scenes.length > 0) {
+        setVoiceResult({
+          audio_path: response.scenes[0].audio_path,
+          duration_seconds: 0,
+        });
+      }
+      setDialogueStatus(
+        `Rendered dialogue for ${response.scenes.length} scene(s).`
+      );
+      await refreshCredits();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Dialogue render failed");
     } finally {
       setActionLoading(false);
     }
@@ -1771,6 +1884,85 @@ export default function HomePage() {
                 ))}
               </div>
             ) : null}
+            <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/50 p-3 text-xs">
+              <p className="font-semibold text-slate-200">Character voice map</p>
+              <p className="mt-1 text-[11px] text-slate-400">
+                Bind each character ID to a voice profile, then render speaker-tagged dialogue.
+              </p>
+              <div className="mt-2 grid gap-2 md:grid-cols-3">
+                <input
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-xs"
+                  placeholder="character_id (e.g. host)"
+                  value={characterIdInput}
+                  onChange={(event) => setCharacterIdInput(event.target.value)}
+                />
+                <input
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-xs"
+                  placeholder="Display name"
+                  value={characterNameInput}
+                  onChange={(event) => setCharacterNameInput(event.target.value)}
+                />
+                <select
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-xs"
+                  value={characterVoiceProfileInput}
+                  onChange={(event) => setCharacterVoiceProfileInput(event.target.value)}
+                >
+                  {voiceProfiles.map((profile) => (
+                    <option key={profile} value={profile}>
+                      {profile}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="mt-2 rounded-lg border border-aurora/40 px-3 py-2 text-xs text-aurora"
+                type="button"
+                onClick={handleSaveCharacterProfile}
+                disabled={actionLoading}
+              >
+                Save character mapping
+              </button>
+              {characterProfiles.length > 0 ? (
+                <div className="mt-2 space-y-1">
+                  {characterProfiles.map((character) => (
+                    <div
+                      key={character.character_id}
+                      className="flex items-center justify-between rounded-md border border-slate-800 px-2 py-1"
+                    >
+                      <span className="text-slate-300">
+                        {character.character_id} {"->"} {character.voice_profile}
+                      </span>
+                      <button
+                        className="rounded-full border border-red-500/40 px-2 py-1 text-[10px] text-red-200"
+                        type="button"
+                        onClick={() => handleDeleteCharacterProfile(character.character_id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <label className="mt-3 block text-[11px] uppercase tracking-wide text-slate-400">
+                Dialogue JSON
+              </label>
+              <textarea
+                className="mt-1 min-h-[180px] w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-slate-100"
+                value={dialogueJson}
+                onChange={(event) => setDialogueJson(event.target.value)}
+              />
+              <button
+                className="mt-2 rounded-lg bg-aurora px-3 py-2 text-xs font-semibold text-slate-900"
+                type="button"
+                onClick={handleRenderDialogue}
+                disabled={actionLoading}
+              >
+                Render multi-character dialogue
+              </button>
+              {dialogueStatus ? (
+                <p className="mt-2 text-[11px] text-emerald-300">{dialogueStatus}</p>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}
