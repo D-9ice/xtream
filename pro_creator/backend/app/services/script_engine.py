@@ -4,6 +4,8 @@ import re
 import json
 import os
 import time
+from urllib.parse import quote_plus
+import xml.etree.ElementTree as ET
 
 import requests
 
@@ -17,6 +19,56 @@ from app.config import (
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _wants_current_events(prompt: str) -> bool:
+    p = (prompt or "").lower()
+    markers = (
+        "current event",
+        "current affairs",
+        "latest",
+        "recent",
+        "today",
+        "breaking",
+        "live event",
+        "headline",
+        "news",
+    )
+    return any(m in p for m in markers)
+
+
+def _fetch_current_events_context(prompt: str, limit: int = 5) -> str:
+    if not _wants_current_events(prompt):
+        return ""
+    query = re.sub(r"\s+", " ", (prompt or "")).strip()[:120]
+    if not query:
+        return ""
+    url = (
+        "https://news.google.com/rss/search?"
+        f"q={quote_plus(query)}&hl=en-US&gl=US&ceid=US:en"
+    )
+    try:
+        response = requests.get(url, timeout=6)
+        response.raise_for_status()
+        root = ET.fromstring(response.text)
+    except Exception as exc:
+        logger.warning("Current-events context fetch failed: %s", exc)
+        return ""
+
+    items: list[str] = []
+    for item in root.findall("./channel/item"):
+        title = (item.findtext("title") or "").strip()
+        pub_date = (item.findtext("pubDate") or "").strip()
+        if not title:
+            continue
+        compact_title = re.sub(r"\s+", " ", title)
+        if pub_date:
+            items.append(f"- {compact_title} ({pub_date})")
+        else:
+            items.append(f"- {compact_title}")
+        if len(items) >= limit:
+            break
+    return "\n".join(items)
 
 
 def _parse_script_brief(raw_topic: str) -> Tuple[str, str]:
@@ -336,7 +388,13 @@ def _normalize_duration_minutes(duration_minutes: float) -> float:
     return max(0.25, min(90.0, minutes))
 
 
-def _generate_script_template(topic: str, duration_minutes: float, tone: str) -> Dict:
+def _generate_script_template(
+    topic: str,
+    duration_minutes: float,
+    tone: str,
+    *,
+    current_events_context: str = "",
+) -> Dict:
     duration_minutes_f = _normalize_duration_minutes(duration_minutes)
     duration_seconds = int(round(duration_minutes_f * 60))
     if duration_seconds <= 20:
@@ -363,6 +421,14 @@ def _generate_script_template(topic: str, duration_minutes: float, tone: str) ->
         "Overview: A human-sounding narration plan built for YouTube pacing, clarity, and trust.",
         "",
     ]
+    if current_events_context:
+        script_lines.extend(
+            [
+                "Current Events Signals:",
+                current_events_context,
+                "",
+            ]
+        )
 
     scenes: List[Dict[str, str]] = []
     for idx, (beat_title, beat_intent) in enumerate(plan, start=1):
@@ -445,6 +511,7 @@ def _generate_script_llm(
     tone: str,
     *,
     model_name: str,
+    current_events_context: str = "",
 ) -> Dict | None:
     api_key = OPENAI_API_KEY.strip()
     if not api_key:
@@ -486,6 +553,12 @@ def _generate_script_llm(
         "- Keep scenes coherent and progressive from hook to call to action.\n"
         "- No repeated boilerplate sentences across scenes.\n"
     )
+    if current_events_context:
+        user_prompt += (
+            "\nCurrent events context (optional, use only if relevant to brief):\n"
+            f"{current_events_context}\n"
+            "- If used, reference events naturally without making unverifiable claims.\n"
+        )
 
     def _run_once() -> Dict | None:
         response = requests.post(
@@ -561,12 +634,15 @@ def generate_script(
 ) -> Dict:
     provider = (script_provider or SCRIPT_PROVIDER or "auto").lower()
     selected_model = (model_name or os.getenv("OPENAI_MODEL", "gpt-4o-mini")).strip()
+    _title, brief_prompt = _parse_script_brief(topic)
+    current_events_context = _fetch_current_events_context(brief_prompt)
     if provider in {"auto", "openai"}:
         llm_result = _generate_script_llm(
             topic,
             duration_minutes,
             tone,
             model_name=selected_model,
+            current_events_context=current_events_context,
         )
         if llm_result:
             return llm_result
@@ -575,4 +651,9 @@ def generate_script(
                 "SCRIPT_PROVIDER=openai but LLM generation failed. "
                 "Check OPENAI_API_KEY / OPENAI_BASE_URL / model configuration."
             )
-    return _generate_script_template(topic, duration_minutes, tone)
+    return _generate_script_template(
+        topic,
+        duration_minutes,
+        tone,
+        current_events_context=current_events_context,
+    )

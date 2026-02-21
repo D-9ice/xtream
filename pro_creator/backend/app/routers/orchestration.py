@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+import tempfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 import asyncio
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
@@ -32,13 +37,19 @@ from app.schemas import (
 from app.services.image_engine import generate_image_for_scene
 from app.services.script_engine import generate_script
 from app.services.video_engine import render_video
-from app.services.voice_engine import generate_voice_for_scene
+from app.services.voice_engine import generate_voice_bytes, generate_voice_for_scene
 from app.celery_app import celery_app
 from app import tasks as celery_tasks
-from app.utils.file_manager import ensure_project_dirs, write_scene_metadata, write_script
+from app.utils.file_manager import (
+    ensure_project_dirs,
+    read_character_voice_profiles,
+    write_scene_metadata,
+    write_script,
+)
 from app.utils.logger import get_logger
 from app.routers.video import export_preset
 from app.tenant import current_tenant_id
+from app.storage import storage_client
 
 router = APIRouter(
     prefix="/orchestration",
@@ -109,6 +120,105 @@ def _run_script(payload: OrchestrationQueueRequest, session: Session) -> None:
     session.commit()
 
 
+def _extract_dialogue_lines(scene_text: str) -> list[tuple[str, str]]:
+    dialogue: list[tuple[str, str]] = []
+    for raw_line in (scene_text or "").splitlines():
+        line = raw_line.strip()
+        if not line or ":" not in line:
+            continue
+        if line.lower().startswith(("scene ", "intent:", "narration:", "visuals:")):
+            continue
+        speaker, text = line.split(":", 1)
+        speaker = speaker.strip()
+        text = text.strip()
+        if not speaker or not text:
+            continue
+        # Avoid treating long descriptive labels as speakers.
+        if len(speaker) > 24 or re.search(r"\s{2,}", speaker):
+            continue
+        dialogue.append((speaker, text))
+    return dialogue
+
+
+def _render_dialogue_scene(
+    *,
+    project_id: str,
+    scene_id: int,
+    dialogue: list[tuple[str, str]],
+) -> str:
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        raise HTTPException(status_code=400, detail="ffmpeg is required for dialogue rendering.")
+
+    character_map = {
+        str(item.get("character_id", "")).strip(): item
+        for item in read_character_voice_profiles(project_id)
+        if isinstance(item, dict)
+    }
+
+    with tempfile.TemporaryDirectory(prefix="pro_creator_orch_dialogue_") as temp_dir:
+        temp_path = Path(temp_dir)
+        parts: list[Path] = []
+        idx = 0
+        for speaker, text in dialogue:
+            mapped = character_map.get(speaker, {})
+            audio_bytes, ext, content_type = generate_voice_bytes(
+                project_id=project_id,
+                text=text,
+                voice_profile=mapped.get("voice_profile") or "default",
+                provider=mapped.get("tts_provider"),
+                override_voice_id=mapped.get("voice_id"),
+            )
+            seg_path = temp_path / f"seg_{idx}.{ext}"
+            seg_path.write_bytes(audio_bytes)
+            parts.append(seg_path)
+            idx += 1
+            pause_path = temp_path / f"pause_{idx}.wav"
+            subprocess.run(
+                [
+                    ffmpeg_path,
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "anullsrc=r=22050:cl=mono",
+                    "-t",
+                    "0.20",
+                    str(pause_path),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            parts.append(pause_path)
+            idx += 1
+
+        concat_path = temp_path / "concat.txt"
+        concat_path.write_text("\n".join([f"file '{p}'" for p in parts]), encoding="utf-8")
+        out_path = temp_path / f"scene_{scene_id}.m4a"
+        subprocess.run(
+            [
+                ffmpeg_path,
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_path),
+                "-c:a",
+                "aac",
+                str(out_path),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        key = f"{project_id}/audio/scene_{scene_id}.m4a"
+        storage_client.write_bytes(key, out_path.read_bytes(), content_type="audio/mp4")
+        return storage_client.public_url(key)
+
+
 def _run_voice(payload: OrchestrationQueueRequest, session: Session) -> None:
     tenant_id = current_tenant_id()
     scenes = session.exec(
@@ -121,12 +231,22 @@ def _run_voice(payload: OrchestrationQueueRequest, session: Session) -> None:
     result = generate_voice_for_scene(payload.project_id, 1, text)
     if scenes:
         for scene in scenes:
-            scene_result = generate_voice_for_scene(
-                payload.project_id,
-                scene.id or 1,
-                scene.text or text,
-            )
-            scene.audio_path = scene_result["audio_path"]
+            scene_id = scene.id or 1
+            scene_text = scene.text or text
+            dialogue = _extract_dialogue_lines(scene_text)
+            if len(dialogue) >= 2 and len({speaker.lower() for speaker, _ in dialogue}) >= 2:
+                scene.audio_path = _render_dialogue_scene(
+                    project_id=payload.project_id,
+                    scene_id=scene_id,
+                    dialogue=dialogue,
+                )
+            else:
+                scene_result = generate_voice_for_scene(
+                    payload.project_id,
+                    scene_id,
+                    scene_text,
+                )
+                scene.audio_path = scene_result["audio_path"]
             session.add(scene)
         session.commit()
     return result

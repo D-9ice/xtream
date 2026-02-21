@@ -252,6 +252,9 @@ export default function HomePage() {
   const [queuePreset, setQueuePreset] = useState("youtube");
   const [batchCount, setBatchCount] = useState(3);
   const [runnerRunning, setRunnerRunning] = useState(false);
+  const [activeSidebarAction, setActiveSidebarAction] = useState<
+    "select" | "queue" | "process" | "runner" | "autocreate" | null
+  >(null);
   const [scheduleCadence, setScheduleCadence] = useState(7);
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
   const [creditsUsed, setCreditsUsed] = useState<number | null>(null);
@@ -3147,8 +3150,8 @@ export default function HomePage() {
                   key={panel.id}
                   className={`w-full rounded-lg border px-3 py-2 text-left text-xs font-semibold transition ${
                     activePanel === panel.id
-                      ? "border-aurora/40 bg-aurora/10 text-aurora"
-                      : "border-slate-800 text-slate-300 hover:border-slate-600"
+                      ? "border-white bg-aurora/10 text-aurora"
+                      : "border-aurora/40 text-slate-200 hover:border-white/90"
                   }`}
                   type="button"
                   onClick={() => setActivePanel(panel.id)}
@@ -3161,15 +3164,23 @@ export default function HomePage() {
               ))}
             </div>
           </div>
-          <div className="mt-5">
+          <div className="mt-3">
             <label className="text-xs uppercase tracking-wide text-slate-500">
               Active project
             </label>
             <select
-              className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+              className={`mt-2 w-full rounded-lg border bg-slate-900 px-3 py-2 text-xs transition ${
+                activeSidebarAction === "select"
+                  ? "border-white text-slate-100"
+                  : "border-aurora/40 text-slate-100 hover:border-white/90"
+              } focus:border-white focus:outline-none`}
               aria-label="Active project"
               value={selectedProjectId}
-              onChange={(event) => setSelectedProjectId(event.target.value)}
+              onFocus={() => setActiveSidebarAction("select")}
+              onChange={(event) => {
+                setActiveSidebarAction("select");
+                setSelectedProjectId(event.target.value);
+              }}
             >
               <option value="">Select project</option>
               {projects.map((project) => (
@@ -3179,34 +3190,66 @@ export default function HomePage() {
               ))}
             </select>
           </div>
-          <div className="mt-5 space-y-2 text-xs">
+          <div className="mt-1.5 space-y-1.5 text-xs">
             <button
-              className="w-full rounded-lg border border-aurora/40 px-3 py-2 text-aurora"
+              className={`w-full rounded-lg border px-3 py-2 transition ${
+                activeSidebarAction === "queue"
+                  ? "border-white text-aurora"
+                  : "border-aurora/40 text-aurora hover:border-white/90"
+              } disabled:cursor-not-allowed disabled:opacity-60`}
               type="button"
-              onClick={handleEnqueueJob}
+              onClick={() => {
+                setActiveSidebarAction("queue");
+                handleEnqueueJob();
+              }}
               disabled={!selectedProjectId || queueLoading}
             >
               Queue job
             </button>
             <button
-              className="w-full rounded-lg border border-slate-700 px-3 py-2 text-slate-200"
+              className={`w-full rounded-lg border px-3 py-2 transition ${
+                activeSidebarAction === "process"
+                  ? "border-white text-aurora"
+                  : "border-aurora/40 text-aurora hover:border-white/90"
+              } disabled:cursor-not-allowed disabled:opacity-60`}
               type="button"
-              onClick={handleProcessQueue}
+              onClick={() => {
+                setActiveSidebarAction("process");
+                handleProcessQueue();
+              }}
               disabled={queueLoading}
             >
               Process next
             </button>
             <button
-              className={`w-full rounded-lg border px-3 py-2 ${
-                runnerRunning
-                  ? "border-red-500/40 text-red-200"
-                  : "border-aurora/40 text-aurora"
+              className={`w-full rounded-lg border px-3 py-2 transition ${
+                activeSidebarAction === "runner" || runnerRunning
+                  ? "border-white text-aurora"
+                  : "border-aurora/40 text-aurora hover:border-white/90"
               }`}
               type="button"
-              onClick={handleRunnerToggle}
+              onClick={() => {
+                setActiveSidebarAction("runner");
+                handleRunnerToggle();
+              }}
               disabled={queueLoading}
             >
               {runnerRunning ? "Stop runner" : "Run continuously"}
+            </button>
+            <button
+              className={`w-full rounded-lg border px-3 py-2 transition ${
+                activeSidebarAction === "autocreate"
+                  ? "border-white text-aurora"
+                  : "border-aurora/40 text-aurora hover:border-white/90"
+              } disabled:cursor-not-allowed disabled:opacity-60`}
+              type="button"
+              onClick={() => {
+                setActiveSidebarAction("autocreate");
+                handleAutoCreate();
+              }}
+              disabled={autoCreateLoading || createLoading}
+            >
+              {autoCreateLoading ? "Starting auto-create..." : "Auto-create"}
             </button>
           </div>
         </aside>
@@ -3303,16 +3346,6 @@ export default function HomePage() {
                       disabled={createLoading}
                     >
                       {createLoading ? "Creating..." : "Create project"}
-                    </button>
-                    <button
-                      className="w-full rounded-xl border border-aurora/40 px-4 py-3 text-sm font-semibold text-aurora transition hover:border-aurora"
-                      type="button"
-                      onClick={handleAutoCreate}
-                      disabled={autoCreateLoading || createLoading}
-                    >
-                      {autoCreateLoading
-                        ? "Starting full auto-create..."
-                        : "Auto-create full project"}
                     </button>
                   </form>
                   {autoCreateStatus ? (

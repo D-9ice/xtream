@@ -1,13 +1,21 @@
 from app.celery_app import celery_app
 from app.services.script_engine import generate_script
 from app.services.lipsync_engine import generate_lipsync
-from app.services.voice_engine import generate_voice_for_scene
+from app.services.voice_engine import generate_voice_bytes, generate_voice_for_scene
 from app.services.image_engine import generate_image_for_scene
 from app.services.video_engine import render_video
 from app.utils.file_manager import ensure_project_dirs, write_scene_metadata, write_script
 from app.utils.file_manager import read_scene_metadata
+from app.utils.file_manager import read_character_voice_profiles
 from app.schemas import ExportPresetRequest
 from app.routers.video import export_preset
+from app.storage import storage_client
+
+import re
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
 
 
 @celery_app.task(name="pro_creator.generate_script")
@@ -64,6 +72,95 @@ def full_pipeline_task(
     if not scenes:
         scenes = [{"id": 1, "text": voice_text or topic or "Narration"}]
 
+    def _extract_dialogue_lines(scene_text: str) -> list[tuple[str, str]]:
+        dialogue: list[tuple[str, str]] = []
+        for raw_line in (scene_text or "").splitlines():
+            line = raw_line.strip()
+            if not line or ":" not in line:
+                continue
+            if line.lower().startswith(("scene ", "intent:", "narration:", "visuals:")):
+                continue
+            speaker, text_line = line.split(":", 1)
+            speaker = speaker.strip()
+            text_line = text_line.strip()
+            if not speaker or not text_line:
+                continue
+            if len(speaker) > 24 or re.search(r"\s{2,}", speaker):
+                continue
+            dialogue.append((speaker, text_line))
+        return dialogue
+
+    def _render_dialogue_scene(scene_id: int, dialogue: list[tuple[str, str]]) -> str:
+        ffmpeg_path = shutil.which("ffmpeg")
+        if not ffmpeg_path:
+            return generate_voice_for_scene(project_id, scene_id, " ".join(t for _, t in dialogue))["audio_path"]
+        character_map = {
+            str(item.get("character_id", "")).strip(): item
+            for item in read_character_voice_profiles(project_id)
+            if isinstance(item, dict)
+        }
+        with tempfile.TemporaryDirectory(prefix="pro_creator_task_dialogue_") as temp_dir:
+            temp_path = Path(temp_dir)
+            parts: list[Path] = []
+            idx = 0
+            for speaker, text_line in dialogue:
+                mapped = character_map.get(speaker, {})
+                audio_bytes, ext, _content_type = generate_voice_bytes(
+                    project_id=project_id,
+                    text=text_line,
+                    voice_profile=mapped.get("voice_profile") or "default",
+                    provider=mapped.get("tts_provider"),
+                    override_voice_id=mapped.get("voice_id"),
+                )
+                seg_path = temp_path / f"seg_{idx}.{ext}"
+                seg_path.write_bytes(audio_bytes)
+                parts.append(seg_path)
+                idx += 1
+                pause_path = temp_path / f"pause_{idx}.wav"
+                subprocess.run(
+                    [
+                        ffmpeg_path,
+                        "-y",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "anullsrc=r=22050:cl=mono",
+                        "-t",
+                        "0.20",
+                        str(pause_path),
+                    ],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                parts.append(pause_path)
+                idx += 1
+
+            concat_path = temp_path / "concat.txt"
+            concat_path.write_text("\n".join([f"file '{p}'" for p in parts]), encoding="utf-8")
+            out_path = temp_path / f"scene_{scene_id}.m4a"
+            subprocess.run(
+                [
+                    ffmpeg_path,
+                    "-y",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    str(concat_path),
+                    "-c:a",
+                    "aac",
+                    str(out_path),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            key = f"{project_id}/audio/scene_{scene_id}.m4a"
+            storage_client.write_bytes(key, out_path.read_bytes(), content_type="audio/mp4")
+            return storage_client.public_url(key)
+
     voice_outputs: list[dict] = []
     image_outputs: list[dict] = []
     for idx, scene in enumerate(scenes, start=1):
@@ -71,7 +168,13 @@ def full_pipeline_task(
         scene_text = str(scene.get("text", "")).strip()
         voice_input = voice_text or scene_text or topic or "Narration"
         image_input = image_prompt or scene_text or topic or "Visual concept"
-        voice_outputs.append(generate_voice_for_scene(project_id, scene_id, voice_input))
+        dialogue = _extract_dialogue_lines(scene_text)
+        if len(dialogue) >= 2 and len({speaker.lower() for speaker, _ in dialogue}) >= 2:
+            voice_outputs.append(
+                {"audio_path": _render_dialogue_scene(scene_id, dialogue), "duration_seconds": max(2.0, len(dialogue))}
+            )
+        else:
+            voice_outputs.append(generate_voice_for_scene(project_id, scene_id, voice_input))
         image_outputs.append(generate_image_for_scene(project_id, scene_id, image_input, "cinematic"))
 
     video_output = render_video(project_id)
