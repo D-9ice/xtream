@@ -686,24 +686,44 @@ export default function HomePage() {
   };
 
   const handleAutoCreate = async () => {
-    if (!title.trim() || !topic.trim()) {
-      setError("Provide title and topic to auto-create a project.");
+    const nextTitle = title.trim();
+    const nextTopic = topic.trim();
+    const selectedProject = projects.find(
+      (project) => project.project_id === selectedProjectId
+    );
+    const createNewProject = Boolean(nextTitle && nextTopic);
+    if (!createNewProject && !selectedProjectId) {
+      setError(
+        "Provide title/topic to create a new project, or select an existing project to auto-create."
+      );
       return;
     }
     setError(null);
     setAutoCreateStatus(null);
     setAutoCreateLoading(true);
     try {
-      const project = await createProject({ title, topic });
-      setProjects((prev) => [project, ...prev]);
-      setSelectedProjectId(project.project_id);
-      setTitle("");
-      setTopic("");
+      let projectId = selectedProjectId;
+      let pipelineTopic =
+        queueTopic.trim() ||
+        nextTopic ||
+        selectedProject?.topic?.trim() ||
+        selectedProject?.title?.trim() ||
+        "Untitled";
+
+      if (createNewProject) {
+        const project = await createProject({ title: nextTitle, topic: nextTopic });
+        setProjects((prev) => [project, ...prev]);
+        setSelectedProjectId(project.project_id);
+        setTitle("");
+        setTopic("");
+        projectId = project.project_id;
+        pipelineTopic = queueTopic.trim() || nextTopic;
+      }
 
       const queued = await enqueueOrchestrationJob({
-        project_id: project.project_id,
+        project_id: projectId,
         kind: "full",
-        topic: topic.trim(),
+        topic: pipelineTopic,
         duration_minutes: queueDuration,
         tone: queueTone,
         export_preset: queuePreset || "youtube",
@@ -717,7 +737,9 @@ export default function HomePage() {
         // Queue already has the full job; runner/worker can continue processing.
       }
       setAutoCreateStatus(
-        "Auto-create started. Full pipeline is running to review/export readiness."
+        createNewProject
+          ? "Auto-create started for new project. Full pipeline is running to review/export readiness."
+          : "Auto-create started for selected project. Full pipeline is running to review/export readiness."
       );
       setQueueStatus("Auto-create full pipeline queued.");
       refreshProjects();
@@ -3245,6 +3267,7 @@ export default function HomePage() {
               type="button"
               onClick={() => {
                 setActiveSidebarAction("autocreate");
+                setActivePanel("projects");
                 handleAutoCreate();
               }}
               disabled={autoCreateLoading || createLoading}
