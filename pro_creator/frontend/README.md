@@ -1,6 +1,6 @@
 # Frontend
 
-Next.js 14 + TypeScript + Tailwind UI for Pro Creator.
+Next.js 16 + TypeScript + Tailwind UI for Pro Creator.
 
 ## Local development
 
@@ -9,6 +9,7 @@ Next.js 14 + TypeScript + Tailwind UI for Pro Creator.
 
 The backend API is expected at `http://127.0.0.1:8000` by default.
 Override with `NEXT_PUBLIC_API_BASE` if needed.
+Use Node 20 for local work to match CI and the supported engine range.
 
 ```zsh
 npm install

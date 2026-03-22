@@ -251,7 +251,9 @@ export default function HomePage() {
   const [queueTone, setQueueTone] = useState("neutral");
   const [queuePreset, setQueuePreset] = useState("youtube");
   const [batchCount, setBatchCount] = useState(3);
+  const [runnerEnabled, setRunnerEnabled] = useState(true);
   const [runnerRunning, setRunnerRunning] = useState(false);
+  const [runnerDetail, setRunnerDetail] = useState<string | null>(null);
   const [activeSidebarAction, setActiveSidebarAction] = useState<
     "select" | "queue" | "process" | "runner" | "autocreate" | null
   >(null);
@@ -654,7 +656,9 @@ export default function HomePage() {
         if (active) {
           setQueueItems(queue.items ?? []);
           setScheduleItems(schedules.items ?? []);
+          setRunnerEnabled(runner.enabled ?? true);
           setRunnerRunning(runner.running);
+          setRunnerDetail(runner.detail ?? null);
         }
       } catch {
         if (active) {
@@ -1449,6 +1453,12 @@ export default function HomePage() {
   };
 
   const handleRunnerToggle = async () => {
+    if (!runnerEnabled) {
+      setQueueError(
+        runnerDetail ?? "Continuous runner is unavailable in this environment."
+      );
+      return;
+    }
     setQueueLoading(true);
     setQueueError(null);
     try {
@@ -2429,9 +2439,11 @@ export default function HomePage() {
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3">
           <p className="text-xs uppercase tracking-wide text-slate-400">Runner</p>
           <p className="mt-2 text-lg font-semibold text-white">
-            {runnerRunning ? "Running" : "Stopped"}
+            {runnerEnabled ? (runnerRunning ? "Running" : "Stopped") : "Worker-managed"}
           </p>
-          <p className="text-xs text-slate-400">Auto-processing orchestration</p>
+          <p className="text-xs text-slate-400">
+            {runnerDetail ?? "Auto-processing orchestration"}
+          </p>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -2455,9 +2467,9 @@ export default function HomePage() {
           className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-200"
           type="button"
           onClick={handleRunnerToggle}
-          disabled={queueLoading}
+          disabled={queueLoading || !runnerEnabled}
         >
-          {runnerRunning ? "Stop" : "Start"} runner
+          {runnerEnabled ? `${runnerRunning ? "Stop" : "Start"} runner` : "Runner unavailable"}
         </button>
       </div>
 
@@ -3254,9 +3266,13 @@ export default function HomePage() {
                 setActiveSidebarAction("runner");
                 handleRunnerToggle();
               }}
-              disabled={queueLoading}
+              disabled={queueLoading || !runnerEnabled}
             >
-              {runnerRunning ? "Stop runner" : "Run continuously"}
+              {runnerEnabled
+                ? runnerRunning
+                  ? "Stop runner"
+                  : "Run continuously"
+                : "Runner managed by worker"}
             </button>
             <button
               className={`w-full rounded-lg border px-3 py-2 transition ${

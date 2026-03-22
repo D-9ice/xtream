@@ -29,7 +29,7 @@ from app.config import (
 )
 from app.database import init_db
 from app.seed import seed_admin_user
-from app.routers import auth, billing, editor, image, orchestration, project, script, video, voice
+from app.routers import auth, billing, editor, image, orchestration, project, script, video, voice, workflow
 from app.tenant import current_tenant_id, reset_current_tenant_id, set_current_tenant_id
 
 @asynccontextmanager
@@ -141,6 +141,7 @@ app.include_router(orchestration.router)
 app.include_router(auth.router)
 app.include_router(editor.router)
 app.include_router(billing.router)
+app.include_router(workflow.router)
 
 
 @app.get("/health")

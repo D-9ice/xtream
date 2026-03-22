@@ -14,6 +14,7 @@ from app.config import (
     ADMIN_2FA_ENABLED,
     ADMIN_2FA_TOTP_SECRET,
     ADMIN_DASHBOARD_PASSWORD,
+    ENVIRONMENT,
     JWT_ALGORITHM,
     JWT_SECRET,
     STRIPE_CANCEL_URL,
@@ -259,6 +260,8 @@ def purchase_credits_mock(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> CreditBalanceResponse:
+    if ENVIRONMENT == "production":
+        raise HTTPException(status_code=403, detail="Mock credit purchase is disabled in production")
     plan = _get_plan_by_id(payload.plan_id)
     subscription = grant_credits(
         session=session,

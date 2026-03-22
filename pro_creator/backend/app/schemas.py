@@ -344,8 +344,10 @@ class OrchestrationProcessResponse(BaseModel):
 
 
 class OrchestrationRunnerStatus(BaseModel):
+    enabled: bool = True
     running: bool
     interval_seconds: int
+    detail: Optional[str] = None
 
 
 class OrchestrationScheduleRequest(BaseModel):
@@ -452,3 +454,135 @@ class AuthGateStatusResponse(BaseModel):
 
 class AuthGateUpdateRequest(BaseModel):
     enabled: bool
+
+
+class WorkflowProjectCreateRequest(BaseModel):
+    title: str
+    idea_prompt: Optional[str] = None
+    genre: Optional[str] = None
+    target_duration_minutes: int = 3
+
+
+class WorkflowProjectUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    idea_prompt: Optional[str] = None
+    genre: Optional[str] = None
+    target_duration_minutes: Optional[int] = None
+
+
+class WorkflowProjectResponse(BaseModel):
+    project_id: str
+    title: str
+    topic: str
+    status: str
+    idea_prompt: Optional[str] = None
+    genre: Optional[str] = None
+    target_duration_minutes: Optional[int] = None
+    workflow_state: str
+    script_draft: Optional[str] = None
+    script_approved: Optional[str] = None
+    script_approved_at: Optional[datetime] = None
+    character_package_approved: bool = False
+    character_package_approved_at: Optional[datetime] = None
+    selected_character_ids: List[str] = []
+    production_job_id: Optional[str] = None
+    final_video_url: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkflowGenerateScriptRequest(BaseModel):
+    title: str
+    idea_prompt: Optional[str] = None
+    genre: Optional[str] = None
+    target_duration_minutes: int = 3
+    tone: str = "cinematic"
+
+
+class WorkflowScriptUpdateRequest(BaseModel):
+    script: str
+    update_scenes: bool = True
+
+
+class WorkflowCharacterResponse(BaseModel):
+    character_id: str
+    name: str
+    role_type: str
+    description: str
+    visual_prompt_base: str
+    negative_prompt_base: str
+    consistency_seed: str
+    identity_hash: str
+    lock_identity: bool = True
+    reference_image_url: Optional[str] = None
+    canonical_image_url: Optional[str] = None
+    personality_traits: List[str] = []
+    voice_profile: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkflowCharacterCreateRequest(BaseModel):
+    name: str
+    role_type: str = "supporting"
+    description: str
+    visual_prompt_base: Optional[str] = None
+    negative_prompt_base: Optional[str] = None
+    personality_traits: List[str] = []
+    voice_profile: Optional[str] = None
+    reference_image_url: Optional[str] = None
+    lock_identity: bool = True
+    select_after_create: bool = True
+
+
+class WorkflowCharacterGenerateRequest(BaseModel):
+    name: str
+    role_type: str = "supporting"
+    description: str
+    personality_traits: List[str] = []
+    voice_profile: Optional[str] = None
+    style: str = "cinematic"
+    select_after_create: bool = True
+
+
+class WorkflowCharacterSelectRequest(BaseModel):
+    selected_character_ids: List[str]
+
+
+class WorkflowCharacterListResponse(BaseModel):
+    library: List[WorkflowCharacterResponse]
+    selected_character_ids: List[str] = []
+    selected: List[WorkflowCharacterResponse] = []
+    approved_character_ids: List[str] = []
+    approved_at: Optional[datetime] = None
+
+
+class WorkflowProductionSummaryResponse(BaseModel):
+    project_id: str
+    workflow_state: str
+    script_ready: bool
+    characters_ready: bool
+    estimated_credits: int
+    current_credit_balance: int
+    target_duration_minutes: int
+    selected_characters: List[WorkflowCharacterResponse] = []
+    final_video_url: Optional[str] = None
+
+
+class WorkflowProductionStatusResponse(BaseModel):
+    project_id: str
+    workflow_state: str
+    production_job_id: Optional[str] = None
+    final_video_url: Optional[str] = None
+
+
+class WorkflowProductionStartResponse(BaseModel):
+    project: WorkflowProjectResponse
+    status: WorkflowProductionStatusResponse
+    video_path: Optional[str] = None
+
+
+class WorkflowLibraryResponse(BaseModel):
+    characters: List[WorkflowCharacterResponse]
+    scripts: List[WorkflowProjectResponse]
+    videos: List[WorkflowProjectResponse]

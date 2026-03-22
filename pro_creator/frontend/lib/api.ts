@@ -244,6 +244,13 @@ export type OrchestrationScheduleItem = {
   created_at: string;
 };
 
+export type OrchestrationRunnerStatus = {
+  enabled: boolean;
+  running: boolean;
+  interval_seconds: number;
+  detail?: string | null;
+};
+
 export async function changePassword(payload: {
   current_password: string;
   new_password: string;
@@ -374,7 +381,7 @@ export async function retryOrchestrationJob(jobId: number): Promise<Orchestratio
 
 export async function startOrchestrationRunner(payload?: {
   interval_seconds?: number;
-}): Promise<{ running: boolean; interval_seconds: number }> {
+}): Promise<OrchestrationRunnerStatus> {
   const query = payload?.interval_seconds
     ? `?interval_seconds=${payload.interval_seconds}`
     : "";
@@ -390,10 +397,7 @@ export async function startOrchestrationRunner(payload?: {
   return response.json();
 }
 
-export async function stopOrchestrationRunner(): Promise<{
-  running: boolean;
-  interval_seconds: number;
-}> {
+export async function stopOrchestrationRunner(): Promise<OrchestrationRunnerStatus> {
   const response = await fetch(`${API_BASE}/orchestration/queue/runner/stop`, {
     method: "POST",
   });
@@ -403,10 +407,7 @@ export async function stopOrchestrationRunner(): Promise<{
   return response.json();
 }
 
-export async function fetchOrchestrationRunnerStatus(): Promise<{
-  running: boolean;
-  interval_seconds: number;
-}> {
+export async function fetchOrchestrationRunnerStatus(): Promise<OrchestrationRunnerStatus> {
   const response = await fetch(`${API_BASE}/orchestration/queue/runner/status`, {
     cache: "no-store",
   });
@@ -1012,21 +1013,6 @@ export async function fetchCreditPlans(): Promise<{ plans: CreditPlan[] }> {
   return response.json();
 }
 
-export async function purchaseCreditsMock(payload: {
-  plan_id: string;
-}): Promise<CreditBalance> {
-  const response = await fetch(`${API_BASE}/billing/purchase/mock`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    const detail = await response.json().catch(() => null);
-    throw new Error(detail?.detail ?? "Failed to purchase credits");
-  }
-  return response.json();
-}
-
 export async function createStripeCheckoutSession(payload: {
   plan_id: string;
 }): Promise<{ session_id: string; checkout_url: string }> {
@@ -1124,6 +1110,420 @@ export async function verifyAdminAccess(payload: {
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
     throw new Error(detail?.detail ?? "Failed to verify admin access");
+  }
+  return response.json();
+}
+
+export type WorkflowState =
+  | "draft"
+  | "script_generating"
+  | "script_generated"
+  | "script_approved"
+  | "characters_in_progress"
+  | "characters_approved"
+  | "production_ready"
+  | "production_queued"
+  | "production_running"
+  | "video_completed"
+  | "production_failed";
+
+export type WorkflowProject = {
+  project_id: string;
+  title: string;
+  topic: string;
+  status: string;
+  idea_prompt?: string | null;
+  genre?: string | null;
+  target_duration_minutes?: number | null;
+  workflow_state: WorkflowState;
+  script_draft?: string | null;
+  script_approved?: string | null;
+  script_approved_at?: string | null;
+  character_package_approved: boolean;
+  character_package_approved_at?: string | null;
+  selected_character_ids: string[];
+  production_job_id?: string | null;
+  final_video_url?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkflowCharacter = {
+  character_id: string;
+  name: string;
+  role_type: string;
+  description: string;
+  visual_prompt_base: string;
+  negative_prompt_base: string;
+  consistency_seed: string;
+  identity_hash: string;
+  lock_identity: boolean;
+  reference_image_url?: string | null;
+  canonical_image_url?: string | null;
+  personality_traits: string[];
+  voice_profile?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkflowCharacterList = {
+  library: WorkflowCharacter[];
+  selected_character_ids: string[];
+  selected: WorkflowCharacter[];
+  approved_character_ids: string[];
+  approved_at?: string | null;
+};
+
+export type WorkflowProductionSummary = {
+  project_id: string;
+  workflow_state: WorkflowState;
+  script_ready: boolean;
+  characters_ready: boolean;
+  estimated_credits: number;
+  current_credit_balance: number;
+  target_duration_minutes: number;
+  selected_characters: WorkflowCharacter[];
+  final_video_url?: string | null;
+};
+
+export type WorkflowProductionStatus = {
+  project_id: string;
+  workflow_state: WorkflowState;
+  production_job_id?: string | null;
+  final_video_url?: string | null;
+};
+
+export type WorkflowLibrary = {
+  characters: WorkflowCharacter[];
+  scripts: WorkflowProject[];
+  videos: WorkflowProject[];
+};
+
+export async function fetchWorkflowProjects(): Promise<WorkflowProject[]> {
+  const response = await fetch(`${API_BASE}/workflow/projects`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load workflow projects");
+  }
+  return response.json();
+}
+
+export async function createWorkflowProject(payload: {
+  title: string;
+  idea_prompt?: string;
+  genre?: string;
+  target_duration_minutes?: number;
+}): Promise<WorkflowProject> {
+  const response = await fetch(`${API_BASE}/workflow/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to create workflow project");
+  }
+  return response.json();
+}
+
+export async function fetchWorkflowProject(
+  projectId: string
+): Promise<WorkflowProject> {
+  const response = await fetch(`${API_BASE}/workflow/projects/${projectId}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load workflow project");
+  }
+  return response.json();
+}
+
+export async function updateWorkflowProject(
+  projectId: string,
+  payload: {
+    title?: string;
+    idea_prompt?: string;
+    genre?: string;
+    target_duration_minutes?: number;
+  }
+): Promise<WorkflowProject> {
+  const response = await fetch(`${API_BASE}/workflow/projects/${projectId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to update workflow project");
+  }
+  return response.json();
+}
+
+export async function generateWorkflowScript(
+  projectId: string,
+  payload: {
+    title: string;
+    idea_prompt?: string;
+    genre?: string;
+    target_duration_minutes?: number;
+    tone?: string;
+  }
+): Promise<WorkflowProject> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/generate-script`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to generate workflow script");
+  }
+  return response.json();
+}
+
+export async function approveWorkflowScript(
+  projectId: string
+): Promise<WorkflowProject> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/approve-script`,
+    {
+      method: "POST",
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to approve script");
+  }
+  return response.json();
+}
+
+export async function regenerateWorkflowScript(
+  projectId: string,
+  payload: {
+    title: string;
+    idea_prompt?: string;
+    genre?: string;
+    target_duration_minutes?: number;
+    tone?: string;
+  }
+): Promise<WorkflowProject> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/regenerate-script`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to regenerate script");
+  }
+  return response.json();
+}
+
+export async function updateWorkflowScript(
+  projectId: string,
+  payload: { script: string; update_scenes?: boolean }
+): Promise<WorkflowProject> {
+  const response = await fetch(`${API_BASE}/workflow/projects/${projectId}/script`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to update script");
+  }
+  return response.json();
+}
+
+export async function fetchWorkflowCharacters(
+  projectId: string
+): Promise<WorkflowCharacterList> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/characters`,
+    { cache: "no-store" }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load characters");
+  }
+  return response.json();
+}
+
+export async function selectWorkflowCharacters(
+  projectId: string,
+  selected_character_ids: string[]
+): Promise<WorkflowCharacterList> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/characters/select`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selected_character_ids }),
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to update character selection");
+  }
+  return response.json();
+}
+
+export async function createWorkflowCharacter(
+  projectId: string,
+  payload: {
+    name: string;
+    role_type?: string;
+    description: string;
+    visual_prompt_base?: string;
+    negative_prompt_base?: string;
+    personality_traits?: string[];
+    voice_profile?: string;
+    reference_image_url?: string;
+    lock_identity?: boolean;
+    select_after_create?: boolean;
+  }
+): Promise<WorkflowCharacterList> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/characters/create`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to create character");
+  }
+  return response.json();
+}
+
+export async function generateWorkflowCharacter(
+  projectId: string,
+  payload: {
+    name: string;
+    role_type?: string;
+    description: string;
+    personality_traits?: string[];
+    voice_profile?: string;
+    style?: string;
+    select_after_create?: boolean;
+  }
+): Promise<WorkflowCharacterList> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/characters/generate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to generate character");
+  }
+  return response.json();
+}
+
+export async function uploadWorkflowCharacter(
+  projectId: string,
+  payload: {
+    file: File;
+    name: string;
+    role_type?: string;
+    description?: string;
+    voice_profile?: string;
+    select_after_create?: boolean;
+  }
+): Promise<WorkflowCharacterList> {
+  const formData = new FormData();
+  formData.append("reference", payload.file);
+  formData.append("name", payload.name);
+  formData.append("role_type", payload.role_type ?? "supporting");
+  formData.append("description", payload.description ?? "");
+  formData.append("voice_profile", payload.voice_profile ?? "");
+  formData.append(
+    "select_after_create",
+    String(payload.select_after_create ?? true)
+  );
+
+  const response = await fetch(`${API_BASE}/workflow/projects/${projectId}/characters/upload`, {
+    method: "POST",
+    body: formData,
+    headers: withAuthHeaders(),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to upload character reference");
+  }
+  return response.json();
+}
+
+export async function approveWorkflowCharacters(
+  projectId: string,
+  selected_character_ids: string[]
+): Promise<WorkflowCharacterList> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/approve-characters`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selected_character_ids }),
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to approve characters");
+  }
+  return response.json();
+}
+
+export async function fetchWorkflowProductionSummary(
+  projectId: string
+): Promise<WorkflowProductionSummary> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/production-summary`,
+    { cache: "no-store" }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load production summary");
+  }
+  return response.json();
+}
+
+export async function startWorkflowProduction(
+  projectId: string
+): Promise<{
+  project: WorkflowProject;
+  status: WorkflowProductionStatus;
+  video_path?: string | null;
+}> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/start-production`,
+    {
+      method: "POST",
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to start video production");
+  }
+  return response.json();
+}
+
+export async function fetchWorkflowProductionStatus(
+  projectId: string
+): Promise<WorkflowProductionStatus> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/production-status`,
+    { cache: "no-store" }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load production status");
+  }
+  return response.json();
+}
+
+export async function fetchWorkflowLibrary(): Promise<WorkflowLibrary> {
+  const response = await fetch(`${API_BASE}/workflow/library`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load workflow library");
   }
   return response.json();
 }

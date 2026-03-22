@@ -66,6 +66,13 @@ def utc_now_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _runner_disabled_detail() -> str:
+    return (
+        "In-process runner is disabled when ENABLE_CELERY=true. "
+        "Run a worker and a scheduler/beat instead."
+    )
+
+
 def _job_to_item(job: OrchestrationJob) -> OrchestrationQueueItem:
     return OrchestrationQueueItem(
         id=job.id or 0,
@@ -535,34 +542,50 @@ async def start_runner(
     if ENABLE_CELERY:
         raise HTTPException(
             status_code=400,
-            detail="In-process runner is disabled when ENABLE_CELERY=true. Run a worker and a scheduler/beat instead.",
+            detail=_runner_disabled_detail(),
         )
     global _runner_task, _runner_interval
     _runner_interval = interval_seconds
     if _runner_task is None or _runner_task.done():
         loop = asyncio.get_running_loop()
         _runner_task = loop.create_task(_runner_loop(interval_seconds))
-    return OrchestrationRunnerStatus(running=True, interval_seconds=_runner_interval)
+    return OrchestrationRunnerStatus(
+        enabled=True,
+        running=True,
+        interval_seconds=_runner_interval,
+    )
 
 
 @router.post("/queue/runner/stop", response_model=OrchestrationRunnerStatus)
 async def stop_runner() -> OrchestrationRunnerStatus:
     if ENABLE_CELERY:
-        raise HTTPException(status_code=400, detail="In-process runner is disabled when ENABLE_CELERY=true.")
+        raise HTTPException(status_code=400, detail=_runner_disabled_detail())
     global _runner_task
     if _runner_task is not None:
         _runner_task.cancel()
         _runner_task = None
-    return OrchestrationRunnerStatus(running=False, interval_seconds=_runner_interval)
+    return OrchestrationRunnerStatus(
+        enabled=True,
+        running=False,
+        interval_seconds=_runner_interval,
+    )
 
 
 @router.get("/queue/runner/status", response_model=OrchestrationRunnerStatus)
 def runner_status() -> OrchestrationRunnerStatus:
     if ENABLE_CELERY:
-        # Keep the endpoint for UI compatibility, but make it explicit this runner is disabled in production mode.
-        return OrchestrationRunnerStatus(running=False, interval_seconds=_runner_interval)
+        return OrchestrationRunnerStatus(
+            enabled=False,
+            running=False,
+            interval_seconds=_runner_interval,
+            detail=_runner_disabled_detail(),
+        )
     running = _runner_task is not None and not _runner_task.done()
-    return OrchestrationRunnerStatus(running=running, interval_seconds=_runner_interval)
+    return OrchestrationRunnerStatus(
+        enabled=True,
+        running=running,
+        interval_seconds=_runner_interval,
+    )
 
 
 @router.post("/queue/{job_id}/retry", response_model=OrchestrationQueueItem)

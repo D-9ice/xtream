@@ -1,3 +1,3 @@
 "use client";
 
-export { default } from "./page.clean";
+export { default } from "./page.workflow";

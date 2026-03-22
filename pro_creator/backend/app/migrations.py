@@ -107,6 +107,57 @@ def _fallback_schema_sync(engine: Engine) -> None:
             f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'",
         )
 
+    # Guided workflow project fields.
+    _ensure_column("project", "idea_prompt", "ALTER TABLE project ADD COLUMN idea_prompt TEXT")
+    _ensure_column("project", "genre", "ALTER TABLE project ADD COLUMN genre TEXT")
+    _ensure_column(
+        "project",
+        "target_duration_minutes",
+        "ALTER TABLE project ADD COLUMN target_duration_minutes INTEGER",
+    )
+    _ensure_column(
+        "project",
+        "workflow_state",
+        "ALTER TABLE project ADD COLUMN workflow_state TEXT NOT NULL DEFAULT 'draft'",
+    )
+    _ensure_column("project", "script_draft", "ALTER TABLE project ADD COLUMN script_draft TEXT")
+    _ensure_column("project", "script_approved", "ALTER TABLE project ADD COLUMN script_approved TEXT")
+    _ensure_column(
+        "project",
+        "script_approved_at",
+        "ALTER TABLE project ADD COLUMN script_approved_at DATETIME",
+    )
+    _ensure_column(
+        "project",
+        "character_package_approved",
+        "ALTER TABLE project ADD COLUMN character_package_approved BOOLEAN NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
+        "project",
+        "character_package_approved_at",
+        "ALTER TABLE project ADD COLUMN character_package_approved_at DATETIME",
+    )
+    _ensure_column(
+        "project",
+        "selected_character_ids_json",
+        "ALTER TABLE project ADD COLUMN selected_character_ids_json TEXT",
+    )
+    _ensure_column(
+        "project",
+        "production_job_id",
+        "ALTER TABLE project ADD COLUMN production_job_id TEXT",
+    )
+    _ensure_column(
+        "project",
+        "final_video_url",
+        "ALTER TABLE project ADD COLUMN final_video_url TEXT",
+    )
+    _ensure_column(
+        "project",
+        "updated_at",
+        "ALTER TABLE project ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+    )
+
     # Newer tenant-aware billing model: one subscription per (tenant_id, user_id).
     _drop_index_if_exists("ix_subscriptionaccount_user_id")
     _drop_index_if_exists("ix_subscriptionaccount_tenant_user_id")

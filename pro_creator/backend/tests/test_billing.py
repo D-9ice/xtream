@@ -91,3 +91,12 @@ def test_admin_access_verify_with_totp(monkeypatch) -> None:
     )
     assert ok_res.status_code == 200
     assert ok_res.json()["access_token"]
+
+
+def test_mock_purchase_blocked_in_production(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(billing, "ENVIRONMENT", "production")
+
+    response = client.post("/billing/purchase/mock", json={"plan_id": "pro"})
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Mock credit purchase is disabled in production"

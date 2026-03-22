@@ -1,5 +1,8 @@
 import json
 
+from fastapi.testclient import TestClient
+
+from app.main import app
 from app.models import OrchestrationJob
 from app.routers import orchestration
 
@@ -43,3 +46,19 @@ def test_celery_full_dispatch_uses_full_pipeline_task(monkeypatch) -> None:
         "voice text",
         "image prompt",
     )
+
+
+def test_runner_status_reports_worker_managed_mode(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(orchestration, "ENABLE_CELERY", True)
+
+    status_res = client.get("/orchestration/queue/runner/status")
+    assert status_res.status_code == 200
+    payload = status_res.json()
+    assert payload["enabled"] is False
+    assert payload["running"] is False
+    assert "disabled when ENABLE_CELERY=true" in payload["detail"]
+
+    start_res = client.post("/orchestration/queue/runner/start")
+    assert start_res.status_code == 400
+    assert "disabled when ENABLE_CELERY=true" in start_res.json()["detail"]
