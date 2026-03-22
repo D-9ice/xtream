@@ -309,6 +309,132 @@ def test_workflow_production_injects_character_identity_into_scene_generation(
     assert scene_plan[0]["scene_id"] == 1
     assert scene_plan[0]["matched_character_ids"] == selected_ids
     assert scene_plan[0]["voice_profile"] == "heroic"
+    assert scene_plan[0]["identity_snapshots"][0]["character_id"] == selected_ids[0]
+    assert scene_plan[0]["identity_snapshots"][0]["voice_profile"] == "heroic"
+
+
+def test_workflow_production_preserves_identity_snapshot_across_scenes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = TestClient(app)
+    captured_images: list[dict[str, object]] = []
+    captured_voices: list[dict[str, object]] = []
+
+    def capture_image(project_id: str, scene_id: int, prompt: str, style: str) -> dict[str, str]:
+        captured_images.append({"scene_id": scene_id, "prompt": prompt})
+        return {"image_path": f"/tmp/{project_id}-{scene_id}.png"}
+
+    def capture_voice(
+        project_id: str,
+        scene_id: int,
+        text: str,
+        voice_profile: str = "default",
+    ) -> dict[str, str]:
+        captured_voices.append(
+            {
+                "scene_id": scene_id,
+                "text": text,
+                "voice_profile": voice_profile,
+            }
+        )
+        return {"audio_path": f"/tmp/{project_id}-{scene_id}.wav"}
+
+    monkeypatch.setattr(workflow_service, "generate_image_for_scene", capture_image)
+    monkeypatch.setattr(workflow_service, "generate_voice_for_scene", capture_voice)
+    monkeypatch.setattr(
+        workflow_service,
+        "render_video",
+        lambda project_id: {"video_path": f"https://example.test/{project_id}-multi-scene.mp4"},
+    )
+
+    create_res = client.post(
+        "/workflow/projects",
+        json={
+            "title": "Identity Continuity Test",
+            "idea_prompt": "Hero appears in two connected scenes.",
+            "genre": "Adventure",
+            "target_duration_minutes": 2,
+        },
+    )
+    assert create_res.status_code == 200
+    project_id = create_res.json()["project_id"]
+
+    client.post(
+        f"/workflow/projects/{project_id}/generate-script",
+        json={
+            "title": "Identity Continuity Test",
+            "idea_prompt": "Hero appears in two connected scenes.",
+            "genre": "Adventure",
+            "target_duration_minutes": 2,
+            "tone": "cinematic",
+        },
+    )
+    update_res = client.patch(
+        f"/workflow/projects/{project_id}/script",
+        json={
+            "script": "\n".join(
+                [
+                    "Hero: We begin the repair before dawn.",
+                    "Hero: Now we finish the same repair at sunrise.",
+                ]
+            ),
+            "update_scenes": True,
+        },
+    )
+    assert update_res.status_code == 200
+    client.post(f"/workflow/projects/{project_id}/approve-script")
+    create_character_res = client.post(
+        f"/workflow/projects/{project_id}/characters/create",
+        json={
+            "name": "Hero",
+            "role_type": "main",
+            "description": "Determined inventor with a bright red jacket",
+            "voice_profile": "heroic",
+            "reference_image_urls": [
+                "https://example.test/hero-ref-1.png",
+                "https://example.test/hero-ref-2.png",
+            ],
+            "select_after_create": True,
+        },
+    )
+    assert create_character_res.status_code == 200
+    selected_ids = create_character_res.json()["selected_character_ids"]
+    client.post(
+        f"/workflow/projects/{project_id}/approve-characters",
+        json={"selected_character_ids": selected_ids},
+    )
+
+    start_res = client.post(f"/workflow/projects/{project_id}/start-production")
+    assert start_res.status_code == 200
+    process_res = client.post("/orchestration/queue/process?limit=1")
+    assert process_res.status_code == 200
+    assert process_res.json()["processed"] == 1
+
+    assert [entry["scene_id"] for entry in captured_images] == [1, 2]
+    assert [entry["scene_id"] for entry in captured_voices] == [1, 2]
+    assert all(entry["voice_profile"] == "heroic" for entry in captured_voices)
+    assert all("Identity locks: Hero seed" in str(entry["prompt"]) for entry in captured_images)
+    assert all("Hero hash" in str(entry["prompt"]) for entry in captured_images)
+    assert all("hero-ref-1.png" in str(entry["prompt"]) for entry in captured_images)
+
+    scene_plan = json.loads(
+        storage_client.read_text(project_key(project_id, "workflow/scene_identity_plan.json"))
+    )
+    assert [entry["scene_id"] for entry in scene_plan] == [1, 2]
+    assert scene_plan[0]["matched_character_ids"] == selected_ids
+    assert scene_plan[1]["matched_character_ids"] == selected_ids
+    assert scene_plan[0]["voice_profile"] == "heroic"
+    assert scene_plan[1]["voice_profile"] == "heroic"
+
+    first_identity = scene_plan[0]["identity_snapshots"][0]
+    second_identity = scene_plan[1]["identity_snapshots"][0]
+    assert first_identity["character_id"] == selected_ids[0]
+    assert second_identity["character_id"] == selected_ids[0]
+    assert first_identity["identity_hash"] == second_identity["identity_hash"]
+    assert first_identity["consistency_seed"] == second_identity["consistency_seed"]
+    assert first_identity["voice_profile"] == second_identity["voice_profile"] == "heroic"
+    assert first_identity["lock_identity"] is True
+    assert second_identity["lock_identity"] is True
 
 
 def test_workflow_production_retry_requeues_failed_job(monkeypatch: pytest.MonkeyPatch) -> None:

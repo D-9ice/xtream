@@ -60,7 +60,7 @@ This checklist tracks the remaining work required to finish the guided workflow 
   - references
   - seeds
 - [x] Inject resolved DNA data into downstream image/video generation consistently.
-- [ ] Verify character identity is preserved scene to scene as far as current generation stack allows.
+- [x] Verify character identity is preserved scene to scene as far as current generation stack allows.
 - [x] Add resolver-specific unit tests.
 
 ## Phase 6: Create Screen UX Completion

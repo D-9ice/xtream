@@ -1049,6 +1049,7 @@ def _build_scene_render_context(scene_text: str, bundle: dict[str, Any]) -> dict
     identity_notes: list[str] = []
     negative_notes: list[str] = []
     matched_character_ids: list[str] = []
+    identity_snapshots: list[dict[str, Any]] = []
     selected_voice_profile = "default"
 
     for index, character in enumerate(focus_characters):
@@ -1063,8 +1064,11 @@ def _build_scene_render_context(scene_text: str, bundle: dict[str, Any]) -> dict
         identity = bundle.get("identity_rules", {}).get(character_id, {})
         refs = bundle.get("reference_bundles", {}).get(character_id, [])
         seed = str(identity.get("consistency_seed", "")).strip()
+        identity_hash = str(identity.get("identity_hash", "")).strip()
         if name and seed:
             identity_notes.append(f"{name} seed {seed}")
+        if name and identity_hash:
+            identity_notes.append(f"{name} hash {identity_hash[:16]}")
         if name and identity.get("lock_identity", True):
             identity_notes.append(f"{name} lock identity")
         if name and refs:
@@ -1079,6 +1083,23 @@ def _build_scene_render_context(scene_text: str, bundle: dict[str, Any]) -> dict
                 or character.get("voice_profile")
                 or "default"
             )
+        identity_snapshots.append(
+            {
+                "character_id": character_id,
+                "name": name,
+                "identity_hash": identity_hash or None,
+                "consistency_seed": seed or None,
+                "lock_identity": bool(identity.get("lock_identity", True)),
+                "reference_image_urls": refs[:],
+                "voice_profile": (
+                    bundle.get("voice_profiles", {})
+                    .get(character_id, {})
+                    .get("voice_profile")
+                    or character.get("voice_profile")
+                    or "default"
+                ),
+            }
+        )
 
     details: list[str] = []
     if cast:
@@ -1093,6 +1114,7 @@ def _build_scene_render_context(scene_text: str, bundle: dict[str, Any]) -> dict
     return {
         "prompt": prompt,
         "matched_character_ids": matched_character_ids,
+        "identity_snapshots": identity_snapshots,
         "voice_profile": selected_voice_profile or "default",
     }
 
@@ -1204,6 +1226,7 @@ def _perform_production(
             {
                 "scene_id": scene_id,
                 "matched_character_ids": scene_context["matched_character_ids"],
+                "identity_snapshots": scene_context["identity_snapshots"],
                 "voice_profile": scene_context["voice_profile"],
             }
         )
