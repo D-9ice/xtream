@@ -59,7 +59,7 @@ This checklist tracks the remaining work required to finish the guided workflow 
   - prompt payloads
   - references
   - seeds
-- [ ] Inject resolved DNA data into downstream image/video generation consistently.
+- [x] Inject resolved DNA data into downstream image/video generation consistently.
 - [ ] Verify character identity is preserved scene to scene as far as current generation stack allows.
 - [x] Add resolver-specific unit tests.
 
@@ -93,19 +93,19 @@ This checklist tracks the remaining work required to finish the guided workflow 
 
 ## Phase 9: Legacy UI Demotion
 
-- [ ] Move legacy engine-centric surfaces out of the normal user path.
-- [ ] Hide or demote:
+- [x] Move legacy engine-centric surfaces out of the normal user path.
+- [x] Hide or demote:
   - Engines
   - Automation
   - Orchestration
   - Logs
-- [ ] Keep internal routes only for admin/developer use where necessary.
-- [ ] Ensure normal users only see the simplified guided workflow shell.
+- [x] Keep internal routes only for admin/developer use where necessary.
+- [x] Ensure normal users only see the simplified guided workflow shell.
 
 ## Phase 10: API Shape Cleanup
 
-- [ ] Decide whether to keep `/workflow/...` routes as the public workflow surface or alias them to the final `/api/projects/:id/...` style from the document.
-- [ ] Standardize route naming and payloads.
+- [x] Decide whether to keep `/workflow/...` routes as the public workflow surface or alias them to the final `/api/projects/:id/...` style from the document.
+- [x] Standardize route naming and payloads.
 - [ ] Remove any UI dependence on legacy engine APIs for the main workflow path.
 
 ## Phase 11: Data And Migration Verification

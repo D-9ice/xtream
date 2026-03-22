@@ -142,6 +142,7 @@ app.include_router(auth.router)
 app.include_router(editor.router)
 app.include_router(billing.router)
 app.include_router(workflow.router)
+app.include_router(workflow.api_router)
 
 
 @app.get("/health")

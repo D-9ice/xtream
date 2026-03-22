@@ -211,6 +211,106 @@ def test_workflow_production_queues_then_completes(monkeypatch: pytest.MonkeyPat
     assert voice_profile_artifact[0]["character_id"] == selected_ids[0]
 
 
+def test_workflow_production_injects_character_identity_into_scene_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = TestClient(app)
+    captured: dict[str, object] = {}
+
+    def capture_image(project_id: str, scene_id: int, prompt: str, style: str) -> dict[str, str]:
+        captured["image_prompt"] = prompt
+        captured["image_scene_id"] = scene_id
+        return {"image_path": f"/tmp/{project_id}-{scene_id}.png"}
+
+    def capture_voice(
+        project_id: str,
+        scene_id: int,
+        text: str,
+        voice_profile: str = "default",
+    ) -> dict[str, str]:
+        captured["voice_text"] = text
+        captured["voice_profile"] = voice_profile
+        captured["voice_scene_id"] = scene_id
+        return {"audio_path": f"/tmp/{project_id}-{scene_id}.wav"}
+
+    monkeypatch.setattr(workflow_service, "generate_image_for_scene", capture_image)
+    monkeypatch.setattr(workflow_service, "generate_voice_for_scene", capture_voice)
+    monkeypatch.setattr(
+        workflow_service,
+        "render_video",
+        lambda project_id: {"video_path": f"https://example.test/{project_id}-identity.mp4"},
+    )
+
+    create_res = client.post(
+        "/workflow/projects",
+        json={
+            "title": "Identity Injection Test",
+            "idea_prompt": "Hero restores a broken machine.",
+            "genre": "Adventure",
+            "target_duration_minutes": 2,
+        },
+    )
+    assert create_res.status_code == 200
+    project_id = create_res.json()["project_id"]
+
+    client.post(
+        f"/workflow/projects/{project_id}/generate-script",
+        json={
+            "title": "Identity Injection Test",
+            "idea_prompt": "Hero restores a broken machine.",
+            "genre": "Adventure",
+            "target_duration_minutes": 2,
+            "tone": "cinematic",
+        },
+    )
+    update_res = client.patch(
+        f"/workflow/projects/{project_id}/script",
+        json={"script": "Hero: We restore the machine before sunrise.", "update_scenes": True},
+    )
+    assert update_res.status_code == 200
+    client.post(f"/workflow/projects/{project_id}/approve-script")
+    create_character_res = client.post(
+        f"/workflow/projects/{project_id}/characters/create",
+        json={
+            "name": "Hero",
+            "role_type": "main",
+            "description": "Determined inventor with a bright red jacket",
+            "voice_profile": "heroic",
+            "reference_image_urls": [
+                "https://example.test/hero-ref-1.png",
+                "https://example.test/hero-ref-2.png",
+            ],
+            "select_after_create": True,
+        },
+    )
+    assert create_character_res.status_code == 200
+    selected_ids = create_character_res.json()["selected_character_ids"]
+    client.post(
+        f"/workflow/projects/{project_id}/approve-characters",
+        json={"selected_character_ids": selected_ids},
+    )
+
+    start_res = client.post(f"/workflow/projects/{project_id}/start-production")
+    assert start_res.status_code == 200
+    process_res = client.post("/orchestration/queue/process?limit=1")
+    assert process_res.status_code == 200
+    assert process_res.json()["processed"] == 1
+
+    assert captured["voice_profile"] == "heroic"
+    assert captured["voice_text"] == "Hero: We restore the machine before sunrise."
+    assert "Approved cast: Hero:" in str(captured["image_prompt"])
+    assert "Identity locks: Hero seed" in str(captured["image_prompt"])
+    assert "lock identity" in str(captured["image_prompt"])
+    assert "hero-ref-1.png" in str(captured["image_prompt"])
+
+    scene_plan = json.loads(
+        storage_client.read_text(project_key(project_id, "workflow/scene_identity_plan.json"))
+    )
+    assert scene_plan[0]["scene_id"] == 1
+    assert scene_plan[0]["matched_character_ids"] == selected_ids
+    assert scene_plan[0]["voice_profile"] == "heroic"
+
+
 def test_workflow_production_retry_requeues_failed_job(monkeypatch: pytest.MonkeyPatch) -> None:
     client = TestClient(app)
 
@@ -734,6 +834,62 @@ def test_archive_project_hides_it_from_active_project_list() -> None:
     get_res = client.get(f"/workflow/projects/{project_id}")
     assert get_res.status_code == 200
     assert get_res.json()["archived_at"] is not None
+
+
+def test_api_project_alias_supports_guided_workflow_endpoints() -> None:
+    client = TestClient(app)
+
+    create_res = client.post(
+        "/api/projects",
+        json={
+            "title": "API Alias Test",
+            "idea_prompt": "A crew solves a puzzle together.",
+            "genre": "Adventure",
+            "target_duration_minutes": 2,
+        },
+    )
+    assert create_res.status_code == 200
+    project_id = create_res.json()["project_id"]
+
+    generate_res = client.post(
+        f"/api/projects/{project_id}/generate-script",
+        json={
+            "title": "API Alias Test",
+            "idea_prompt": "A crew solves a puzzle together.",
+            "genre": "Adventure",
+            "target_duration_minutes": 2,
+            "tone": "cinematic",
+        },
+    )
+    assert generate_res.status_code == 200
+    assert generate_res.json()["workflow_state"] == "script_generated"
+
+    approve_res = client.post(f"/api/projects/{project_id}/approve-script")
+    assert approve_res.status_code == 200
+    assert approve_res.json()["workflow_state"] == "script_approved"
+
+    create_character_res = client.post(
+        f"/api/projects/{project_id}/characters/create",
+        json={
+            "name": "Captain Nova",
+            "role_type": "main",
+            "description": "Calm and observant",
+            "select_after_create": True,
+        },
+    )
+    assert create_character_res.status_code == 200
+    selected_ids = create_character_res.json()["selected_character_ids"]
+
+    approve_characters_res = client.post(
+        f"/api/projects/{project_id}/approve-characters",
+        json={"selected_character_ids": selected_ids},
+    )
+    assert approve_characters_res.status_code == 200
+    assert approve_characters_res.json()["approved_character_ids"] == selected_ids
+
+    summary_res = client.get(f"/api/projects/{project_id}/production-summary")
+    assert summary_res.status_code == 200
+    assert summary_res.json()["workflow_state"] == "production_ready"
 
 
 def test_duplicate_project_copies_guided_state_without_live_output_fields() -> None:

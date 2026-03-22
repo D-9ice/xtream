@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any
 from uuid import uuid4
 
@@ -982,14 +983,81 @@ def _image_exists(project_id: str, scene_id: int) -> bool:
 
 
 def _scene_prompt(scene_text: str, bundle: dict[str, Any]) -> str:
-    cast = []
-    identity_notes = []
+    context = _build_scene_render_context(scene_text, bundle)
+    return context["prompt"]
+
+
+def _extract_dialogue_speakers(scene_text: str) -> set[str]:
+    speakers: set[str] = set()
+    for raw_line in (scene_text or "").splitlines():
+        line = raw_line.strip()
+        if not line or ":" not in line:
+            continue
+        if line.lower().startswith(("scene ", "intent:", "narration:", "visuals:")):
+            continue
+        speaker, text_line = line.split(":", 1)
+        speaker = speaker.strip()
+        text_line = text_line.strip()
+        if not speaker or not text_line:
+            continue
+        if len(speaker) > 32 or re.search(r"\s{2,}", speaker):
+            continue
+        speakers.add(speaker.lower())
+    return speakers
+
+
+def _scene_characters(scene_text: str, bundle: dict[str, Any]) -> list[dict[str, Any]]:
+    text_lower = (scene_text or "").lower()
+    dialogue_speakers = _extract_dialogue_speakers(scene_text)
+    matched: list[tuple[int, dict[str, Any]]] = []
+    fallback: list[dict[str, Any]] = []
     for character in bundle.get("characters", []):
         if not isinstance(character, dict):
             continue
+        name = str(character.get("name", "")).strip()
+        if not name:
+            continue
+        fallback.append(character)
+        score = 0
+        normalized_name = name.lower()
+        first_name = normalized_name.split()[0]
+        if normalized_name in dialogue_speakers:
+            score += 4
+        if first_name and first_name in dialogue_speakers:
+            score += 3
+        if normalized_name and normalized_name in text_lower:
+            score += 2
+        elif first_name and re.search(rf"\b{re.escape(first_name)}\b", text_lower):
+            score += 1
+        if score > 0:
+            matched.append((score, character))
+    if matched:
+        return [character for _score, character in sorted(matched, key=lambda item: item[0], reverse=True)]
+    if len(fallback) == 1:
+        return fallback
+    return []
+
+
+def _build_scene_render_context(scene_text: str, bundle: dict[str, Any]) -> dict[str, Any]:
+    matched_characters = _scene_characters(scene_text, bundle)
+    focus_characters = matched_characters or [
+        character
+        for character in bundle.get("characters", [])
+        if isinstance(character, dict)
+    ][:2]
+    cast: list[str] = []
+    identity_notes: list[str] = []
+    negative_notes: list[str] = []
+    matched_character_ids: list[str] = []
+    selected_voice_profile = "default"
+
+    for index, character in enumerate(focus_characters):
         character_id = str(character.get("character_id", "")).strip()
         name = str(character.get("name", "")).strip()
+        if character_id:
+            matched_character_ids.append(character_id)
         visual = str(character.get("visual_prompt_base", "")).strip()
+        negative = str(character.get("negative_prompt_base", "")).strip()
         if name or visual:
             cast.append(f"{name}: {visual}".strip(": "))
         identity = bundle.get("identity_rules", {}).get(character_id, {})
@@ -997,16 +1065,36 @@ def _scene_prompt(scene_text: str, bundle: dict[str, Any]) -> str:
         seed = str(identity.get("consistency_seed", "")).strip()
         if name and seed:
             identity_notes.append(f"{name} seed {seed}")
+        if name and identity.get("lock_identity", True):
+            identity_notes.append(f"{name} lock identity")
         if name and refs:
             identity_notes.append(f"{name} refs {', '.join(refs[:2])}")
-    cast_text = "; ".join(cast[:4])
-    identity_text = "; ".join(identity_notes[:4])
-    if cast_text:
-        details = [f"Character direction: {cast_text}"]
-        if identity_text:
-            details.append(f"Identity locks: {identity_text}")
-        return f"{scene_text}\n\n" + "\n".join(details)
-    return scene_text
+        if negative:
+            negative_notes.append(f"{name}: {negative}".strip(": "))
+        if index == 0:
+            selected_voice_profile = (
+                bundle.get("voice_profiles", {})
+                .get(character_id, {})
+                .get("voice_profile")
+                or character.get("voice_profile")
+                or "default"
+            )
+
+    details: list[str] = []
+    if cast:
+        details.append(f"Approved cast: {'; '.join(cast[:4])}")
+    if identity_notes:
+        details.append(f"Identity locks: {'; '.join(identity_notes[:6])}")
+    if negative_notes:
+        details.append(f"Avoid drift: {'; '.join(negative_notes[:4])}")
+    prompt = scene_text
+    if details:
+        prompt = f"{scene_text}\n\n" + "\n".join(details)
+    return {
+        "prompt": prompt,
+        "matched_character_ids": matched_character_ids,
+        "voice_profile": selected_voice_profile or "default",
+    }
 
 
 def workflow_production_summary(
@@ -1081,6 +1169,11 @@ def _write_character_dna_artifacts(project_id: str, bundle: dict[str, Any]) -> N
     )
 
 
+def _write_scene_identity_plan(project_id: str, plan: list[dict[str, Any]]) -> None:
+    key = project_key(project_id, "workflow/scene_identity_plan.json")
+    storage_client.write_text(key, _dumps_json(plan))
+
+
 def _perform_production(
     *,
     session: Session,
@@ -1093,18 +1186,50 @@ def _perform_production(
     _persist_project_script(session=session, project=project, script_text=approved_script, scenes=scenes)
     _write_production_bundle_artifact(project.project_id, bundle)
     _write_character_dna_artifacts(project.project_id, bundle)
+    scene_rows = {
+        int(scene.id or 0): scene
+        for scene in session.exec(
+            select(Scene).where(
+                Scene.project_id == project.project_id,
+                Scene.tenant_id == project.tenant_id,
+            )
+        ).all()
+    }
+    scene_plan: list[dict[str, Any]] = []
     for scene in scenes:
         scene_id = int(scene.get("id", 1))
         scene_text = str(scene.get("text", "")).strip() or project.title
+        scene_context = _build_scene_render_context(scene_text, bundle)
+        scene_plan.append(
+            {
+                "scene_id": scene_id,
+                "matched_character_ids": scene_context["matched_character_ids"],
+                "voice_profile": scene_context["voice_profile"],
+            }
+        )
         if not _image_exists(project.project_id, scene_id):
-            generate_image_for_scene(
+            image_result = generate_image_for_scene(
                 project.project_id,
                 scene_id,
-                _scene_prompt(scene_text, bundle),
+                scene_context["prompt"],
                 "cinematic",
             )
+            scene_row = scene_rows.get(scene_id)
+            if scene_row:
+                scene_row.image_path = image_result.get("image_path")
+                session.add(scene_row)
         if not _audio_exists(project.project_id, scene_id):
-            generate_voice_for_scene(project.project_id, scene_id, scene_text, voice_profile="default")
+            voice_result = generate_voice_for_scene(
+                project.project_id,
+                scene_id,
+                scene_text,
+                voice_profile=scene_context["voice_profile"],
+            )
+            scene_row = scene_rows.get(scene_id)
+            if scene_row:
+                scene_row.audio_path = voice_result.get("audio_path")
+                session.add(scene_row)
+    _write_scene_identity_plan(project.project_id, scene_plan)
     video_result = render_video(project.project_id)
     project.final_video_url = video_result["video_path"]
     transition_project_state(project, "video_completed")

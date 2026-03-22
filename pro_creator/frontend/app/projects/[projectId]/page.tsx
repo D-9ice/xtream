@@ -51,14 +51,14 @@ export default async function ProjectDetail({
               className="rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-xs font-semibold text-aurora"
               href="/"
             >
-              ← Back to dashboard
+              ← Back to Guided Studio
             </Link>
           </div>
         </header>
         <main className="mx-auto flex max-w-6xl items-center justify-center px-6 py-16">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-8 text-center">
             <p className="text-sm text-slate-300">
-              We couldn’t load that project. Create a new one from the dashboard.
+              We couldn’t load that project. Create a new one from Guided Studio.
             </p>
           </div>
         </main>
@@ -83,7 +83,7 @@ export default async function ProjectDetail({
             className="rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-xs font-semibold text-aurora"
             href="/"
           >
-            ← Back to dashboard
+            ← Back to Guided Studio
           </Link>
         </div>
       </header>
@@ -96,7 +96,7 @@ export default async function ProjectDetail({
               Generated script output stored in the project directory.
             </p>
             <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-200 whitespace-pre-line">
-              {script || "No script yet. Run the Script engine from the dashboard."}
+              {script || "No script yet. Open the guided Create workflow to generate and approve the script first."}
             </div>
             <a
               className="mt-4 inline-flex text-xs font-semibold text-aurora"
@@ -184,12 +184,12 @@ export default async function ProjectDetail({
         <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6">
           <h2 className="text-xl font-semibold">Scene preview</h2>
           <p className="mt-2 text-sm text-slate-400">
-            Scene breakdown generated from the script engine.
+            Scene breakdown generated from the approved project script.
           </p>
           <div className="mt-4 grid gap-4">
             {scenes.length === 0 ? (
               <p className="text-sm text-slate-400">
-                No scenes yet. Run the Script engine to populate them.
+                No scenes yet. Return to the guided Create workflow to generate or update the script.
               </p>
             ) : (
               scenes.map((scene) => (

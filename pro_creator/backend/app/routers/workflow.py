@@ -50,13 +50,21 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
+api_router = APIRouter(
+    prefix="/api",
+    tags=["Workflow API"],
+    dependencies=[Depends(get_current_user)],
+)
+
 
 @router.get("/projects", response_model=list[WorkflowProjectResponse])
+@api_router.get("/projects", response_model=list[WorkflowProjectResponse])
 def list_workflow_projects(session: Session = Depends(get_session)) -> list[WorkflowProjectResponse]:
     return list_projects(session)
 
 
 @router.post("/projects", response_model=WorkflowProjectResponse)
+@api_router.post("/projects", response_model=WorkflowProjectResponse)
 def create_workflow_project(
     payload: WorkflowProjectCreateRequest,
     session: Session = Depends(get_session),
@@ -71,6 +79,7 @@ def create_workflow_project(
 
 
 @router.get("/projects/{project_id}", response_model=WorkflowProjectResponse)
+@api_router.get("/projects/{project_id}", response_model=WorkflowProjectResponse)
 def get_workflow_project(
     project_id: str,
     session: Session = Depends(get_session),
@@ -80,6 +89,7 @@ def get_workflow_project(
 
 
 @router.patch("/projects/{project_id}", response_model=WorkflowProjectResponse)
+@api_router.patch("/projects/{project_id}", response_model=WorkflowProjectResponse)
 def patch_workflow_project(
     project_id: str,
     payload: WorkflowProjectUpdateRequest,
@@ -97,6 +107,7 @@ def patch_workflow_project(
 
 
 @router.post("/projects/{project_id}/archive", response_model=WorkflowProjectResponse)
+@api_router.post("/projects/{project_id}/archive", response_model=WorkflowProjectResponse)
 def workflow_archive_project(
     project_id: str,
     session: Session = Depends(get_session),
@@ -106,6 +117,7 @@ def workflow_archive_project(
 
 
 @router.post("/projects/{project_id}/duplicate", response_model=WorkflowProjectResponse)
+@api_router.post("/projects/{project_id}/duplicate", response_model=WorkflowProjectResponse)
 def workflow_duplicate_project(
     project_id: str,
     session: Session = Depends(get_session),
@@ -115,6 +127,7 @@ def workflow_duplicate_project(
 
 
 @router.post("/projects/{project_id}/generate-script", response_model=WorkflowProjectResponse)
+@api_router.post("/projects/{project_id}/generate-script", response_model=WorkflowProjectResponse)
 def workflow_generate_script(
     project_id: str,
     payload: WorkflowGenerateScriptRequest,
@@ -140,6 +153,7 @@ def workflow_generate_script(
 
 
 @router.post("/projects/{project_id}/approve-script", response_model=WorkflowProjectResponse)
+@api_router.post("/projects/{project_id}/approve-script", response_model=WorkflowProjectResponse)
 def workflow_approve_script(
     project_id: str,
     session: Session = Depends(get_session),
@@ -152,6 +166,7 @@ def workflow_approve_script(
 
 
 @router.post("/projects/{project_id}/regenerate-script", response_model=WorkflowProjectResponse)
+@api_router.post("/projects/{project_id}/regenerate-script", response_model=WorkflowProjectResponse)
 def workflow_regenerate_script(
     project_id: str,
     payload: WorkflowGenerateScriptRequest,
@@ -177,6 +192,7 @@ def workflow_regenerate_script(
 
 
 @router.patch("/projects/{project_id}/script", response_model=WorkflowProjectResponse)
+@api_router.patch("/projects/{project_id}/script", response_model=WorkflowProjectResponse)
 def workflow_update_script(
     project_id: str,
     payload: WorkflowScriptUpdateRequest,
@@ -192,6 +208,7 @@ def workflow_update_script(
 
 
 @router.get("/projects/{project_id}/characters", response_model=WorkflowCharacterListResponse)
+@api_router.get("/projects/{project_id}/characters", response_model=WorkflowCharacterListResponse)
 def workflow_project_characters(
     project_id: str,
     session: Session = Depends(get_session),
@@ -201,6 +218,7 @@ def workflow_project_characters(
 
 
 @router.post("/projects/{project_id}/characters/select", response_model=WorkflowCharacterListResponse)
+@api_router.post("/projects/{project_id}/characters/select", response_model=WorkflowCharacterListResponse)
 def workflow_select_characters(
     project_id: str,
     payload: WorkflowCharacterSelectRequest,
@@ -218,6 +236,7 @@ def workflow_select_characters(
 
 
 @router.post("/projects/{project_id}/characters/create", response_model=WorkflowCharacterListResponse)
+@api_router.post("/projects/{project_id}/characters/create", response_model=WorkflowCharacterListResponse)
 def workflow_create_character(
     project_id: str,
     payload: WorkflowCharacterCreateRequest,
@@ -250,6 +269,7 @@ def workflow_create_character(
 
 
 @router.post("/projects/{project_id}/characters/generate", response_model=WorkflowCharacterListResponse)
+@api_router.post("/projects/{project_id}/characters/generate", response_model=WorkflowCharacterListResponse)
 def workflow_generate_character(
     project_id: str,
     payload: WorkflowCharacterGenerateRequest,
@@ -279,6 +299,7 @@ def workflow_generate_character(
 
 
 @router.post("/projects/{project_id}/characters/upload", response_model=WorkflowCharacterListResponse)
+@api_router.post("/projects/{project_id}/characters/upload", response_model=WorkflowCharacterListResponse)
 async def workflow_upload_character(
     project_id: str,
     name: str = Form(...),
@@ -314,6 +335,7 @@ async def workflow_upload_character(
 
 
 @router.post("/projects/{project_id}/approve-characters", response_model=WorkflowCharacterListResponse)
+@api_router.post("/projects/{project_id}/approve-characters", response_model=WorkflowCharacterListResponse)
 def workflow_approve_characters(
     project_id: str,
     payload: WorkflowCharacterSelectRequest,
@@ -333,6 +355,7 @@ def workflow_approve_characters(
 
 
 @router.get("/projects/{project_id}/production-summary", response_model=WorkflowProductionSummaryResponse)
+@api_router.get("/projects/{project_id}/production-summary", response_model=WorkflowProductionSummaryResponse)
 def workflow_get_production_summary(
     project_id: str,
     session: Session = Depends(get_session),
@@ -343,6 +366,7 @@ def workflow_get_production_summary(
 
 
 @router.post("/projects/{project_id}/start-production", response_model=WorkflowProductionStartResponse)
+@api_router.post("/projects/{project_id}/start-production", response_model=WorkflowProductionStartResponse)
 def workflow_start_production(
     project_id: str,
     session: Session = Depends(get_session),
@@ -367,6 +391,7 @@ def workflow_start_production(
 
 
 @router.get("/projects/{project_id}/production-status", response_model=WorkflowProductionStatusResponse)
+@api_router.get("/projects/{project_id}/production-status", response_model=WorkflowProductionStatusResponse)
 def workflow_get_production_status(
     project_id: str,
     session: Session = Depends(get_session),
@@ -376,6 +401,7 @@ def workflow_get_production_status(
 
 
 @router.post("/projects/{project_id}/retry-production", response_model=WorkflowProductionStatusResponse)
+@api_router.post("/projects/{project_id}/retry-production", response_model=WorkflowProductionStatusResponse)
 def workflow_retry_production(
     project_id: str,
     session: Session = Depends(get_session),

@@ -335,7 +335,21 @@ export default function AdminPage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+          <section className="space-y-4">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+              <h2 className="text-lg font-semibold text-white">Internal Tools</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                Legacy engine-oriented screens are kept off the main user path and only exposed here for internal admin work.
+              </p>
+              <a
+                className="mt-4 inline-flex rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-xs font-semibold text-aurora"
+                href="/admin/internal"
+              >
+                Open Internal Dashboard
+              </a>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
             <h2 className="text-lg font-semibold text-white">Update Subscription</h2>
             <form className="mt-4 space-y-3" onSubmit={handleUpdate}>
               <div>
@@ -397,6 +411,7 @@ export default function AdminPage() {
                 {loading ? "Saving..." : "Save changes"}
               </button>
             </form>
+            </div>
           </section>
         </main>
       )}
