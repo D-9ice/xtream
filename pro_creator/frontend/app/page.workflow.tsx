@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   WorkflowCharacterList,
@@ -576,9 +576,9 @@ export default function WorkflowHomePage() {
       return;
     }
     scrollToCreateStep(selectedStage);
-  }, [activeNav, selectedProject?.project_id, selectedStage]);
+  }, [activeNav, selectedProject, selectedStage]);
 
-  async function refreshProjects(nextSelectedId?: string | null) {
+  const refreshProjects = useCallback(async (nextSelectedId?: string | null) => {
     const [workflowProjects, credits, workflowLibrary] = await Promise.all([
       fetchWorkflowProjects(),
       fetchMyCredits().catch(() => null),
@@ -599,9 +599,9 @@ export default function WorkflowHomePage() {
       setSelectedProject(null);
       setCharacters(null);
     }
-  }
+  }, [selectedProjectId]);
 
-  async function refreshProject(projectId: string) {
+  const refreshProject = useCallback(async (projectId: string) => {
     const [project, nextCharacters, summary, nextProductionStatus] = await Promise.all([
       fetchWorkflowProject(projectId),
       fetchWorkflowCharacters(projectId).catch(() => null),
@@ -620,7 +620,7 @@ export default function WorkflowHomePage() {
     if (summary?.current_credit_balance !== undefined) {
       setCreditBalance(summary.current_credit_balance);
     }
-  }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -643,7 +643,7 @@ export default function WorkflowHomePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshProjects]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -663,7 +663,7 @@ export default function WorkflowHomePage() {
     return () => {
       active = false;
     };
-  }, [selectedProjectId]);
+  }, [refreshProject, selectedProjectId]);
 
   useEffect(() => {
     setProductionConfirmed(false);
@@ -692,7 +692,7 @@ export default function WorkflowHomePage() {
       }
     }, 4000);
     return () => window.clearInterval(interval);
-  }, [selectedProjectId, selectedProject?.workflow_state]);
+  }, [refreshProject, refreshProjects, selectedProject, selectedProjectId]);
 
   async function afterProjectMutation(projectId: string, message: string) {
     await refreshProjects(projectId);

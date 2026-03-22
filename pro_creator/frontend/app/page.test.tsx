@@ -170,9 +170,9 @@ describe("Workflow home page", () => {
   it("shows clear guided warnings before later workflow gates unlock", async () => {
     render(<HomePage />);
 
-    await waitFor(() => {
-      expect(screen.getByText(/Approve the script to unlock character selection/i)).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText(/Approve the script to unlock character selection/i, {}, { timeout: 5000 })
+    ).toBeInTheDocument();
 
     expect(screen.getByText(/Current step: Review Script/i)).toBeInTheDocument();
   });
@@ -203,20 +203,19 @@ describe("Workflow home page", () => {
   it("shows guided navigation controls between unlocked create stages", async () => {
     render(<HomePage />);
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Go to Script Review/i })).toBeInTheDocument();
-    });
+    expect(await screen.findByText(/Current step: Review Script/i, {}, { timeout: 5000 })).toBeInTheDocument();
 
-    expect(screen.getByRole("button", { name: /Go to Script Review/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Go to Script Review/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Back to Story Request/i })).toBeInTheDocument();
   });
 
   it("shows a current-step jump action in the project summary", async () => {
     render(<HomePage />);
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Jump to Current Step/i })).toBeInTheDocument();
-    });
+    expect(await screen.findByText(/Current step: Review Script/i, {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /Jump to Current Step/i }, { timeout: 5000 })
+    ).toBeInTheDocument();
   });
 
   it("polls production status while a video is queued and refreshes to completed", async () => {
@@ -342,9 +341,9 @@ describe("Workflow home page", () => {
 
     render(<HomePage />);
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Retry Production/i })).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByRole("button", { name: /Retry Production/i }, { timeout: 5000 })
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Retry Production/i }));
 

@@ -275,6 +275,7 @@ def character_to_response(profile: CharacterProfile) -> WorkflowCharacterRespons
 
 
 def project_to_response(project: Project) -> WorkflowProjectResponse:
+    updated_at = project.updated_at or project.created_at
     return WorkflowProjectResponse(
         project_id=project.project_id,
         title=project.title,
@@ -294,7 +295,7 @@ def project_to_response(project: Project) -> WorkflowProjectResponse:
         final_video_url=project.final_video_url,
         archived_at=project.archived_at,
         created_at=project.created_at,
-        updated_at=project.updated_at,
+        updated_at=updated_at,
     )
 
 

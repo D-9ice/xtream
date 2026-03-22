@@ -17,6 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
     op.add_column("project", sa.Column("idea_prompt", sa.Text(), nullable=True))
     op.add_column("project", sa.Column("genre", sa.String(), nullable=True))
     op.add_column("project", sa.Column("target_duration_minutes", sa.Integer(), nullable=True))
@@ -43,10 +44,13 @@ def upgrade() -> None:
     op.add_column("project", sa.Column("selected_character_ids_json", sa.Text(), nullable=True))
     op.add_column("project", sa.Column("production_job_id", sa.String(), nullable=True))
     op.add_column("project", sa.Column("final_video_url", sa.Text(), nullable=True))
-    op.add_column(
-        "project",
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-    )
+    if bind.dialect.name == "sqlite":
+        op.add_column("project", sa.Column("updated_at", sa.DateTime(), nullable=True))
+    else:
+        op.add_column(
+            "project",
+            sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        )
     op.create_index("ix_project_workflow_state", "project", ["workflow_state"], unique=False)
 
     op.create_table(

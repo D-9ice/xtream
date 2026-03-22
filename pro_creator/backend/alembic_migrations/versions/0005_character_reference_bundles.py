@@ -17,6 +17,15 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "characterprofile" not in inspector.get_table_names():
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("characterprofile")}
+    if "reference_image_urls_json" in column_names:
+        return
+
     op.add_column(
         "characterprofile",
         sa.Column(

@@ -8,6 +8,49 @@ from sqlmodel import SQLModel
 from app.config import DATABASE_URL, ENVIRONMENT
 
 
+def _column_names(inspector, table: str) -> set[str]:
+    try:
+        return {column["name"] for column in inspector.get_columns(table)}
+    except Exception:
+        return set()
+
+
+def _infer_existing_revision(inspector) -> str | None:
+    tables = set(inspector.get_table_names())
+    if "project" not in tables:
+        return None
+
+    project_columns = _column_names(inspector, "project")
+    if not project_columns:
+        return None
+
+    if "archived_at" in project_columns:
+        return "0006_workflow_project_archive"
+
+    character_columns = _column_names(inspector, "characterprofile")
+    if "reference_image_urls_json" in character_columns:
+        return "0005_character_reference_bundles"
+
+    if "workflow_state" in project_columns:
+        return "0004_workflow_upgrade"
+
+    tenant_tables = {
+        "project",
+        "scene",
+        "clip",
+        "orchestrationjob",
+        "orchestrationschedule",
+        "subscriptionaccount",
+        "creditledgerentry",
+    }
+    if tenant_tables.issubset(tables) and all(
+        "tenant_id" in _column_names(inspector, table) for table in tenant_tables
+    ):
+        return "0002_add_tenant_id"
+
+    return None
+
+
 def upgrade_head(engine: Engine) -> None:
     """
     Preferred path: Alembic migrations.
@@ -40,10 +83,28 @@ def upgrade_head(engine: Engine) -> None:
     # to the closest baseline revision, then applying forward migrations.
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
+    inferred_revision = _infer_existing_revision(inspector)
     if "alembic_version" not in tables and "project" in tables:
-        command.stamp(cfg, "0001_initial")
+        command.stamp(cfg, inferred_revision or "0001_initial")
+    elif "alembic_version" in tables and inferred_revision:
+        with engine.connect() as conn:
+            current_revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+        if current_revision and current_revision != inferred_revision:
+            revision_order = {
+                "0001_initial": 1,
+                "0002_add_tenant_id": 2,
+                "0003_subscription_tenant_user_unique": 3,
+                "0004_workflow_upgrade": 4,
+                "0005_character_reference_bundles": 5,
+                "0006_workflow_project_archive": 6,
+            }
+            if revision_order.get(inferred_revision, 0) > revision_order.get(str(current_revision), 0):
+                command.stamp(cfg, inferred_revision)
 
     command.upgrade(cfg, "head")
+
+    if ENVIRONMENT != "production":
+        _fallback_schema_sync(engine)
 
 
 def _fallback_schema_sync(engine: Engine) -> None:
@@ -160,7 +221,7 @@ def _fallback_schema_sync(engine: Engine) -> None:
     _ensure_column(
         "project",
         "updated_at",
-        "ALTER TABLE project ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE project ADD COLUMN updated_at DATETIME",
     )
     _ensure_column(
         "characterprofile",
