@@ -121,7 +121,7 @@ This checklist tracks the remaining work required to finish the guided workflow 
 
 - [x] Run backend tests in a proper Python environment with dependencies installed.
 - [ ] Run frontend tests in supported Node 20.
-- [ ] Add missing backend tests for:
+- [x] Add missing backend tests for:
   - state transitions
   - approval resets
   - production retry/failure behavior
