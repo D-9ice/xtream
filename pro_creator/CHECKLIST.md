@@ -37,7 +37,7 @@ This checklist tracks the remaining work required to finish the guided workflow 
 
 ## Phase 4: Character DNA Completion
 
-- [ ] Expand Character DNA support to fully match the document.
+- [x] Expand Character DNA support to fully match the document.
 - [x] Support richer reusable character library behavior.
 - [x] Support reference image bundle handling, not only single reference/canonical URLs.
 - [x] Preserve and enforce:
@@ -152,6 +152,6 @@ This checklist tracks the remaining work required to finish the guided workflow 
 - [x] 1. Finish state machine and `production_ready`.
 - [x] 2. Convert production to a real queued lifecycle with retry.
 - [x] 3. Implement approval reset rules completely.
-- [ ] 4. Strengthen resolver + Character DNA injection.
+- [x] 4. Strengthen resolver + Character DNA injection.
 - [ ] 5. Run live integration verification and fix discovered bugs.
 - [ ] 6. Finish UX/library/projects polish.

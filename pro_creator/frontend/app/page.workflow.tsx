@@ -508,6 +508,8 @@ export default function WorkflowHomePage() {
   const [characterTraits, setCharacterTraits] = useState("");
   const [characterVoice, setCharacterVoice] = useState("default");
   const [referenceUrl, setReferenceUrl] = useState("");
+  const [canonicalImageUrl, setCanonicalImageUrl] = useState("");
+  const [lockCharacterIdentity, setLockCharacterIdentity] = useState(true);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [productionConfirmed, setProductionConfirmed] = useState(false);
   const [characterSearch, setCharacterSearch] = useState("");
@@ -867,6 +869,7 @@ export default function WorkflowHomePage() {
         .split(",")
         .map((item) => item.trim())
         .filter(Boolean);
+      const cleanCanonicalImageUrl = canonicalImageUrl.trim();
       let nextCharacters: WorkflowCharacterList;
       if (mode === "generate") {
         nextCharacters = await generateWorkflowCharacter(selectedProject.project_id, {
@@ -876,6 +879,7 @@ export default function WorkflowHomePage() {
           personality_traits: traits,
           voice_profile: characterVoice,
           style: "cinematic",
+          lock_identity: lockCharacterIdentity,
           select_after_create: true,
         });
       } else if (mode === "upload") {
@@ -888,6 +892,7 @@ export default function WorkflowHomePage() {
           role_type: characterRole,
           description: cleanDescription,
           voice_profile: characterVoice,
+          lock_identity: lockCharacterIdentity,
           select_after_create: true,
         });
       } else {
@@ -897,8 +902,10 @@ export default function WorkflowHomePage() {
           description: cleanDescription,
           reference_image_url: referenceUrls[0],
           reference_image_urls: referenceUrls,
+          canonical_image_url: cleanCanonicalImageUrl || undefined,
           personality_traits: traits,
           voice_profile: characterVoice,
+          lock_identity: lockCharacterIdentity,
           select_after_create: true,
         });
       }
@@ -907,6 +914,8 @@ export default function WorkflowHomePage() {
       setCharacterDescription("");
       setCharacterTraits("");
       setReferenceUrl("");
+      setCanonicalImageUrl("");
+      setLockCharacterIdentity(true);
       setUploadFile(null);
       await refreshProjects(selectedProject.project_id);
       await refreshProject(selectedProject.project_id);
@@ -1604,6 +1613,33 @@ export default function WorkflowHomePage() {
                   </label>
                   <label className="space-y-2">
                     <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                      Canonical Image URL
+                    </span>
+                    <input
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none"
+                      placeholder="Optional approved hero image URL"
+                      value={canonicalImageUrl}
+                      onChange={(event) => setCanonicalImageUrl(event.target.value)}
+                      disabled={!stageUnlocked(selectedProject, 2)}
+                    />
+                  </label>
+                  <label className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-3">
+                    <input
+                      className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-950 text-aurora"
+                      type="checkbox"
+                      checked={lockCharacterIdentity}
+                      onChange={(event) => setLockCharacterIdentity(event.target.checked)}
+                      disabled={!stageUnlocked(selectedProject, 2)}
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-white">Lock character identity</span>
+                      <span className="mt-1 block text-xs text-slate-400">
+                        Keep the same approved face, prompt base, and reference bundle through production.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
                       Upload Reference
                     </span>
                     <input
@@ -1696,6 +1732,16 @@ export default function WorkflowHomePage() {
                             {character.reference_image_urls.length === 1 ? "" : "s"}
                           </p>
                         ) : null}
+                        <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                          <span className="rounded-full border border-slate-800 bg-slate-950/70 px-2 py-1">
+                            {character.lock_identity ? "Identity locked" : "Identity flexible"}
+                          </span>
+                          {character.canonical_image_url ? (
+                            <span className="rounded-full border border-slate-800 bg-slate-950/70 px-2 py-1">
+                              Canonical image
+                            </span>
+                          ) : null}
+                        </div>
                       </button>
                     );
                   })}
@@ -1954,6 +2000,16 @@ export default function WorkflowHomePage() {
                     {character.reference_image_urls.length === 1 ? "" : "s"}
                   </p>
                 ) : null}
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                  <span className="rounded-full border border-slate-800 bg-slate-950/70 px-2 py-1">
+                    {character.lock_identity ? "Identity locked" : "Identity flexible"}
+                  </span>
+                  {character.canonical_image_url ? (
+                    <span className="rounded-full border border-slate-800 bg-slate-950/70 px-2 py-1">
+                      Canonical image
+                    </span>
+                  ) : null}
+                </div>
                 {character.canonical_image_url ? (
                   <img
                     className="mt-4 w-full rounded-2xl border border-slate-800"

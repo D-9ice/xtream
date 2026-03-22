@@ -1416,6 +1416,7 @@ export async function createWorkflowCharacter(
     voice_profile?: string;
     reference_image_url?: string;
     reference_image_urls?: string[];
+    canonical_image_url?: string;
     lock_identity?: boolean;
     select_after_create?: boolean;
   }
@@ -1443,6 +1444,7 @@ export async function generateWorkflowCharacter(
     personality_traits?: string[];
     voice_profile?: string;
     style?: string;
+    lock_identity?: boolean;
     select_after_create?: boolean;
   }
 ): Promise<WorkflowCharacterList> {
@@ -1468,6 +1470,7 @@ export async function uploadWorkflowCharacter(
     role_type?: string;
     description?: string;
     voice_profile?: string;
+    lock_identity?: boolean;
     select_after_create?: boolean;
   }
 ): Promise<WorkflowCharacterList> {
@@ -1477,6 +1480,7 @@ export async function uploadWorkflowCharacter(
   formData.append("role_type", payload.role_type ?? "supporting");
   formData.append("description", payload.description ?? "");
   formData.append("voice_profile", payload.voice_profile ?? "");
+  formData.append("lock_identity", String(payload.lock_identity ?? true));
   formData.append(
     "select_after_create",
     String(payload.select_after_create ?? true)

@@ -749,6 +749,7 @@ def generate_character_profile(
     personality_traits: list[str],
     voice_profile: str | None,
     style: str,
+    lock_identity: bool,
 ) -> CharacterProfile:
     clean_name = _validate_character_name(name)
     clean_description = description.strip()
@@ -769,7 +770,7 @@ def generate_character_profile(
         negative_prompt_base=negative,
         consistency_seed=_identity_hash(clean_name, clean_description)[:16],
         identity_hash=_identity_hash(clean_name, clean_description, role_type),
-        lock_identity=True,
+        lock_identity=lock_identity,
         reference_image_urls_json=_dumps_json([canonical_image_url]),
         canonical_image_url=canonical_image_url,
         personality_traits_json=_dumps_json(personality_traits),
@@ -800,6 +801,7 @@ def upload_character_reference(
     filename: str,
     content: bytes,
     voice_profile: str | None,
+    lock_identity: bool,
 ) -> CharacterProfile:
     character_id = str(uuid4())
     suffix = Path(filename or "reference.png").suffix.lower() or ".png"
@@ -819,7 +821,7 @@ def upload_character_reference(
         canonical_image_url=image_url,
         visual_prompt_base=None,
         negative_prompt_base=None,
-        lock_identity=True,
+        lock_identity=lock_identity,
     )
 
 

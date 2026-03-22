@@ -536,6 +536,60 @@ def test_workflow_production_retry_requeues_failed_job(monkeypatch: pytest.Monke
     assert completed_status["can_retry"] is False
 
 
+def test_workflow_character_creation_preserves_canonical_image_and_identity_lock() -> None:
+    client = TestClient(app)
+
+    create_res = client.post(
+        "/workflow/projects",
+        json={
+            "title": "Character DNA Surface Test",
+            "idea_prompt": "A lead character needs an approved visual identity.",
+            "genre": "Adventure",
+            "target_duration_minutes": 2,
+        },
+    )
+    assert create_res.status_code == 200
+    project_id = create_res.json()["project_id"]
+
+    client.post(
+        f"/workflow/projects/{project_id}/generate-script",
+        json={
+            "title": "Character DNA Surface Test",
+            "idea_prompt": "A lead character needs an approved visual identity.",
+            "genre": "Adventure",
+            "target_duration_minutes": 2,
+            "tone": "cinematic",
+        },
+    )
+    approve_script_res = client.post(f"/workflow/projects/{project_id}/approve-script")
+    assert approve_script_res.status_code == 200
+
+    create_character_res = client.post(
+        f"/workflow/projects/{project_id}/characters/create",
+        json={
+            "name": "Guide",
+            "role_type": "main",
+            "description": "Steady mentor in a silver coat",
+            "voice_profile": "mentor",
+            "reference_image_urls": [
+                "https://example.test/guide-ref-1.png",
+                "https://example.test/guide-ref-2.png",
+            ],
+            "canonical_image_url": "https://example.test/guide-canonical.png",
+            "lock_identity": False,
+            "select_after_create": True,
+        },
+    )
+    assert create_character_res.status_code == 200
+
+    created_character = create_character_res.json()["selected"][0]
+    assert created_character["name"] == "Guide"
+    assert created_character["canonical_image_url"] == "https://example.test/guide-canonical.png"
+    assert created_character["lock_identity"] is False
+    assert "https://example.test/guide-canonical.png" in created_character["reference_image_urls"]
+    assert created_character["voice_profile"] == "mentor"
+
+
 def test_workflow_transition_validator_rejects_invalid_jumps() -> None:
     with pytest.raises(ValueError, match="draft -> production_running"):
         validate_workflow_transition("draft", "production_running")

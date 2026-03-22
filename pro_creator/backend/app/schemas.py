@@ -534,6 +534,7 @@ class WorkflowCharacterCreateRequest(BaseModel):
     voice_profile: Optional[str] = None
     reference_image_url: Optional[str] = None
     reference_image_urls: List[str] = []
+    canonical_image_url: Optional[str] = None
     lock_identity: bool = True
     select_after_create: bool = True
 
@@ -545,6 +546,7 @@ class WorkflowCharacterGenerateRequest(BaseModel):
     personality_traits: List[str] = []
     voice_profile: Optional[str] = None
     style: str = "cinematic"
+    lock_identity: bool = True
     select_after_create: bool = True
 
 

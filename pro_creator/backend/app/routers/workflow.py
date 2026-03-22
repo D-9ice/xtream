@@ -254,7 +254,7 @@ def workflow_create_character(
             voice_profile=payload.voice_profile,
             reference_image_url=payload.reference_image_url,
             reference_image_urls=payload.reference_image_urls,
-            canonical_image_url=None,
+            canonical_image_url=payload.canonical_image_url,
             visual_prompt_base=payload.visual_prompt_base,
             negative_prompt_base=payload.negative_prompt_base,
             lock_identity=payload.lock_identity,
@@ -288,6 +288,7 @@ def workflow_generate_character(
             personality_traits=payload.personality_traits,
             voice_profile=payload.voice_profile,
             style=payload.style,
+            lock_identity=payload.lock_identity,
         )
         if payload.select_after_create:
             selected_ids = build_character_list_response(session=session, project=project).selected_character_ids
@@ -306,6 +307,7 @@ async def workflow_upload_character(
     role_type: str = Form("supporting"),
     description: str = Form(""),
     voice_profile: str | None = Form(None),
+    lock_identity: bool = Form(True),
     select_after_create: bool = Form(True),
     reference: UploadFile = File(...),
     session: Session = Depends(get_session),
@@ -324,6 +326,7 @@ async def workflow_upload_character(
             filename=reference.filename or "reference.png",
             content=content,
             voice_profile=voice_profile,
+            lock_identity=lock_identity,
         )
         if select_after_create:
             selected_ids = build_character_list_response(session=session, project=project).selected_character_ids
