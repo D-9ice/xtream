@@ -181,7 +181,7 @@ describe("Workflow home page", () => {
     render(<HomePage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Draft ready/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Draft ready/i).length).toBeGreaterThan(0);
     });
 
     expect(screen.getByText(/Review required/i)).toBeInTheDocument();
@@ -209,13 +209,21 @@ describe("Workflow home page", () => {
     expect(screen.getByRole("button", { name: /Back to Story Request/i })).toBeInTheDocument();
   });
 
+  it("shows a mobile-friendly quick snapshot inside the create flow", async () => {
+    render(<HomePage />);
+
+    expect(await screen.findByText(/Quick Snapshot/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Current step/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Next unlock/i)).toBeInTheDocument();
+    expect(screen.getByText(/Credits left/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Selected cast/i).length).toBeGreaterThan(0);
+  });
+
   it("shows a current-step jump action in the project summary", async () => {
     render(<HomePage />);
 
     expect(await screen.findByText(/Current step: Review Script/i, {}, { timeout: 5000 })).toBeInTheDocument();
-    expect(
-      await screen.findByRole("button", { name: /Jump to Current Step/i }, { timeout: 5000 })
-    ).toBeInTheDocument();
+    expect((await screen.findAllByRole("button", { name: /Jump to Current Step/i }, { timeout: 5000 })).length).toBeGreaterThan(0);
   });
 
   it("polls production status while a video is queued and refreshes to completed", async () => {

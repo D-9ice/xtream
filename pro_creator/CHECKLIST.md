@@ -65,7 +65,7 @@ This checklist tracks the remaining work required to finish the guided workflow 
 
 ## Phase 6: Create Screen UX Completion
 
-- [ ] Polish the guided Create screen for production use.
+- [x] Polish the guided Create screen for production use.
 - [x] Improve per-step loading, success, warning, and failure states.
 - [x] Add explicit “what happens next” guidance inside the Create screen.
 - [x] Add clearer “final approval” UX before video production.
@@ -73,7 +73,7 @@ This checklist tracks the remaining work required to finish the guided workflow 
 - [x] Improve empty-state behavior for first-time users.
 - [x] Improve validation messaging for incomplete character inputs.
 - [x] Add responsive mobile navigation and tighten Create-screen layouts for smaller screens.
-- [ ] Run responsive/mobile QA and fix layout issues.
+- [x] Run responsive/mobile QA and fix layout issues.
 
 ## Phase 7: Projects Screen Completion
 
@@ -154,4 +154,4 @@ This checklist tracks the remaining work required to finish the guided workflow 
 - [x] 3. Implement approval reset rules completely.
 - [x] 4. Strengthen resolver + Character DNA injection.
 - [x] 5. Run live integration verification and fix discovered bugs.
-- [ ] 6. Finish UX/library/projects polish.
+- [x] 6. Finish UX/library/projects polish.

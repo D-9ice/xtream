@@ -285,6 +285,25 @@ function createWorkflowWarnings(project: WorkflowProject | null): string[] {
   return warnings;
 }
 
+function nextUnlockCopy(project: WorkflowProject | null): string {
+  if (!project) {
+    return "Generate the first script draft to unlock Review Script.";
+  }
+  if (!(project.script_approved || "").trim()) {
+    return "Script approval unlocks character selection.";
+  }
+  if (!project.character_package_approved) {
+    return "Character approval unlocks video production.";
+  }
+  if (project.workflow_state === "production_failed") {
+    return "Retry production from Step 4 with the same approved package.";
+  }
+  if (project.workflow_state === "video_completed") {
+    return "The final video is ready in this project and in Library.";
+  }
+  return "Final approval unlocks video production.";
+}
+
 type StepBannerTone = "info" | "warning" | "success" | "danger";
 
 function stepBannerClasses(tone: StepBannerTone): string {
@@ -1350,8 +1369,81 @@ export default function WorkflowHomePage() {
           ) : null}
         </div>
 
+        <div className="grid gap-4 xl:hidden">
+          <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-slate-500">
+                  Quick Snapshot
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-white">
+                  {selectedProject ? selectedProject.title : "New guided project"}
+                </h3>
+                <p className="mt-2 text-sm text-slate-400">
+                  {selectedProject
+                    ? selectedProject.idea_prompt || selectedProject.topic
+                    : "Start with a title and short idea. The workflow unlocks each step after approval."}
+                </p>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-xs ${selectedProject ? statusPill(selectedProject.workflow_state) : "bg-slate-800 text-slate-400"}`}>
+                {selectedProject ? workflowStageLabel(selectedProject.workflow_state) : "Draft"}
+              </span>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Current step</p>
+                <p className="mt-2 text-sm font-semibold text-white">{STEPS[selectedStage]}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Selected cast</p>
+                <p className="mt-2 text-sm font-semibold text-white">{characters?.selected_character_ids.length ?? 0}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Credits left</p>
+                <p className="mt-2 text-sm font-semibold text-white">{creditBalance ?? "—"}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Next unlock</p>
+                <p className="mt-2 text-sm font-semibold text-white">{nextUnlockCopy(selectedProject)}</p>
+              </div>
+            </div>
+            {selectedProject ? (
+              <button
+                className="mt-5 rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-sm font-semibold text-aurora"
+                type="button"
+                onClick={() => scrollToCreateStep(selectedStage)}
+              >
+                Jump to Current Step
+              </button>
+            ) : null}
+          </div>
+        </div>
+
         <div className="grid gap-6 xl:grid-cols-[1.45fr_0.55fr]">
           <div className="space-y-6">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Current step</p>
+                <p className="mt-2 text-sm font-semibold text-white">{STEPS[selectedStage]}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Script</p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {(selectedProject?.script_approved || "").trim() ? "Approved" : (selectedProject?.script_draft || "").trim() ? "Draft ready" : "Waiting"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Cast</p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {selectedProject?.character_package_approved ? "Approved" : `${characters?.selected_character_ids.length ?? 0} selected`}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Production</p>
+                <p className="mt-2 text-sm font-semibold text-white">{productionDetailLabel()}</p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {STEPS.map((label, index) => {
                 const tone = toneClasses(stageTone(selectedProject, index));
@@ -1360,6 +1452,7 @@ export default function WorkflowHomePage() {
                     key={label}
                     className={`rounded-2xl border px-4 py-4 text-left transition ${tone}`}
                     type="button"
+                    aria-current={selectedStage === index ? "step" : undefined}
                     onClick={() => scrollToCreateStep(index)}
                     disabled={!stageUnlocked(selectedProject, index)}
                   >
