@@ -22,9 +22,11 @@ from app.schemas import (
 from app.services.workflow_service import (
     approve_character_package,
     approve_script,
+    archive_project,
     build_character_list_response,
     create_character_profile,
     create_project,
+    duplicate_project,
     generate_character_profile,
     generate_project_script,
     get_project_or_404,
@@ -32,6 +34,7 @@ from app.services.workflow_service import (
     production_status,
     project_to_response,
     require_script_approved_for_characters,
+    retry_production,
     select_characters,
     start_production,
     update_project_metadata,
@@ -91,6 +94,24 @@ def patch_workflow_project(
         genre=payload.genre,
         target_duration_minutes=payload.target_duration_minutes,
     )
+
+
+@router.post("/projects/{project_id}/archive", response_model=WorkflowProjectResponse)
+def workflow_archive_project(
+    project_id: str,
+    session: Session = Depends(get_session),
+) -> WorkflowProjectResponse:
+    project = get_project_or_404(session, project_id)
+    return archive_project(session=session, project=project)
+
+
+@router.post("/projects/{project_id}/duplicate", response_model=WorkflowProjectResponse)
+def workflow_duplicate_project(
+    project_id: str,
+    session: Session = Depends(get_session),
+) -> WorkflowProjectResponse:
+    project = get_project_or_404(session, project_id)
+    return duplicate_project(session=session, project=project)
 
 
 @router.post("/projects/{project_id}/generate-script", response_model=WorkflowProjectResponse)
@@ -213,6 +234,7 @@ def workflow_create_character(
             personality_traits=payload.personality_traits,
             voice_profile=payload.voice_profile,
             reference_image_url=payload.reference_image_url,
+            reference_image_urls=payload.reference_image_urls,
             canonical_image_url=None,
             visual_prompt_base=payload.visual_prompt_base,
             negative_prompt_base=payload.negative_prompt_base,
@@ -350,7 +372,19 @@ def workflow_get_production_status(
     session: Session = Depends(get_session),
 ) -> WorkflowProductionStatusResponse:
     project = get_project_or_404(session, project_id)
-    return production_status(project)
+    return production_status(session, project)
+
+
+@router.post("/projects/{project_id}/retry-production", response_model=WorkflowProductionStatusResponse)
+def workflow_retry_production(
+    project_id: str,
+    session: Session = Depends(get_session),
+) -> WorkflowProductionStatusResponse:
+    project = get_project_or_404(session, project_id)
+    try:
+        return retry_production(session=session, project=project)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/library", response_model=WorkflowLibraryResponse)

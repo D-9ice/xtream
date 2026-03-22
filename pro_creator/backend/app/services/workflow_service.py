@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 from app.config import CREDITS_COST_IMAGE_GENERATE, CREDITS_COST_SCRIPT_GENERATE, CREDITS_COST_VIDEO_RENDER
 from app.models import (
     CharacterProfile,
+    OrchestrationJob,
     Project,
     ProjectCharacterPackage,
     ProjectScriptVersion,
@@ -35,7 +36,12 @@ from app.services.video_engine import render_video
 from app.services.voice_engine import generate_voice_for_scene
 from app.storage import project_key, storage_client
 from app.tenant import current_tenant_id
-from app.utils.file_manager import ensure_project_dirs, write_scene_metadata, write_script
+from app.utils.file_manager import (
+    ensure_project_dirs,
+    write_character_voice_profiles,
+    write_scene_metadata,
+    write_script,
+)
 
 WORKFLOW_STAGE_ORDER = {
     "draft": 0,
@@ -49,6 +55,39 @@ WORKFLOW_STAGE_ORDER = {
     "production_running": 3,
     "video_completed": 3,
     "production_failed": 3,
+}
+
+WORKFLOW_TRANSITIONS: dict[str, set[str]] = {
+    "draft": {"script_generating"},
+    "script_generating": {"draft", "script_generated"},
+    "script_generated": {"draft", "script_approved", "script_generating"},
+    "script_approved": {"characters_in_progress", "script_generated", "script_generating"},
+    "characters_in_progress": {
+        "characters_approved",
+        "script_generated",
+        "script_generating",
+    },
+    "characters_approved": {
+        "production_ready",
+        "characters_in_progress",
+        "script_generated",
+        "script_generating",
+    },
+    "production_ready": {
+        "production_queued",
+        "characters_in_progress",
+        "script_generated",
+        "script_generating",
+    },
+    "production_queued": {"production_failed", "production_running"},
+    "production_running": {"production_failed", "video_completed"},
+    "video_completed": {"characters_in_progress", "script_generated", "script_generating"},
+    "production_failed": {
+        "production_ready",
+        "characters_in_progress",
+        "script_generated",
+        "script_generating",
+    },
 }
 
 VOICE_EXTENSIONS = ("wav", "mp3", "ogg", "m4a")
@@ -83,6 +122,27 @@ def _dumps_json(payload: Any) -> str:
     return json.dumps(payload, indent=2, sort_keys=True)
 
 
+def _normalize_reference_image_urls(
+    reference_image_urls: list[str] | None = None,
+    *,
+    reference_image_url: str | None = None,
+    canonical_image_url: str | None = None,
+) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for item in reference_image_urls or []:
+        clean = str(item).strip()
+        if clean and clean not in seen:
+            seen.add(clean)
+            normalized.append(clean)
+    for item in [reference_image_url, canonical_image_url]:
+        clean = str(item or "").strip()
+        if clean and clean not in seen:
+            seen.add(clean)
+            normalized.append(clean)
+    return normalized
+
+
 def _topic_from_inputs(title: str, idea_prompt: str | None, genre: str | None) -> str:
     pieces = [title.strip()]
     if idea_prompt and idea_prompt.strip():
@@ -107,8 +167,41 @@ def _set_project_state(project: Project, workflow_state: str) -> None:
     project.updated_at = utc_now()
 
 
+def validate_workflow_transition(current_state: str, next_state: str) -> None:
+    if current_state == next_state:
+        return
+    allowed = WORKFLOW_TRANSITIONS.get(current_state, set())
+    if next_state not in allowed:
+        raise ValueError(f"Invalid workflow transition: {current_state} -> {next_state}")
+
+
+def transition_project_state(project: Project, next_state: str) -> None:
+    validate_workflow_transition(project.workflow_state, next_state)
+    _set_project_state(project, next_state)
+
+
 def _project_selected_character_ids(project: Project) -> list[str]:
     return _loads_list(project.selected_character_ids_json)
+
+
+def _project_production_job_pk(project: Project) -> int | None:
+    raw_job_id = (project.production_job_id or "").strip()
+    if not raw_job_id:
+        return None
+    try:
+        return int(raw_job_id)
+    except ValueError:
+        return None
+
+
+def _get_project_production_job(session: Session, project: Project) -> OrchestrationJob | None:
+    job_id = _project_production_job_pk(project)
+    if job_id is None:
+        return None
+    job = session.get(OrchestrationJob, job_id)
+    if not job or job.tenant_id != project.tenant_id:
+        return None
+    return job
 
 
 def _store_project_selected_character_ids(project: Project, selected_character_ids: list[str]) -> None:
@@ -122,11 +215,41 @@ def require_script_approved_for_characters(project: Project) -> None:
         raise ValueError("Script approval required before choosing characters")
 
 
+def require_production_ready(project: Project) -> None:
+    if project.workflow_state == "characters_approved":
+        transition_project_state(project, "production_ready")
+        return
+    if project.workflow_state != "production_ready":
+        raise ValueError("Production is not ready yet")
+
+
 def _personality_traits(profile: CharacterProfile) -> list[str]:
     parsed = _loads_json(profile.personality_traits_json)
     if isinstance(parsed, list):
         return [str(item).strip() for item in parsed if str(item).strip()]
     return []
+
+
+def _reference_image_urls(profile: CharacterProfile) -> list[str]:
+    parsed = _loads_json(profile.reference_image_urls_json)
+    if isinstance(parsed, list):
+        return _normalize_reference_image_urls(
+            [str(item).strip() for item in parsed if str(item).strip()],
+            reference_image_url=profile.reference_image_url,
+            canonical_image_url=profile.canonical_image_url,
+        )
+    return _normalize_reference_image_urls(
+        reference_image_url=profile.reference_image_url,
+        canonical_image_url=profile.canonical_image_url,
+    )
+
+
+def _snapshot_reference_image_urls(item: dict[str, Any]) -> list[str]:
+    return _normalize_reference_image_urls(
+        item.get("reference_image_urls"),
+        reference_image_url=item.get("reference_image_url"),
+        canonical_image_url=item.get("canonical_image_url"),
+    )
 
 
 def character_to_response(profile: CharacterProfile) -> WorkflowCharacterResponse:
@@ -141,6 +264,7 @@ def character_to_response(profile: CharacterProfile) -> WorkflowCharacterRespons
         identity_hash=profile.identity_hash,
         lock_identity=profile.lock_identity,
         reference_image_url=profile.reference_image_url,
+        reference_image_urls=_reference_image_urls(profile),
         canonical_image_url=profile.canonical_image_url,
         personality_traits=_personality_traits(profile),
         voice_profile=profile.voice_profile,
@@ -167,6 +291,7 @@ def project_to_response(project: Project) -> WorkflowProjectResponse:
         selected_character_ids=_project_selected_character_ids(project),
         production_job_id=project.production_job_id,
         final_video_url=project.final_video_url,
+        archived_at=project.archived_at,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -182,11 +307,12 @@ def get_project_or_404(session: Session, project_id: str) -> Project:
     return project
 
 
-def list_projects(session: Session) -> list[WorkflowProjectResponse]:
+def list_projects(session: Session, *, include_archived: bool = False) -> list[WorkflowProjectResponse]:
     tenant_id = current_tenant_id()
-    projects = session.exec(
-        select(Project).where(Project.tenant_id == tenant_id).order_by(Project.updated_at.desc())
-    ).all()
+    statement = select(Project).where(Project.tenant_id == tenant_id)
+    if not include_archived:
+        statement = statement.where(Project.archived_at.is_(None))
+    projects = session.exec(statement.order_by(Project.updated_at.desc())).all()
     return [project_to_response(project) for project in projects]
 
 
@@ -239,6 +365,109 @@ def update_project_metadata(
     session.commit()
     session.refresh(project)
     return project_to_response(project)
+
+
+def archive_project(
+    *,
+    session: Session,
+    project: Project,
+) -> WorkflowProjectResponse:
+    if project.archived_at is None:
+        project.archived_at = utc_now()
+    project.updated_at = utc_now()
+    session.add(project)
+    session.commit()
+    session.refresh(project)
+    return project_to_response(project)
+
+
+def _duplicate_workflow_state(project: Project) -> str:
+    if project.character_package_approved and (project.script_approved or "").strip():
+        return "production_ready"
+    if (project.script_approved or "").strip():
+        return "script_approved"
+    if (project.script_draft or "").strip():
+        return "script_generated"
+    return "draft"
+
+
+def duplicate_project(
+    *,
+    session: Session,
+    project: Project,
+) -> WorkflowProjectResponse:
+    duplicate_id = str(uuid4())
+    duplicate_title = f"{project.title} Copy"
+    duplicate_state = _duplicate_workflow_state(project)
+    duplicate = Project(
+        tenant_id=project.tenant_id,
+        project_id=duplicate_id,
+        title=duplicate_title,
+        topic=project.topic,
+        status=duplicate_state,
+        idea_prompt=project.idea_prompt,
+        genre=project.genre,
+        target_duration_minutes=project.target_duration_minutes,
+        workflow_state=duplicate_state,
+        script_draft=project.script_draft,
+        script_approved=project.script_approved,
+        script_approved_at=project.script_approved_at,
+        character_package_approved=project.character_package_approved,
+        character_package_approved_at=project.character_package_approved_at,
+        selected_character_ids_json=project.selected_character_ids_json,
+        production_job_id=None,
+        final_video_url=None,
+        archived_at=None,
+    )
+    ensure_project_dirs(duplicate.project_id)
+    session.add(duplicate)
+    session.commit()
+    session.refresh(duplicate)
+
+    script_source = (duplicate.script_approved or duplicate.script_draft or "").strip()
+    if script_source:
+        scenes_source = session.exec(
+            select(Scene).where(
+                Scene.project_id == project.project_id,
+                Scene.tenant_id == project.tenant_id,
+            )
+        ).all()
+        scenes = (
+            [
+                {"id": idx + 1, "text": scene.text}
+                for idx, scene in enumerate(scenes_source)
+                if (scene.text or "").strip()
+            ]
+            or _scenes_from_script(script_source)
+        )
+        _persist_project_script(session=session, project=duplicate, script_text=script_source, scenes=scenes)
+        _record_script_version(session, project=duplicate, version_type="draft", script_content=duplicate.script_draft or script_source)
+        if (duplicate.script_approved or "").strip():
+            _record_script_version(
+                session,
+                project=duplicate,
+                version_type="approved",
+                script_content=duplicate.script_approved or script_source,
+            )
+
+    if duplicate.character_package_approved:
+        original_package = latest_character_package(session, project.project_id)
+        if original_package:
+            session.add(
+                ProjectCharacterPackage(
+                    tenant_id=duplicate.tenant_id,
+                    project_id=duplicate.project_id,
+                    approved_by_user_id=original_package.approved_by_user_id,
+                    selected_character_ids_json=original_package.selected_character_ids_json,
+                    package_snapshot_json=original_package.package_snapshot_json,
+                    approved_at=original_package.approved_at,
+                )
+            )
+
+    session.add(duplicate)
+    session.commit()
+    session.refresh(duplicate)
+    return project_to_response(duplicate)
 
 
 def _replace_project_scenes(session: Session, project: Project, scenes: list[dict[str, Any]]) -> None:
@@ -314,7 +543,7 @@ def generate_project_script(
     project.target_duration_minutes = max(1, int(target_duration_minutes or 3))
     project.topic = _topic_from_inputs(project.title, project.idea_prompt, project.genre)
     _clear_downstream_approvals(project)
-    _set_project_state(project, "script_generating")
+    transition_project_state(project, "script_generating")
     session.add(project)
     session.commit()
 
@@ -332,7 +561,7 @@ def generate_project_script(
 
     _persist_project_script(session=session, project=project, script_text=script_text, scenes=scenes)
     project.script_draft = script_text
-    _set_project_state(project, "script_generated")
+    transition_project_state(project, "script_generated")
     _record_script_version(session, project=project, version_type="draft", script_content=script_text)
     session.add(project)
     consume_credits(
@@ -363,7 +592,7 @@ def update_script_draft(
     _persist_project_script(session=session, project=project, script_text=next_script, scenes=scenes)
     project.script_draft = next_script
     _clear_downstream_approvals(project)
-    _set_project_state(project, "script_generated")
+    transition_project_state(project, "script_generated")
     _record_script_version(session, project=project, version_type="draft", script_content=next_script)
     session.add(project)
     session.commit()
@@ -376,7 +605,7 @@ def approve_script(*, session: Session, project: Project) -> WorkflowProjectResp
         raise ValueError("No script draft available")
     project.script_approved = project.script_draft
     project.script_approved_at = utc_now()
-    _set_project_state(project, "script_approved")
+    transition_project_state(project, "script_approved")
     _record_script_version(
         session,
         project=project,
@@ -429,6 +658,7 @@ def create_character_profile(
     personality_traits: list[str],
     voice_profile: str | None,
     reference_image_url: str | None,
+    reference_image_urls: list[str] | None,
     canonical_image_url: str | None,
     visual_prompt_base: str | None,
     negative_prompt_base: str | None,
@@ -437,6 +667,11 @@ def create_character_profile(
     clean_name = _validate_character_name(name)
     clean_description = description.strip()
     visual, negative = _build_character_prompts(clean_name, role_type, clean_description)
+    normalized_reference_urls = _normalize_reference_image_urls(
+        reference_image_urls,
+        reference_image_url=reference_image_url,
+        canonical_image_url=canonical_image_url,
+    )
     profile = CharacterProfile(
         tenant_id=current_tenant_id(),
         name=clean_name,
@@ -447,7 +682,8 @@ def create_character_profile(
         consistency_seed=_identity_hash(clean_name, clean_description)[:16],
         identity_hash=_identity_hash(clean_name, clean_description, role_type),
         lock_identity=lock_identity,
-        reference_image_url=(reference_image_url or "").strip() or None,
+        reference_image_url=(reference_image_url or "").strip() or (normalized_reference_urls[0] if normalized_reference_urls else None),
+        reference_image_urls_json=_dumps_json(normalized_reference_urls),
         canonical_image_url=(canonical_image_url or "").strip() or None,
         personality_traits_json=_dumps_json(personality_traits),
         voice_profile=(voice_profile or "").strip() or None,
@@ -490,8 +726,8 @@ def select_characters(
 ) -> WorkflowCharacterListResponse:
     require_script_approved_for_characters(project)
     _store_project_selected_character_ids(project, selected_character_ids)
-    if WORKFLOW_STAGE_ORDER.get(project.workflow_state, 0) < WORKFLOW_STAGE_ORDER["characters_in_progress"]:
-        _set_project_state(project, "characters_in_progress")
+    if project.workflow_state != "characters_in_progress":
+        transition_project_state(project, "characters_in_progress")
     project.character_package_approved = False
     project.character_package_approved_at = None
     project.final_video_url = None
@@ -533,6 +769,7 @@ def generate_character_profile(
         consistency_seed=_identity_hash(clean_name, clean_description)[:16],
         identity_hash=_identity_hash(clean_name, clean_description, role_type),
         lock_identity=True,
+        reference_image_urls_json=_dumps_json([canonical_image_url]),
         canonical_image_url=canonical_image_url,
         personality_traits_json=_dumps_json(personality_traits),
         voice_profile=(voice_profile or "").strip() or None,
@@ -577,6 +814,7 @@ def upload_character_reference(
         personality_traits=[],
         voice_profile=voice_profile,
         reference_image_url=image_url,
+        reference_image_urls=[image_url],
         canonical_image_url=image_url,
         visual_prompt_base=None,
         negative_prompt_base=None,
@@ -636,6 +874,7 @@ def approve_character_package(
                 "identity_hash": profile.identity_hash,
                 "lock_identity": profile.lock_identity,
                 "reference_image_url": profile.reference_image_url,
+                "reference_image_urls": _reference_image_urls(profile),
                 "canonical_image_url": profile.canonical_image_url,
                 "personality_traits": _personality_traits(profile),
                 "voice_profile": profile.voice_profile,
@@ -654,7 +893,8 @@ def approve_character_package(
     _store_project_selected_character_ids(project, selected_ids)
     project.character_package_approved = True
     project.character_package_approved_at = utc_now()
-    _set_project_state(project, "characters_approved")
+    transition_project_state(project, "characters_approved")
+    transition_project_state(project, "production_ready")
     session.add(project)
     session.commit()
     session.refresh(project)
@@ -681,12 +921,40 @@ def resolve_approved_production_package(session: Session, project_id: str) -> di
         for item in snapshot
         if isinstance(item, dict) and item.get("character_id")
     }
+    identity_rules = {}
+    reference_bundles = {}
+    voice_profiles = {}
+    for item in snapshot:
+        if not isinstance(item, dict):
+            continue
+        character_id = str(item.get("character_id", "")).strip()
+        if not character_id:
+            continue
+        refs = _snapshot_reference_image_urls(item)
+        identity_rules[character_id] = {
+            "identity_hash": item.get("identity_hash"),
+            "consistency_seed": item.get("consistency_seed"),
+            "lock_identity": bool(item.get("lock_identity", True)),
+            "role_type": item.get("role_type"),
+        }
+        reference_bundles[character_id] = refs
+        voice_profiles[character_id] = {
+            "character_id": character_id,
+            "name": item.get("name"),
+            "voice_profile": item.get("voice_profile") or "default",
+            "identity_hash": item.get("identity_hash"),
+            "consistency_seed": item.get("consistency_seed"),
+            "lock_identity": bool(item.get("lock_identity", True)),
+            "reference_image_urls": refs,
+        }
     return {
         "project_id": project_id,
+        "approved_script_snapshot": project.script_approved,
+        "approved_character_package_snapshot": snapshot,
         "script": project.script_approved,
         "characters": snapshot,
         "references": {
-            item.get("character_id"): item.get("reference_image_url")
+            item.get("character_id"): (_snapshot_reference_image_urls(item)[0] if _snapshot_reference_image_urls(item) else None)
             for item in snapshot
             if isinstance(item, dict)
         },
@@ -696,6 +964,9 @@ def resolve_approved_production_package(session: Session, project_id: str) -> di
             if isinstance(item, dict)
         },
         "prompts": prompts,
+        "identity_rules": identity_rules,
+        "reference_bundles": reference_bundles,
+        "voice_profiles": voice_profiles,
     }
 
 
@@ -712,16 +983,29 @@ def _image_exists(project_id: str, scene_id: int) -> bool:
 
 def _scene_prompt(scene_text: str, bundle: dict[str, Any]) -> str:
     cast = []
+    identity_notes = []
     for character in bundle.get("characters", []):
         if not isinstance(character, dict):
             continue
+        character_id = str(character.get("character_id", "")).strip()
         name = str(character.get("name", "")).strip()
         visual = str(character.get("visual_prompt_base", "")).strip()
         if name or visual:
             cast.append(f"{name}: {visual}".strip(": "))
+        identity = bundle.get("identity_rules", {}).get(character_id, {})
+        refs = bundle.get("reference_bundles", {}).get(character_id, [])
+        seed = str(identity.get("consistency_seed", "")).strip()
+        if name and seed:
+            identity_notes.append(f"{name} seed {seed}")
+        if name and refs:
+            identity_notes.append(f"{name} refs {', '.join(refs[:2])}")
     cast_text = "; ".join(cast[:4])
+    identity_text = "; ".join(identity_notes[:4])
     if cast_text:
-        return f"{scene_text}\n\nCharacter direction: {cast_text}"
+        details = [f"Character direction: {cast_text}"]
+        if identity_text:
+            details.append(f"Identity locks: {identity_text}")
+        return f"{scene_text}\n\n" + "\n".join(details)
     return scene_text
 
 
@@ -760,11 +1044,17 @@ def workflow_production_summary(
     )
 
 
-def production_status(project: Project) -> WorkflowProductionStatusResponse:
+def production_status(session: Session, project: Project) -> WorkflowProductionStatusResponse:
+    job = _get_project_production_job(session, project)
     return WorkflowProductionStatusResponse(
         project_id=project.project_id,
         workflow_state=project.workflow_state,
         production_job_id=project.production_job_id,
+        queue_status=job.status if job else None,
+        queue_attempts=job.attempts if job else 0,
+        queue_max_attempts=job.max_attempts if job else 0,
+        last_error=job.last_error if job else None,
+        can_retry=bool(job and job.status == "failed" and project.workflow_state == "production_failed"),
         final_video_url=project.final_video_url,
     )
 
@@ -774,13 +1064,80 @@ def _write_production_bundle_artifact(project_id: str, bundle: dict[str, Any]) -
     storage_client.write_text(key, _dumps_json(bundle))
 
 
-def start_production(
+def _write_character_dna_artifacts(project_id: str, bundle: dict[str, Any]) -> None:
+    voice_profiles = bundle.get("voice_profiles", {})
+    if isinstance(voice_profiles, dict):
+        write_character_voice_profiles(project_id, list(voice_profiles.values()))
+    key = project_key(project_id, "workflow/character_dna_snapshot.json")
+    storage_client.write_text(
+        key,
+        _dumps_json(
+            {
+                "identity_rules": bundle.get("identity_rules", {}),
+                "reference_bundles": bundle.get("reference_bundles", {}),
+                "prompts": bundle.get("prompts", {}),
+            }
+        ),
+    )
+
+
+def _perform_production(
     *,
     session: Session,
     project: Project,
     current_user: User,
-) -> tuple[WorkflowProjectResponse, WorkflowProductionStatusResponse, str | None]:
-    bundle = resolve_approved_production_package(session, project.project_id)
+    bundle: dict[str, Any],
+) -> str | None:
+    approved_script = str(bundle["script"]).strip() or "(empty script)"
+    scenes = _scenes_from_script(approved_script)
+    _persist_project_script(session=session, project=project, script_text=approved_script, scenes=scenes)
+    _write_production_bundle_artifact(project.project_id, bundle)
+    _write_character_dna_artifacts(project.project_id, bundle)
+    for scene in scenes:
+        scene_id = int(scene.get("id", 1))
+        scene_text = str(scene.get("text", "")).strip() or project.title
+        if not _image_exists(project.project_id, scene_id):
+            generate_image_for_scene(
+                project.project_id,
+                scene_id,
+                _scene_prompt(scene_text, bundle),
+                "cinematic",
+            )
+        if not _audio_exists(project.project_id, scene_id):
+            generate_voice_for_scene(project.project_id, scene_id, scene_text, voice_profile="default")
+    video_result = render_video(project.project_id)
+    project.final_video_url = video_result["video_path"]
+    transition_project_state(project, "video_completed")
+    session.add(project)
+    consume_credits(
+        session=session,
+        user=current_user,
+        amount=CREDITS_COST_VIDEO_RENDER,
+        reason="workflow video production",
+        action="workflow.production.start",
+        reference_id=project.project_id,
+        provider="video",
+        model="ffmpeg",
+    )
+    session.commit()
+    session.refresh(project)
+    return video_result.get("video_path")
+
+
+def execute_workflow_production_job(
+    *,
+    session: Session,
+    job: OrchestrationJob,
+) -> str | None:
+    project = get_project_or_404(session, job.project_id)
+    payload = _loads_json(job.payload) if job.payload else {}
+    if not isinstance(payload, dict):
+        payload = {}
+    user_id = int(payload.get("user_id") or 0)
+    current_user = session.get(User, user_id) if user_id else None
+    if not current_user:
+        raise ValueError("Workflow production user could not be resolved")
+
     summary = workflow_production_summary(session=session, project=project, current_user=current_user)
     if not summary.script_ready:
         raise ValueError("Script approval required")
@@ -788,52 +1145,99 @@ def start_production(
         raise ValueError("Character approval required")
     if summary.current_credit_balance < summary.estimated_credits:
         raise ValueError("Not enough credits to start production")
+    if project.workflow_state == "production_ready":
+        transition_project_state(project, "production_queued")
+    if project.workflow_state == "production_failed":
+        transition_project_state(project, "production_ready")
+        transition_project_state(project, "production_queued")
+    if project.workflow_state != "production_queued":
+        raise ValueError("Project is not queued for production")
 
-    project.production_job_id = str(uuid4())
-    _set_project_state(project, "production_running")
+    transition_project_state(project, "production_running")
     session.add(project)
     session.commit()
 
     try:
-        approved_script = str(bundle["script"]).strip() or "(empty script)"
-        scenes = _scenes_from_script(approved_script)
-        _persist_project_script(session=session, project=project, script_text=approved_script, scenes=scenes)
-        _write_production_bundle_artifact(project.project_id, bundle)
-        for scene in scenes:
-            scene_id = int(scene.get("id", 1))
-            scene_text = str(scene.get("text", "")).strip() or project.title
-            if not _image_exists(project.project_id, scene_id):
-                generate_image_for_scene(
-                    project.project_id,
-                    scene_id,
-                    _scene_prompt(scene_text, bundle),
-                    "cinematic",
-                )
-            if not _audio_exists(project.project_id, scene_id):
-                generate_voice_for_scene(project.project_id, scene_id, scene_text, voice_profile="default")
-        video_result = render_video(project.project_id)
-        project.final_video_url = video_result["video_path"]
-        _set_project_state(project, "video_completed")
-        session.add(project)
-        consume_credits(
+        bundle = resolve_approved_production_package(session, project.project_id)
+        return _perform_production(
             session=session,
-            user=current_user,
-            amount=CREDITS_COST_VIDEO_RENDER,
-            reason="workflow video production",
-            action="workflow.production.start",
-            reference_id=project.project_id,
-            provider="video",
-            model="ffmpeg",
+            project=project,
+            current_user=current_user,
+            bundle=bundle,
         )
-        session.commit()
-        session.refresh(project)
-        return project_to_response(project), production_status(project), video_result.get("video_path")
     except Exception:
-        _set_project_state(project, "production_failed")
+        project = get_project_or_404(session, job.project_id)
+        if project.workflow_state in {"production_queued", "production_running"}:
+            transition_project_state(project, "production_failed")
+        else:
+            _set_project_state(project, "production_failed")
         session.add(project)
         session.commit()
         session.refresh(project)
         raise
+
+
+def start_production(
+    *,
+    session: Session,
+    project: Project,
+    current_user: User,
+) -> tuple[WorkflowProjectResponse, WorkflowProductionStatusResponse, str | None]:
+    summary = workflow_production_summary(session=session, project=project, current_user=current_user)
+    if not summary.script_ready:
+        raise ValueError("Script approval required")
+    if not summary.characters_ready:
+        raise ValueError("Character approval required")
+    if summary.current_credit_balance < summary.estimated_credits:
+        raise ValueError("Not enough credits to start production")
+    require_production_ready(project)
+    job = OrchestrationJob(
+        tenant_id=project.tenant_id,
+        project_id=project.project_id,
+        kind="workflow_production",
+        status="queued",
+        attempts=0,
+        max_attempts=1,
+        payload=_dumps_json({"user_id": current_user.id}),
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+    project.production_job_id = str(job.id or "")
+    transition_project_state(project, "production_queued")
+    session.add(project)
+    session.commit()
+    session.refresh(project)
+    return project_to_response(project), production_status(session, project), None
+
+
+def retry_production(
+    *,
+    session: Session,
+    project: Project,
+) -> WorkflowProductionStatusResponse:
+    job = _get_project_production_job(session, project)
+    if not job:
+        raise ValueError("Production job not found")
+    if job.status != "failed" or project.workflow_state != "production_failed":
+        raise ValueError("Production retry is only available after a failed render")
+
+    transition_project_state(project, "production_ready")
+    transition_project_state(project, "production_queued")
+    project.final_video_url = None
+    job.status = "queued"
+    job.attempts = 0
+    job.max_attempts = 1
+    job.last_error = None
+    job.task_id = None
+    job.updated_at = utc_now()
+    session.add(job)
+    session.add(project)
+    session.commit()
+    session.refresh(project)
+    session.refresh(job)
+    return production_status(session, project)
 
 
 def workflow_library(session: Session) -> WorkflowLibraryResponse:

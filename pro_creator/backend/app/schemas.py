@@ -487,6 +487,7 @@ class WorkflowProjectResponse(BaseModel):
     selected_character_ids: List[str] = []
     production_job_id: Optional[str] = None
     final_video_url: Optional[str] = None
+    archived_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -515,6 +516,7 @@ class WorkflowCharacterResponse(BaseModel):
     identity_hash: str
     lock_identity: bool = True
     reference_image_url: Optional[str] = None
+    reference_image_urls: List[str] = []
     canonical_image_url: Optional[str] = None
     personality_traits: List[str] = []
     voice_profile: Optional[str] = None
@@ -531,6 +533,7 @@ class WorkflowCharacterCreateRequest(BaseModel):
     personality_traits: List[str] = []
     voice_profile: Optional[str] = None
     reference_image_url: Optional[str] = None
+    reference_image_urls: List[str] = []
     lock_identity: bool = True
     select_after_create: bool = True
 
@@ -573,6 +576,11 @@ class WorkflowProductionStatusResponse(BaseModel):
     project_id: str
     workflow_state: str
     production_job_id: Optional[str] = None
+    queue_status: Optional[str] = None
+    queue_attempts: int = 0
+    queue_max_attempts: int = 0
+    last_error: Optional[str] = None
+    can_retry: bool = False
     final_video_url: Optional[str] = None
 
 

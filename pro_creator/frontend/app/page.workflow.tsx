@@ -6,20 +6,25 @@ import {
   WorkflowCharacterList,
   WorkflowLibrary,
   WorkflowProject,
+  WorkflowProductionStatus,
   WorkflowState,
   approveWorkflowCharacters,
   approveWorkflowScript,
+  archiveWorkflowProject,
   createWorkflowCharacter,
   createWorkflowProject,
+  duplicateWorkflowProject,
   fetchMyCredits,
   fetchWorkflowCharacters,
   fetchWorkflowLibrary,
   fetchWorkflowProductionSummary,
+  fetchWorkflowProductionStatus,
   fetchWorkflowProject,
   fetchWorkflowProjects,
   generateWorkflowCharacter,
   generateWorkflowScript,
   regenerateWorkflowScript,
+  retryWorkflowProduction,
   selectWorkflowCharacters,
   startWorkflowProduction,
   updateWorkflowScript,
@@ -28,6 +33,7 @@ import {
 
 type NavItem = "overview" | "projects" | "create" | "library";
 type LibraryTab = "characters" | "scripts" | "videos";
+type CharacterRoleFilter = "all" | "main" | "supporting" | "extra" | "npc";
 
 const NAV_ITEMS: Array<{ id: NavItem; label: string; detail: string }> = [
   { id: "overview", label: "Overview", detail: "Current progress and quick continue" },
@@ -42,6 +48,10 @@ const STEPS = [
   "Choose Characters",
   "Produce Video",
 ];
+
+function currentWorkflowStepLabel(project: WorkflowProject | null): string {
+  return STEPS[workflowStageIndex(project)] ?? STEPS[0];
+}
 
 function workflowStageIndex(project: WorkflowProject | null): number {
   if (!project) {
@@ -155,6 +165,7 @@ export default function WorkflowHomePage() {
   const [selectedProject, setSelectedProject] = useState<WorkflowProject | null>(null);
   const [characters, setCharacters] = useState<WorkflowCharacterList | null>(null);
   const [library, setLibrary] = useState<WorkflowLibrary | null>(null);
+  const [productionStatus, setProductionStatus] = useState<WorkflowProductionStatus | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [productionEstimate, setProductionEstimate] = useState<number>(20);
   const [loading, setLoading] = useState(true);
@@ -174,6 +185,9 @@ export default function WorkflowHomePage() {
   const [characterVoice, setCharacterVoice] = useState("default");
   const [referenceUrl, setReferenceUrl] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [productionConfirmed, setProductionConfirmed] = useState(false);
+  const [characterSearch, setCharacterSearch] = useState("");
+  const [characterRoleFilter, setCharacterRoleFilter] = useState<CharacterRoleFilter>("all");
 
   const selectedStage = workflowStageIndex(selectedProject);
   const activeProject = selectedProject ?? projects[0] ?? null;
@@ -186,6 +200,28 @@ export default function WorkflowHomePage() {
     () => (library?.videos ?? projects.filter((project) => Boolean((project.final_video_url || "").trim()))),
     [library, projects]
   );
+  const visibleCharacterLibrary = useMemo(() => {
+    const source = characters?.library ?? library?.characters ?? [];
+    const query = characterSearch.trim().toLowerCase();
+    return source.filter((character) => {
+      const matchesRole = characterRoleFilter === "all" || character.role_type === characterRoleFilter;
+      if (!matchesRole) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      return [
+        character.name,
+        character.description,
+        character.role_type,
+        ...(character.personality_traits ?? []),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [characterRoleFilter, characterSearch, characters?.library, library?.characters]);
 
   async function refreshProjects(nextSelectedId?: string | null) {
     const [workflowProjects, credits, workflowLibrary] = await Promise.all([
@@ -198,10 +234,9 @@ export default function WorkflowHomePage() {
     setLibrary(workflowLibrary);
 
     const preferredId =
-      nextSelectedId ??
-      selectedProjectId ??
-      workflowProjects[0]?.project_id ??
-      null;
+      nextSelectedId !== undefined
+        ? nextSelectedId
+        : selectedProjectId ?? workflowProjects[0]?.project_id ?? null;
     if (preferredId) {
       setSelectedProjectId(preferredId);
     } else {
@@ -212,13 +247,15 @@ export default function WorkflowHomePage() {
   }
 
   async function refreshProject(projectId: string) {
-    const [project, nextCharacters, summary] = await Promise.all([
+    const [project, nextCharacters, summary, nextProductionStatus] = await Promise.all([
       fetchWorkflowProject(projectId),
       fetchWorkflowCharacters(projectId).catch(() => null),
       fetchWorkflowProductionSummary(projectId).catch(() => null),
+      fetchWorkflowProductionStatus(projectId).catch(() => null),
     ]);
     setSelectedProject(project);
     setCharacters(nextCharacters);
+    setProductionStatus(nextProductionStatus);
     setScriptInput(project.script_draft || project.script_approved || "");
     setTitleInput(project.title || "");
     setIdeaInput(project.idea_prompt || "");
@@ -236,7 +273,7 @@ export default function WorkflowHomePage() {
       setLoading(true);
       setError(null);
       try {
-        await refreshProjects(null);
+        await refreshProjects();
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : "Failed to load workflow");
@@ -273,11 +310,87 @@ export default function WorkflowHomePage() {
     };
   }, [selectedProjectId]);
 
+  useEffect(() => {
+    setProductionConfirmed(false);
+  }, [selectedProject?.project_id, selectedProject?.script_approved_at, selectedProject?.character_package_approved_at]);
+
+  useEffect(() => {
+    if (!selectedProjectId || !selectedProject) {
+      return;
+    }
+    if (
+      selectedProject.workflow_state !== "production_queued" &&
+      selectedProject.workflow_state !== "production_running"
+    ) {
+      return;
+    }
+    const interval = window.setInterval(async () => {
+      try {
+        const nextStatus = await fetchWorkflowProductionStatus(selectedProjectId);
+        setProductionStatus(nextStatus);
+        if (nextStatus.workflow_state !== selectedProject.workflow_state) {
+          await refreshProject(selectedProjectId);
+          await refreshProjects(selectedProjectId);
+        }
+      } catch {
+        // Keep the page stable during temporary polling failures.
+      }
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [selectedProjectId, selectedProject?.workflow_state]);
+
   async function afterProjectMutation(projectId: string, message: string) {
     await refreshProjects(projectId);
     await refreshProject(projectId);
     setStatus(message);
     setError(null);
+  }
+
+  async function handleArchiveProject(projectId: string) {
+    setBusy(`archive-${projectId}`);
+    setError(null);
+    setStatus(null);
+    try {
+      const archivedProject = await archiveWorkflowProject(projectId);
+      const remainingProjects = projects.filter((project) => project.project_id !== projectId);
+      const fallbackProjectId =
+        selectedProjectId === projectId ? remainingProjects[0]?.project_id ?? null : selectedProjectId;
+      await refreshProjects(fallbackProjectId);
+      if (fallbackProjectId) {
+        await refreshProject(fallbackProjectId);
+      }
+      setStatus(`${archivedProject.title} was archived.`);
+      setError(null);
+      if (!fallbackProjectId) {
+        setSelectedProject(null);
+        setCharacters(null);
+        setProductionStatus(null);
+        setScriptInput("");
+        setTitleInput("");
+        setIdeaInput("");
+        setGenreInput("");
+        setDurationInput(3);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to archive project");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDuplicateProject(projectId: string) {
+    setBusy(`duplicate-${projectId}`);
+    setError(null);
+    setStatus(null);
+    try {
+      const duplicate = await duplicateWorkflowProject(projectId);
+      setActiveNav("create");
+      await afterProjectMutation(duplicate.project_id, `${duplicate.title} is ready as a new project copy.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to duplicate project");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function handleGenerateScript(event: FormEvent<HTMLFormElement>) {
@@ -304,7 +417,12 @@ export default function WorkflowHomePage() {
         tone: toneInput,
       });
       setActiveNav("create");
-      await afterProjectMutation(updated.project_id, "Script draft is ready for review.");
+      await afterProjectMutation(
+        updated.project_id,
+        selectedProject?.script_approved || selectedProject?.character_package_approved
+          ? "A new script draft is ready. Script and character approvals were cleared for safety."
+          : "Script draft is ready for review."
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate script");
     } finally {
@@ -361,7 +479,10 @@ export default function WorkflowHomePage() {
         target_duration_minutes: durationInput,
         tone: toneInput,
       });
-      await afterProjectMutation(updated.project_id, "A new script draft has been generated.");
+      await afterProjectMutation(
+        updated.project_id,
+        "A new script draft has been generated. Script and character approvals were cleared."
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to regenerate script");
     } finally {
@@ -382,6 +503,11 @@ export default function WorkflowHomePage() {
       setCharacters(next);
       await refreshProjects(selectedProject.project_id);
       await refreshProject(selectedProject.project_id);
+      setStatus(
+        selectedProject.character_package_approved
+          ? "Character approval was cleared because the cast changed."
+          : "Character selection updated."
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update character selection");
     } finally {
@@ -395,16 +521,28 @@ export default function WorkflowHomePage() {
     setError(null);
     setStatus(null);
     try {
+      const cleanName = characterName.trim();
+      const cleanDescription = characterDescription.trim();
+      if (!cleanName) {
+        throw new Error("Add a character name before continuing.");
+      }
+      if (!cleanDescription) {
+        throw new Error("Add a short character description before continuing.");
+      }
       const traits = characterTraits
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const referenceUrls = referenceUrl
         .split(",")
         .map((item) => item.trim())
         .filter(Boolean);
       let nextCharacters: WorkflowCharacterList;
       if (mode === "generate") {
         nextCharacters = await generateWorkflowCharacter(selectedProject.project_id, {
-          name: characterName,
+          name: cleanName,
           role_type: characterRole,
-          description: characterDescription,
+          description: cleanDescription,
           personality_traits: traits,
           voice_profile: characterVoice,
           style: "cinematic",
@@ -416,18 +554,19 @@ export default function WorkflowHomePage() {
         }
         nextCharacters = await uploadWorkflowCharacter(selectedProject.project_id, {
           file: uploadFile,
-          name: characterName,
+          name: cleanName,
           role_type: characterRole,
-          description: characterDescription,
+          description: cleanDescription,
           voice_profile: characterVoice,
           select_after_create: true,
         });
       } else {
         nextCharacters = await createWorkflowCharacter(selectedProject.project_id, {
-          name: characterName,
+          name: cleanName,
           role_type: characterRole,
-          description: characterDescription,
-          reference_image_url: referenceUrl,
+          description: cleanDescription,
+          reference_image_url: referenceUrls[0],
+          reference_image_urls: referenceUrls,
           personality_traits: traits,
           voice_profile: characterVoice,
           select_after_create: true,
@@ -472,21 +611,61 @@ export default function WorkflowHomePage() {
 
   async function handleStartProduction() {
     if (!selectedProject) return;
+    if (!productionConfirmed) {
+      setError("Please confirm the approved script and cast before starting production.");
+      setStatus(null);
+      return;
+    }
     setBusy("start-production");
     setError(null);
     setStatus(null);
     try {
       const response = await startWorkflowProduction(selectedProject.project_id);
+      setProductionStatus(response.status);
+      setProductionConfirmed(false);
       await afterProjectMutation(
         response.project.project_id,
-        response.video_path
-          ? "Video production completed."
-          : "Video production started."
+        "Video production has been queued."
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start production");
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function handleRetryProduction() {
+    if (!selectedProject) return;
+    setBusy("retry-production");
+    setError(null);
+    setStatus(null);
+    try {
+      const nextStatus = await retryWorkflowProduction(selectedProject.project_id);
+      setProductionStatus(nextStatus);
+      await afterProjectMutation(selectedProject.project_id, "Video production has been queued again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to retry production");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function productionDetailLabel() {
+    if (!productionStatus?.queue_status) {
+      return selectedProject?.workflow_state ? workflowStageLabel(selectedProject.workflow_state) : "Waiting";
+    }
+    switch (productionStatus.queue_status) {
+      case "queued":
+        return "Queued for production";
+      case "running":
+      case "processing":
+        return "Production running";
+      case "complete":
+        return "Video completed";
+      case "failed":
+        return "Production failed";
+      default:
+        return productionStatus.queue_status;
     }
   }
 
@@ -538,6 +717,22 @@ export default function WorkflowHomePage() {
                 <p className="text-sm text-slate-300">
                   No project is active yet. Start from the Create screen to generate your first script.
                 </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    className="rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-sm font-semibold text-aurora"
+                    type="button"
+                    onClick={() => setActiveNav("create")}
+                  >
+                    Start First Project
+                  </button>
+                  <button
+                    className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300"
+                    type="button"
+                    onClick={() => setActiveNav("library")}
+                  >
+                    Browse Library
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -676,6 +871,8 @@ export default function WorkflowHomePage() {
               <div className="mt-4 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
                 <p>Last updated: {new Date(project.updated_at).toLocaleString()}</p>
                 <p>Duration target: {project.target_duration_minutes || 3} min</p>
+                <p>Current step: {currentWorkflowStepLabel(project)}</p>
+                <p>Selected cast: {project.selected_character_ids.length}</p>
               </div>
               <div className="mt-5 flex flex-wrap gap-3">
                 <button
@@ -694,6 +891,22 @@ export default function WorkflowHomePage() {
                   onClick={() => setSelectedProjectId(project.project_id)}
                 >
                   Select
+                </button>
+                <button
+                  className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300"
+                  type="button"
+                  disabled={busy === `duplicate-${project.project_id}`}
+                  onClick={() => void handleDuplicateProject(project.project_id)}
+                >
+                  {busy === `duplicate-${project.project_id}` ? "Duplicating..." : "Duplicate"}
+                </button>
+                <button
+                  className="rounded-full border border-red-500/30 px-4 py-2 text-sm text-red-200"
+                  type="button"
+                  disabled={busy === `archive-${project.project_id}`}
+                  onClick={() => void handleArchiveProject(project.project_id)}
+                >
+                  {busy === `archive-${project.project_id}` ? "Archiving..." : "Archive"}
                 </button>
               </div>
             </article>
@@ -781,6 +994,13 @@ export default function WorkflowHomePage() {
                   {selectedProject ? workflowStageLabel(selectedProject.workflow_state) : "New project"}
                 </span>
               </div>
+              {!selectedProject ? (
+                <div className="mt-5 rounded-2xl border border-dashed border-aurora/25 bg-aurora/5 p-4">
+                  <p className="text-sm text-slate-200">
+                    Start with a title or a short idea. ProCreator will generate the full script first, then unlock characters after approval.
+                  </p>
+                </div>
+              ) : null}
               <form className="mt-6 space-y-4" onSubmit={handleGenerateScript}>
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="space-y-2">
@@ -1003,11 +1223,11 @@ export default function WorkflowHomePage() {
                   </div>
                   <label className="space-y-2">
                     <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                      Reference Image URL
+                      Reference Images
                     </span>
                     <input
                       className="w-full rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none"
-                      placeholder="Optional image URL"
+                      placeholder="Optional image URLs, separated by commas"
                       value={referenceUrl}
                       onChange={(event) => setReferenceUrl(event.target.value)}
                       disabled={!stageUnlocked(selectedProject, 2)}
@@ -1054,7 +1274,28 @@ export default function WorkflowHomePage() {
                 </div>
 
                 <div className="space-y-3">
-                  {(characters?.library ?? library?.characters ?? []).map((character) => {
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                    <input
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none"
+                      placeholder="Search saved characters"
+                      value={characterSearch}
+                      onChange={(event) => setCharacterSearch(event.target.value)}
+                      disabled={!stageUnlocked(selectedProject, 2)}
+                    />
+                    <select
+                      className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none"
+                      value={characterRoleFilter}
+                      onChange={(event) => setCharacterRoleFilter(event.target.value as CharacterRoleFilter)}
+                      disabled={!stageUnlocked(selectedProject, 2)}
+                    >
+                      <option value="all">All roles</option>
+                      <option value="main">Main</option>
+                      <option value="supporting">Supporting</option>
+                      <option value="extra">Extra</option>
+                      <option value="npc">NPC</option>
+                    </select>
+                  </div>
+                  {visibleCharacterLibrary.map((character) => {
                     const selected = characters?.selected_character_ids.includes(character.character_id);
                     return (
                       <button
@@ -1079,13 +1320,19 @@ export default function WorkflowHomePage() {
                             {selected ? "Selected" : "Add"}
                           </span>
                         </div>
-                        <p className="mt-3 text-sm text-slate-400">{character.description}</p>
+                <p className="mt-3 text-sm text-slate-400">{character.description}</p>
+                        {character.reference_image_urls.length > 0 ? (
+                          <p className="mt-3 text-xs text-slate-500">
+                            {character.reference_image_urls.length} reference image
+                            {character.reference_image_urls.length === 1 ? "" : "s"}
+                          </p>
+                        ) : null}
                       </button>
                     );
                   })}
-                  {(characters?.library?.length ?? library?.characters?.length ?? 0) === 0 ? (
+                  {visibleCharacterLibrary.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-6 text-sm text-slate-400">
-                      Saved characters will appear here as you create them.
+                      No characters match the current search or filter yet.
                     </div>
                   ) : null}
                 </div>
@@ -1134,17 +1381,67 @@ export default function WorkflowHomePage() {
                     {productionEstimate} credits
                   </p>
                 </div>
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Job Status</p>
+                  <p className="mt-2 text-sm text-white">
+                    {productionDetailLabel()}
+                  </p>
+                  {productionStatus?.queue_status ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Attempts {productionStatus.queue_attempts} / {productionStatus.queue_max_attempts || 3}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <label className="flex items-start gap-3">
+                  <input
+                    className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-950 text-aurora"
+                    type="checkbox"
+                    checked={productionConfirmed}
+                    onChange={(event) => setProductionConfirmed(event.target.checked)}
+                    disabled={!selectedProject || !stageUnlocked(selectedProject, 3)}
+                  />
+                  <span className="text-sm text-slate-200">
+                    I approve this script and cast for full video production.
+                  </span>
+                </label>
+                <p className="mt-2 text-xs text-slate-500">
+                  This is the final approval step before rendering begins.
+                </p>
               </div>
               <div className="mt-5 flex flex-wrap gap-3">
                 <button
                   className="rounded-full border border-aurora/40 bg-aurora/10 px-5 py-3 text-sm font-semibold text-aurora disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                   onClick={handleStartProduction}
-                  disabled={!selectedProject || !stageUnlocked(selectedProject, 3) || busy === "start-production"}
+                  disabled={
+                    !selectedProject ||
+                    !stageUnlocked(selectedProject, 3) ||
+                    !productionConfirmed ||
+                    busy === "start-production" ||
+                    selectedProject.workflow_state === "production_queued" ||
+                    selectedProject.workflow_state === "production_running"
+                  }
                 >
-                  {busy === "start-production" ? "Producing..." : "Start Video Production"}
+                  {busy === "start-production" ? "Queueing..." : "Start Video Production"}
                 </button>
+                {productionStatus?.can_retry ? (
+                  <button
+                    className="rounded-full border border-red-400/30 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    onClick={handleRetryProduction}
+                    disabled={busy === "retry-production"}
+                  >
+                    {busy === "retry-production" ? "Retrying..." : "Retry Production"}
+                  </button>
+                ) : null}
               </div>
+              {productionStatus?.last_error ? (
+                <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                  {productionStatus.last_error}
+                </div>
+              ) : null}
               {selectedProject?.final_video_url ? (
                 <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
                   <p className="text-sm font-semibold text-white">Final Video</p>
@@ -1189,9 +1486,16 @@ export default function WorkflowHomePage() {
                   </div>
                 </>
               ) : (
-                <p className="mt-3 text-sm text-slate-400">
-                  Start by entering a story request. The workflow will guide the rest.
-                </p>
+                <div className="mt-3 rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-4">
+                  <p className="text-sm text-slate-300">
+                    Start by entering a story request. The workflow will guide the rest.
+                  </p>
+                  <ul className="mt-4 space-y-2 text-sm text-slate-400">
+                    <li>1. Enter the story title and idea.</li>
+                    <li>2. Review and approve the generated script.</li>
+                    <li>3. Choose characters before production unlocks.</li>
+                  </ul>
+                </div>
               )}
             </div>
             <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
@@ -1211,7 +1515,6 @@ export default function WorkflowHomePage() {
   }
 
   function renderLibrary() {
-    const charactersTab = library?.characters ?? [];
     const scriptsTab = approvedScripts;
     const videosTab = completedVideos;
     return (
@@ -1241,8 +1544,28 @@ export default function WorkflowHomePage() {
           ))}
         </div>
         {libraryTab === "characters" ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {charactersTab.map((character) => (
+          <>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none"
+                placeholder="Search characters"
+                value={characterSearch}
+                onChange={(event) => setCharacterSearch(event.target.value)}
+              />
+              <select
+                className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none"
+                value={characterRoleFilter}
+                onChange={(event) => setCharacterRoleFilter(event.target.value as CharacterRoleFilter)}
+              >
+                <option value="all">All roles</option>
+                <option value="main">Main</option>
+                <option value="supporting">Supporting</option>
+                <option value="extra">Extra</option>
+                <option value="npc">NPC</option>
+              </select>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {visibleCharacterLibrary.map((character) => (
               <article
                 key={character.character_id}
                 className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5"
@@ -1252,6 +1575,12 @@ export default function WorkflowHomePage() {
                   {character.role_type}
                 </p>
                 <p className="mt-3 text-sm text-slate-400">{character.description}</p>
+                {character.reference_image_urls.length > 0 ? (
+                  <p className="mt-3 text-xs text-slate-500">
+                    {character.reference_image_urls.length} reference image
+                    {character.reference_image_urls.length === 1 ? "" : "s"}
+                  </p>
+                ) : null}
                 {character.canonical_image_url ? (
                   <img
                     className="mt-4 w-full rounded-2xl border border-slate-800"
@@ -1261,12 +1590,13 @@ export default function WorkflowHomePage() {
                 ) : null}
               </article>
             ))}
-            {charactersTab.length === 0 ? (
+            {visibleCharacterLibrary.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-950/60 p-6 text-sm text-slate-400">
-                Saved characters will appear here after you add them in the workflow.
+                No saved characters match the current search or role filter.
               </div>
             ) : null}
-          </div>
+            </div>
+          </>
         ) : null}
         {libraryTab === "scripts" ? (
           <div className="grid gap-4">
@@ -1293,8 +1623,33 @@ export default function WorkflowHomePage() {
                     Open
                   </button>
                 </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200"
+                    type="button"
+                    onClick={() => {
+                      setSelectedProjectId(project.project_id);
+                      setActiveNav("create");
+                    }}
+                  >
+                    Continue In Create
+                  </button>
+                  <button
+                    className="rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-sm font-semibold text-aurora disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    disabled={busy === `duplicate-${project.project_id}`}
+                    onClick={() => void handleDuplicateProject(project.project_id)}
+                  >
+                    {busy === `duplicate-${project.project_id}` ? "Duplicating..." : "Duplicate Into New Project"}
+                  </button>
+                </div>
               </article>
             ))}
+            {scriptsTab.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-950/60 p-6 text-sm text-slate-400">
+                Approved scripts will appear here after you finish script review.
+              </div>
+            ) : null}
           </div>
         ) : null}
         {libraryTab === "videos" ? (
@@ -1306,14 +1661,48 @@ export default function WorkflowHomePage() {
               >
                 <p className="text-lg font-semibold text-white">{project.title}</p>
                 {project.final_video_url ? (
-                  <video
-                    className="mt-4 w-full rounded-2xl border border-slate-800"
-                    controls
-                    src={project.final_video_url}
-                  />
+                  <>
+                    <video
+                      className="mt-4 w-full rounded-2xl border border-slate-800"
+                      controls
+                      src={project.final_video_url}
+                    />
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200"
+                        type="button"
+                        onClick={() => {
+                          setSelectedProjectId(project.project_id);
+                          setActiveNav("create");
+                        }}
+                      >
+                        Open Project
+                      </button>
+                      <a
+                        className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200"
+                        href={project.final_video_url}
+                        download
+                      >
+                        Download Video
+                      </a>
+                      <button
+                        className="rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-sm font-semibold text-aurora disabled:cursor-not-allowed disabled:opacity-50"
+                        type="button"
+                        disabled={busy === `duplicate-${project.project_id}`}
+                        onClick={() => void handleDuplicateProject(project.project_id)}
+                      >
+                        {busy === `duplicate-${project.project_id}` ? "Duplicating..." : "Reuse As New Project"}
+                      </button>
+                    </div>
+                  </>
                 ) : null}
               </article>
             ))}
+            {videosTab.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-950/60 p-6 text-sm text-slate-400">
+                Completed videos will appear here after production finishes.
+              </div>
+            ) : null}
           </div>
         ) : null}
       </section>

@@ -38,6 +38,7 @@ from app.services.image_engine import generate_image_for_scene
 from app.services.script_engine import generate_script
 from app.services.video_engine import render_video
 from app.services.voice_engine import generate_voice_bytes, generate_voice_for_scene
+from app.services.workflow_service import execute_workflow_production_job
 from app.celery_app import celery_app
 from app import tasks as celery_tasks
 from app.utils.file_manager import (
@@ -322,6 +323,8 @@ def _execute_job(job: OrchestrationJob, session: Session) -> None:
         _run_image(request, session)
         _run_video(request)
         _run_export(request)
+    elif job.kind == "workflow_production":
+        execute_workflow_production_job(session=session, job=job)
     else:
         raise ValueError(f"Unknown job kind: {job.kind}")
 
@@ -363,6 +366,8 @@ def _dispatch_job(job: OrchestrationJob) -> str:
             payload.get("voice_text"),
             payload.get("image_prompt"),
         )
+    elif job.kind == "workflow_production":
+        result = celery_tasks.workflow_production_task.delay(job.id or 0)
     else:
         raise ValueError(f"Unknown job kind: {job.kind}")
     return result.id

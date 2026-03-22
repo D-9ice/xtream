@@ -29,6 +29,7 @@ class Project(SQLModel, table=True):
     selected_character_ids_json: Optional[str] = None
     production_job_id: Optional[str] = None
     final_video_url: Optional[str] = None
+    archived_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
@@ -70,6 +71,7 @@ class CharacterProfile(SQLModel, table=True):
     identity_hash: str = Field(index=True)
     lock_identity: bool = Field(default=True)
     reference_image_url: Optional[str] = None
+    reference_image_urls_json: str = "[]"
     canonical_image_url: Optional[str] = None
     personality_traits_json: str = "[]"
     voice_profile: Optional[str] = None

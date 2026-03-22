@@ -1144,6 +1144,7 @@ export type WorkflowProject = {
   selected_character_ids: string[];
   production_job_id?: string | null;
   final_video_url?: string | null;
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -1159,6 +1160,7 @@ export type WorkflowCharacter = {
   identity_hash: string;
   lock_identity: boolean;
   reference_image_url?: string | null;
+  reference_image_urls: string[];
   canonical_image_url?: string | null;
   personality_traits: string[];
   voice_profile?: string | null;
@@ -1190,6 +1192,11 @@ export type WorkflowProductionStatus = {
   project_id: string;
   workflow_state: WorkflowState;
   production_job_id?: string | null;
+  queue_status?: string | null;
+  queue_attempts: number;
+  queue_max_attempts: number;
+  last_error?: string | null;
+  can_retry: boolean;
   final_video_url?: string | null;
 };
 
@@ -1254,6 +1261,36 @@ export async function updateWorkflowProject(
   });
   if (!response.ok) {
     await throwApiError(response, "Failed to update workflow project");
+  }
+  return response.json();
+}
+
+export async function archiveWorkflowProject(
+  projectId: string
+): Promise<WorkflowProject> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/archive`,
+    {
+      method: "POST",
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to archive workflow project");
+  }
+  return response.json();
+}
+
+export async function duplicateWorkflowProject(
+  projectId: string
+): Promise<WorkflowProject> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/duplicate`,
+    {
+      method: "POST",
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to duplicate workflow project");
   }
   return response.json();
 }
@@ -1378,6 +1415,7 @@ export async function createWorkflowCharacter(
     personality_traits?: string[];
     voice_profile?: string;
     reference_image_url?: string;
+    reference_image_urls?: string[];
     lock_identity?: boolean;
     select_after_create?: boolean;
   }
@@ -1514,6 +1552,21 @@ export async function fetchWorkflowProductionStatus(
   );
   if (!response.ok) {
     await throwApiError(response, "Failed to load production status");
+  }
+  return response.json();
+}
+
+export async function retryWorkflowProduction(
+  projectId: string
+): Promise<WorkflowProductionStatus> {
+  const response = await fetch(
+    `${API_BASE}/workflow/projects/${projectId}/retry-production`,
+    {
+      method: "POST",
+    }
+  );
+  if (!response.ok) {
+    await throwApiError(response, "Failed to retry video production");
   }
   return response.json();
 }

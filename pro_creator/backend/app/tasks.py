@@ -1,9 +1,14 @@
+from sqlmodel import Session
+
 from app.celery_app import celery_app
+from app.database import engine
+from app.models import OrchestrationJob
 from app.services.script_engine import generate_script
 from app.services.lipsync_engine import generate_lipsync
 from app.services.voice_engine import generate_voice_bytes, generate_voice_for_scene
 from app.services.image_engine import generate_image_for_scene
 from app.services.video_engine import render_video
+from app.services.workflow_service import execute_workflow_production_job
 from app.utils.file_manager import ensure_project_dirs, write_scene_metadata, write_script
 from app.utils.file_manager import read_scene_metadata
 from app.utils.file_manager import read_character_voice_profiles
@@ -51,6 +56,16 @@ def render_video_task(project_id: str) -> dict:
 def export_preset_task(project_id: str, preset: str) -> dict:
     response = export_preset(ExportPresetRequest(project_id=project_id, preset=preset))
     return {"export_path": response.export_path}
+
+
+@celery_app.task(name="pro_creator.workflow_production")
+def workflow_production_task(job_id: int) -> dict:
+    with Session(engine) as session:
+        job = session.get(OrchestrationJob, job_id)
+        if not job:
+            raise ValueError(f"Workflow production job {job_id} not found")
+        video_path = execute_workflow_production_job(session=session, job=job)
+        return {"video_path": video_path}
 
 
 @celery_app.task(name="pro_creator.full_pipeline")

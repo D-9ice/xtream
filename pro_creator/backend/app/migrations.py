@@ -154,8 +154,18 @@ def _fallback_schema_sync(engine: Engine) -> None:
     )
     _ensure_column(
         "project",
+        "archived_at",
+        "ALTER TABLE project ADD COLUMN archived_at DATETIME",
+    )
+    _ensure_column(
+        "project",
         "updated_at",
         "ALTER TABLE project ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+    )
+    _ensure_column(
+        "characterprofile",
+        "reference_image_urls_json",
+        "ALTER TABLE characterprofile ADD COLUMN reference_image_urls_json TEXT NOT NULL DEFAULT '[]'",
     )
 
     # Newer tenant-aware billing model: one subscription per (tenant_id, user_id).
