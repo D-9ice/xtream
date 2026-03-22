@@ -200,6 +200,17 @@ describe("Workflow home page", () => {
     expect(screen.getAllByText(/Review Script/i).length).toBeGreaterThan(0);
   });
 
+  it("shows guided navigation controls between unlocked create stages", async () => {
+    render(<HomePage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Go to Script Review/i })).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /Go to Script Review/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Back to Story Request/i })).toBeInTheDocument();
+  });
+
   it("polls production status while a video is queued and refreshes to completed", async () => {
     vi.useFakeTimers();
 

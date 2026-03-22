@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   WorkflowCharacterList,
@@ -514,6 +514,10 @@ export default function WorkflowHomePage() {
   const [productionConfirmed, setProductionConfirmed] = useState(false);
   const [characterSearch, setCharacterSearch] = useState("");
   const [characterRoleFilter, setCharacterRoleFilter] = useState<CharacterRoleFilter>("all");
+  const storyRequestRef = useRef<HTMLDivElement | null>(null);
+  const scriptReviewRef = useRef<HTMLDivElement | null>(null);
+  const charactersRef = useRef<HTMLDivElement | null>(null);
+  const productionRef = useRef<HTMLDivElement | null>(null);
 
   const selectedStage = workflowStageIndex(selectedProject);
   const activeProject = selectedProject ?? projects[0] ?? null;
@@ -554,6 +558,16 @@ export default function WorkflowHomePage() {
         .includes(query);
     });
   }, [characterRoleFilter, characterSearch, characters?.library, library?.characters]);
+
+  function scrollToCreateStep(stepIndex: number) {
+    const target = [
+      storyRequestRef.current,
+      scriptReviewRef.current,
+      charactersRef.current,
+      productionRef.current,
+    ][stepIndex];
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   async function refreshProjects(nextSelectedId?: string | null) {
     const [workflowProjects, credits, workflowLibrary] = await Promise.all([
@@ -1077,7 +1091,7 @@ export default function WorkflowHomePage() {
           </div>
 
           <div className="space-y-6">
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
+            <div ref={charactersRef} className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
               <p className="text-xs uppercase tracking-[0.35em] text-slate-500">
                 Workflow Progress
               </p>
@@ -1337,6 +1351,7 @@ export default function WorkflowHomePage() {
                     key={label}
                     className={`rounded-2xl border px-4 py-4 text-left transition ${tone}`}
                     type="button"
+                    onClick={() => scrollToCreateStep(index)}
                     disabled={!stageUnlocked(selectedProject, index)}
                   >
                     <p className="text-[11px] uppercase tracking-[0.25em]">
@@ -1348,7 +1363,7 @@ export default function WorkflowHomePage() {
               })}
             </div>
 
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
+            <div ref={storyRequestRef} className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.35em] text-slate-500">
@@ -1434,17 +1449,27 @@ export default function WorkflowHomePage() {
                     />
                   </label>
                 </div>
-                <button
-                  className="rounded-full border border-aurora/40 bg-aurora/10 px-5 py-3 text-sm font-semibold text-aurora disabled:cursor-not-allowed disabled:opacity-60"
-                  type="submit"
-                  disabled={busy === "script"}
-                >
-                  {busy === "script" ? "Generating Script..." : "Generate Script"}
-                </button>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    className="rounded-full border border-aurora/40 bg-aurora/10 px-5 py-3 text-sm font-semibold text-aurora disabled:cursor-not-allowed disabled:opacity-60"
+                    type="submit"
+                    disabled={busy === "script"}
+                  >
+                    {busy === "script" ? "Generating Script..." : "Generate Script"}
+                  </button>
+                  <button
+                    className="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    onClick={() => scrollToCreateStep(1)}
+                    disabled={!stageUnlocked(selectedProject, 1)}
+                  >
+                    Go to Script Review
+                  </button>
+                </div>
               </form>
             </div>
 
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
+            <div ref={scriptReviewRef} className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.35em] text-slate-500">
@@ -1467,6 +1492,13 @@ export default function WorkflowHomePage() {
                 disabled={!stageUnlocked(selectedProject, 1)}
               />
               <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200"
+                  type="button"
+                  onClick={() => scrollToCreateStep(0)}
+                >
+                  Back to Story Request
+                </button>
                 <button
                   className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
@@ -1753,7 +1785,15 @@ export default function WorkflowHomePage() {
                 </div>
               </div>
 
-              <div className="mt-6">
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  className="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-200"
+                  type="button"
+                  onClick={() => scrollToCreateStep(1)}
+                  disabled={!stageUnlocked(selectedProject, 2)}
+                >
+                  Back to Script Review
+                </button>
                 <button
                   className="rounded-full border border-aurora/40 bg-aurora/10 px-5 py-3 text-sm font-semibold text-aurora disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
@@ -1762,10 +1802,18 @@ export default function WorkflowHomePage() {
                 >
                   {busy === "approve-characters" ? "Approving..." : "Approve Characters"}
                 </button>
+                <button
+                  className="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  type="button"
+                  onClick={() => scrollToCreateStep(3)}
+                  disabled={!stageUnlocked(selectedProject, 3)}
+                >
+                  Go to Produce Video
+                </button>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
+            <div ref={productionRef} className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.35em] text-slate-500">
@@ -1830,6 +1878,14 @@ export default function WorkflowHomePage() {
                 </p>
               </div>
               <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  className="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-200"
+                  type="button"
+                  onClick={() => scrollToCreateStep(2)}
+                  disabled={!stageUnlocked(selectedProject, 2)}
+                >
+                  Back to Characters
+                </button>
                 <button
                   className="rounded-full border border-aurora/40 bg-aurora/10 px-5 py-3 text-sm font-semibold text-aurora disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
