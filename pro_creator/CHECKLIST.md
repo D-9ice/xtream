@@ -140,12 +140,12 @@ This checklist tracks the remaining work required to finish the guided workflow 
 
 ## Phase 13: Full Integration Hardening
 
-- [ ] Start the app in the correct runtime environment.
-- [ ] Run the guided workflow end to end manually.
-- [ ] Fix live integration bugs revealed by real execution.
-- [ ] Confirm credits behavior matches the simplified UX checkpoints.
-- [ ] Confirm final video outputs land in both project view and library.
-- [ ] Confirm no unfinished engine-centric behavior leaks into the main path.
+- [x] Start the app in the correct runtime environment.
+- [x] Run the guided workflow end to end manually.
+- [x] Fix live integration bugs revealed by real execution.
+- [x] Confirm credits behavior matches the simplified UX checkpoints.
+- [x] Confirm final video outputs land in both project view and library.
+- [x] Confirm no unfinished engine-centric behavior leaks into the main path.
 
 ## Immediate Next Order
 

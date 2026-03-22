@@ -1,3 +1,5 @@
+import subprocess
+
 from app.services import video_engine
 
 
@@ -30,3 +32,21 @@ def test_resolve_render_mode_explicit_switches(monkeypatch):
     assert video_engine._resolve_render_mode("ffmpeg") == ("ffmpeg", None)
     assert video_engine._resolve_render_mode("runway_gen4_turbo") == ("runway", "gen4_turbo")
     assert video_engine._resolve_render_mode("runway_gen4_5") == ("runway", "gen4.5")
+
+
+def test_run_ffmpeg_command_wraps_timeout(monkeypatch):
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=kwargs.get("args") or args[0], timeout=12)
+
+    monkeypatch.setattr(video_engine.subprocess, "run", fake_run)
+
+    try:
+        video_engine._run_ffmpeg_command(
+            args=["ffmpeg", "-version"],
+            timeout_seconds=12,
+            phase="final video concat",
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "ffmpeg timed out during final video concat after 12s"
+    else:
+        raise AssertionError("Expected ffmpeg timeout to raise RuntimeError")

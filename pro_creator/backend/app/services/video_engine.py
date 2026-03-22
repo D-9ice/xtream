@@ -9,6 +9,8 @@ import re
 import requests
 
 from app.config import (
+    FFMPEG_CONCAT_TIMEOUT_SECONDS,
+    FFMPEG_SCENE_RENDER_TIMEOUT_SECONDS,
     RUNWAY_API_BASE,
     RUNWAY_API_KEY,
     RUNWAY_API_VERSION,
@@ -25,6 +27,19 @@ from app.utils.file_manager import read_scene_metadata
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _run_ffmpeg_command(*, args: list[str], timeout_seconds: int, phase: str) -> None:
+    try:
+        subprocess.run(
+            args,
+            check=True,
+            timeout=timeout_seconds,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"ffmpeg timed out during {phase} after {timeout_seconds}s") from exc
 
 
 def _scene_ids_from_metadata(project_id: str) -> list[int]:
@@ -163,8 +178,8 @@ def _render_scene_clip_with_runway(
     _download_runway_clip(output_url, runway_clip_path)
 
     # Runway clips are short; loop the generated clip to cover narration length.
-    subprocess.run(
-        [
+    _run_ffmpeg_command(
+        args=[
             ffmpeg_path,
             "-y",
             "-stream_loop",
@@ -184,9 +199,8 @@ def _render_scene_clip_with_runway(
             "-shortest",
             str(clip_path),
         ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        timeout_seconds=FFMPEG_SCENE_RENDER_TIMEOUT_SECONDS,
+        phase="scene video assembly",
     )
 
 
@@ -197,8 +211,8 @@ def _render_scene_clip_with_ffmpeg_image(
     audio_path: Path,
     clip_path: Path,
 ) -> None:
-    subprocess.run(
-        [
+    _run_ffmpeg_command(
+        args=[
             ffmpeg_path,
             "-y",
             "-loop",
@@ -227,9 +241,8 @@ def _render_scene_clip_with_ffmpeg_image(
             "-shortest",
             str(clip_path),
         ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        timeout_seconds=FFMPEG_SCENE_RENDER_TIMEOUT_SECONDS,
+        phase="scene image render",
     )
 
 
@@ -321,8 +334,8 @@ def render_video(project_id: str, render_provider: str = "ffmpeg") -> dict:
         concat_file = temp_path / "concat.txt"
         concat_file.write_text("\n".join([f"file '{path}'" for path in clip_paths]))
         video_path = temp_path / "final.mp4"
-        subprocess.run(
-            [
+        _run_ffmpeg_command(
+            args=[
                 ffmpeg_path,
                 "-y",
                 "-f",
@@ -337,9 +350,8 @@ def render_video(project_id: str, render_provider: str = "ffmpeg") -> dict:
                 "aac",
                 str(video_path),
             ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            timeout_seconds=FFMPEG_CONCAT_TIMEOUT_SECONDS,
+            phase="final video concat",
         )
         video_bytes = video_path.read_bytes()
         storage_client.write_bytes(key, video_bytes, content_type="video/mp4")
