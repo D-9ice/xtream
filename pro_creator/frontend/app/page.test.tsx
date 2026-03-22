@@ -171,10 +171,9 @@ describe("Workflow home page", () => {
     render(<HomePage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Review the draft and approve the script/i)).toBeInTheDocument();
+      expect(screen.getByText(/Approve the script to unlock character selection/i)).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Approve the script to unlock character selection/i)).toBeInTheDocument();
     expect(screen.getByText(/Current step: Review Script/i)).toBeInTheDocument();
   });
 
@@ -188,6 +187,17 @@ describe("Workflow home page", () => {
     expect(screen.getByText(/Review required/i)).toBeInTheDocument();
     expect(screen.getByText(/Waiting on Step 2/i)).toBeInTheDocument();
     expect(screen.getByText(/Waiting on Step 3/i)).toBeInTheDocument();
+  });
+
+  it("shows the current script draft in the review stage", async () => {
+    render(<HomePage />);
+
+    const scriptEditor = await screen.findByDisplayValue(
+      /Scene 1: The crew spots the signal\./i
+    );
+
+    expect(scriptEditor).toBeEnabled();
+    expect(screen.getAllByText(/Review Script/i).length).toBeGreaterThan(0);
   });
 
   it("polls production status while a video is queued and refreshes to completed", async () => {
@@ -330,6 +340,40 @@ describe("Workflow home page", () => {
     expect(screen.queryByRole("button", { name: /Retry Production/i })).toBeNull();
   });
 
+  it("shows production failure details clearly inside the create flow", async () => {
+    mockState.project = {
+      ...clone(mockState.defaults.project),
+      workflow_state: "production_failed",
+      status: "production_failed",
+      script_approved: "Approved script",
+      character_package_approved: true,
+      selected_character_ids: ["char-1"],
+      production_job_id: "51",
+    };
+    mockState.summary = {
+      ...clone(mockState.defaults.summary),
+      workflow_state: "production_failed",
+      script_ready: true,
+      characters_ready: true,
+    };
+    mockState.productionStatus = {
+      ...clone(mockState.defaults.productionStatus),
+      workflow_state: "production_failed",
+      production_job_id: "51",
+      queue_status: "failed",
+      queue_attempts: 1,
+      queue_max_attempts: 1,
+      last_error: "render failed once",
+      can_retry: true,
+    };
+
+    render(<HomePage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Production failed/i).length).toBeGreaterThan(0);
+    });
+  });
+
   it("requires final approval confirmation before video production can start", async () => {
     mockState.project = {
       ...clone(mockState.defaults.project),
@@ -364,6 +408,38 @@ describe("Workflow home page", () => {
 
     expect(finalApproval).toBeEnabled();
     expect(screen.getByText(/This is the final approval step before rendering begins/i)).toBeInTheDocument();
+  });
+
+  it("shows the production stage as ready after script and character approval", async () => {
+    mockState.project = {
+      ...clone(mockState.defaults.project),
+      workflow_state: "production_ready",
+      status: "production_ready",
+      script_approved: "Approved script",
+      script_approved_at: "2026-03-22T00:10:00",
+      character_package_approved: true,
+      character_package_approved_at: "2026-03-22T00:15:00",
+      selected_character_ids: ["char-1"],
+    };
+    mockState.summary = {
+      ...clone(mockState.defaults.summary),
+      workflow_state: "production_ready",
+      script_ready: true,
+      characters_ready: true,
+    };
+    mockState.productionStatus = {
+      ...clone(mockState.defaults.productionStatus),
+      workflow_state: "production_ready",
+    };
+
+    render(<HomePage />);
+
+    const finalApproval = await screen.findByRole("checkbox", {
+      name: /I approve this script and cast for full video production/i,
+    });
+
+    expect(finalApproval).toBeInTheDocument();
+    expect(screen.getAllByText(/Production ready/i).length).toBeGreaterThan(0);
   });
 
   it("shows project archive and duplicate controls in the simplified projects view", async () => {

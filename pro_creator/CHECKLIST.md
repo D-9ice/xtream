@@ -127,13 +127,13 @@ This checklist tracks the remaining work required to finish the guided workflow 
   - production retry/failure behavior
   - resolver payload integrity
   - character DNA snapshots
-- [ ] Add missing frontend tests for:
+- [x] Add missing frontend tests for:
   - full guided flow rendering
   - state-accurate step enable/disable behavior
   - script review visibility
   - character approval unlocking production
   - production failure/retry messaging
-- [ ] Add integration tests for:
+- [x] Add integration tests for:
   - create project -> generate script -> approve script
   - approve script -> add/select characters -> approve characters
   - approve characters -> start production

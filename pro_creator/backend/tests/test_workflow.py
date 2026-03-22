@@ -1016,8 +1016,28 @@ def test_archive_project_hides_it_from_active_project_list() -> None:
     assert get_res.json()["archived_at"] is not None
 
 
-def test_api_project_alias_supports_guided_workflow_endpoints() -> None:
+def test_api_project_alias_supports_guided_workflow_endpoints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = TestClient(app)
+
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_image_for_scene",
+        lambda project_id, scene_id, prompt, style: {"image_path": f"/tmp/{project_id}-{scene_id}.png"},
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_voice_for_scene",
+        lambda project_id, scene_id, text, voice_profile="default": {
+            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "render_video",
+        lambda project_id: {"video_path": f"https://example.test/{project_id}-alias.mp4"},
+    )
 
     create_res = client.post(
         "/api/projects",
@@ -1070,6 +1090,19 @@ def test_api_project_alias_supports_guided_workflow_endpoints() -> None:
     summary_res = client.get(f"/api/projects/{project_id}/production-summary")
     assert summary_res.status_code == 200
     assert summary_res.json()["workflow_state"] == "production_ready"
+
+    start_res = client.post(f"/api/projects/{project_id}/start-production")
+    assert start_res.status_code == 200
+    assert start_res.json()["project"]["workflow_state"] == "production_queued"
+
+    process_res = client.post("/orchestration/queue/process?limit=1")
+    assert process_res.status_code == 200
+    assert process_res.json()["processed"] == 1
+
+    status_res = client.get(f"/api/projects/{project_id}/production-status")
+    assert status_res.status_code == 200
+    assert status_res.json()["workflow_state"] == "video_completed"
+    assert status_res.json()["final_video_url"] == f"https://example.test/{project_id}-alias.mp4"
 
 
 def test_duplicate_project_copies_guided_state_without_live_output_fields() -> None:
