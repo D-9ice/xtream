@@ -67,10 +67,12 @@ This checklist tracks the remaining work required to finish the guided workflow 
 
 - [ ] Polish the guided Create screen for production use.
 - [ ] Improve per-step loading, success, warning, and failure states.
+- [x] Add explicit “what happens next” guidance inside the Create screen.
 - [x] Add clearer “final approval” UX before video production.
 - [x] Add better progress messaging while production is queued/running.
 - [x] Improve empty-state behavior for first-time users.
 - [x] Improve validation messaging for incomplete character inputs.
+- [x] Add responsive mobile navigation and tighten Create-screen layouts for smaller screens.
 - [ ] Run responsive/mobile QA and fix layout issues.
 
 ## Phase 7: Projects Screen Completion
@@ -106,7 +108,7 @@ This checklist tracks the remaining work required to finish the guided workflow 
 
 - [x] Decide whether to keep `/workflow/...` routes as the public workflow surface or alias them to the final `/api/projects/:id/...` style from the document.
 - [x] Standardize route naming and payloads.
-- [ ] Remove any UI dependence on legacy engine APIs for the main workflow path.
+- [x] Remove any UI dependence on legacy engine APIs for the main workflow path.
 
 ## Phase 11: Data And Migration Verification
 

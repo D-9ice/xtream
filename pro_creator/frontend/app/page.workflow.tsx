@@ -157,6 +157,134 @@ function statusPill(state: WorkflowState): string {
   return "bg-aurora/15 text-aurora";
 }
 
+function mobileNavClasses(active: boolean): string {
+  if (active) {
+    return "border-aurora/40 bg-aurora/10 text-white";
+  }
+  return "border-slate-800 bg-slate-900/55 text-slate-300";
+}
+
+function guidanceClasses(tone: "info" | "warning" | "success" | "danger"): string {
+  switch (tone) {
+    case "warning":
+      return "border-amber-400/25 bg-amber-400/10 text-amber-50";
+    case "success":
+      return "border-emerald-400/25 bg-emerald-400/10 text-emerald-50";
+    case "danger":
+      return "border-red-500/25 bg-red-500/10 text-red-50";
+    default:
+      return "border-aurora/25 bg-aurora/10 text-cyan-50";
+  }
+}
+
+function createGuidance(
+  project: WorkflowProject | null,
+  productionStatus: WorkflowProductionStatus | null,
+  productionConfirmed: boolean
+): { eyebrow: string; title: string; detail: string; tone: "info" | "warning" | "success" | "danger" } {
+  if (!project) {
+    return {
+      eyebrow: "Start here",
+      title: "Enter a story title and generate your script.",
+      detail: "Characters and video production stay locked until you approve the script draft.",
+      tone: "info",
+    };
+  }
+
+  switch (project.workflow_state) {
+    case "script_generating":
+      return {
+        eyebrow: "Working",
+        title: "Your script is being generated.",
+        detail: "Stay on Step 2. As soon as the draft is ready, you can review and approve it.",
+        tone: "info",
+      };
+    case "script_generated":
+      return {
+        eyebrow: "Next step",
+        title: "Review the draft and approve the script.",
+        detail: "Character selection is locked until the script is explicitly approved.",
+        tone: "warning",
+      };
+    case "script_approved":
+    case "characters_in_progress":
+      return {
+        eyebrow: "Next step",
+        title: "Choose the cast for this project.",
+        detail: "Select saved characters, create new ones, or upload references before approving the package.",
+        tone: "info",
+      };
+    case "characters_approved":
+    case "production_ready":
+      return productionConfirmed
+        ? {
+            eyebrow: "Ready",
+            title: "The project is ready for video production.",
+            detail: "Start production when you are ready to spend the estimated credits.",
+            tone: "success",
+          }
+        : {
+            eyebrow: "Final approval",
+            title: "Confirm the approved script and cast before production.",
+            detail: "Check the final approval box in Step 4 to unlock video production.",
+            tone: "warning",
+          };
+    case "production_queued":
+      return {
+        eyebrow: "Queued",
+        title: "Video production is queued.",
+        detail: "Your approved script and locked cast package are waiting for render capacity.",
+        tone: "info",
+      };
+    case "production_running":
+      return {
+        eyebrow: "Rendering",
+        title: "Video production is running.",
+        detail: "ProCreator is generating scenes, voice, and the final video from the approved package.",
+        tone: "info",
+      };
+    case "production_failed":
+      return {
+        eyebrow: "Attention",
+        title: "Production stopped before completion.",
+        detail: productionStatus?.last_error || "Review the error and retry production from Step 4.",
+        tone: "danger",
+      };
+    case "video_completed":
+      return {
+        eyebrow: "Done",
+        title: "Your final video is ready.",
+        detail: "You can review it here or reopen the project later from Projects or Library.",
+        tone: "success",
+      };
+    default:
+      return {
+        eyebrow: "Start here",
+        title: "Enter a story title and generate your script.",
+        detail: "The workflow will unlock each step after approval.",
+        tone: "info",
+      };
+  }
+}
+
+function createWorkflowWarnings(project: WorkflowProject | null): string[] {
+  if (!project) {
+    return [];
+  }
+
+  const warnings: string[] = [];
+
+  if ((project.script_draft || "").trim() && !(project.script_approved || "").trim()) {
+    warnings.push("Approve the script to unlock character selection.");
+  }
+
+  if ((project.script_approved || "").trim() && !project.character_package_approved) {
+    warnings.push("Approve the character package before video production can begin.");
+  }
+
+  return warnings;
+}
+
 export default function WorkflowHomePage() {
   const [activeNav, setActiveNav] = useState<NavItem>("create");
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("characters");
@@ -191,6 +319,8 @@ export default function WorkflowHomePage() {
 
   const selectedStage = workflowStageIndex(selectedProject);
   const activeProject = selectedProject ?? projects[0] ?? null;
+  const guidance = createGuidance(selectedProject, productionStatus, productionConfirmed);
+  const workflowWarnings = createWorkflowWarnings(selectedProject);
 
   const approvedScripts = useMemo(
     () => (library?.scripts ?? projects.filter((project) => Boolean((project.script_approved || "").trim()))),
@@ -961,9 +1091,36 @@ export default function WorkflowHomePage() {
           </div>
         </div>
 
+        <div className={`rounded-3xl border p-5 sm:p-6 ${guidanceClasses(guidance.tone)}`}>
+          <p className="text-xs uppercase tracking-[0.3em] opacity-80">{guidance.eyebrow}</p>
+          <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-white">{guidance.title}</h3>
+              <p className="mt-2 max-w-3xl text-sm text-slate-200/90">{guidance.detail}</p>
+            </div>
+            {selectedProject ? (
+              <div className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3 text-sm text-slate-100">
+                Current step: {STEPS[selectedStage]}
+              </div>
+            ) : null}
+          </div>
+          {workflowWarnings.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              {workflowWarnings.map((warning) => (
+                <div
+                  key={warning}
+                  className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3 text-sm text-slate-100"
+                >
+                  {warning}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
         <div className="grid gap-6 xl:grid-cols-[1.45fr_0.55fr]">
           <div className="space-y-6">
-            <div className="grid gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {STEPS.map((label, index) => {
                 const tone = toneClasses(stageTone(selectedProject, index));
                 return (
@@ -1362,7 +1519,7 @@ export default function WorkflowHomePage() {
                   {stageUnlocked(selectedProject, 3) ? "Ready when you are" : "Approve characters first"}
                 </span>
               </div>
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Script</p>
                   <p className="mt-2 text-sm text-white">
@@ -1712,7 +1869,7 @@ export default function WorkflowHomePage() {
   return (
     <div className="min-h-screen bg-midnight text-slate-100">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(244,114,182,0.12),transparent_30%)]" />
-      <div className="flex min-h-screen">
+      <div className="min-h-screen lg:flex">
         <aside className="hidden w-72 shrink-0 border-r border-slate-900/80 bg-slate-950/85 p-6 lg:block">
           <p className="text-xs uppercase tracking-[0.42em] text-slate-500">
             ProCreator
@@ -1744,7 +1901,7 @@ export default function WorkflowHomePage() {
 
         <main className="flex-1">
           <header className="border-b border-slate-900/70 bg-slate-950/60">
-            <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-6 py-6">
+            <div className="mx-auto flex max-w-[1600px] flex-col items-start gap-4 px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.35em] text-slate-500">
                   Premium workflow
@@ -1764,9 +1921,24 @@ export default function WorkflowHomePage() {
                 ) : null}
               </div>
             </div>
+            <div className="border-t border-slate-900/60 px-4 py-3 sm:px-6 lg:hidden">
+              <nav className="grid grid-cols-2 gap-3" aria-label="Primary mobile">
+                {NAV_ITEMS.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${mobileNavClasses(activeNav === item.id)}`}
+                    type="button"
+                    onClick={() => setActiveNav(item.id)}
+                  >
+                    <p className="text-sm font-semibold">{item.label}</p>
+                    <p className="mt-1 text-xs text-slate-500">{item.detail}</p>
+                  </button>
+                ))}
+              </nav>
+            </div>
           </header>
 
-          <div className="mx-auto max-w-[1600px] px-6 py-8">
+          <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 sm:py-8">
             {error ? (
               <div className="mb-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
                 {error}

@@ -91,6 +91,10 @@ function resetMockState() {
   mockState.credits = clone(mockState.defaults.credits);
 }
 
+function navButton(label: RegExp): HTMLElement {
+  return screen.getAllByRole("button", { name: label })[0];
+}
+
 vi.mock("../lib/api", () => ({
   fetchWorkflowProjects: vi.fn(async () => [clone(mockState.project)]),
   fetchWorkflowProject: vi.fn(async () => clone(mockState.project)),
@@ -135,11 +139,11 @@ describe("Workflow home page", () => {
     render(<HomePage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Overview/i })).toBeInTheDocument();
+      expect(navButton(/Overview/i)).toBeInTheDocument();
     });
 
     ["Overview", "Projects", "Create", "Library"].forEach((label) => {
-      expect(screen.getByRole("button", { name: new RegExp(label, "i") })).toBeInTheDocument();
+      expect(navButton(new RegExp(label, "i"))).toBeInTheDocument();
     });
 
     ["Engines", "Automation", "Orchestration", "Logs"].forEach((label) => {
@@ -161,6 +165,17 @@ describe("Workflow home page", () => {
     expect(screen.getByRole("button", { name: /Step 1 Story Request/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Step 3 Choose Characters/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Step 4 Produce Video/i })).toBeDisabled();
+  });
+
+  it("shows clear guided warnings before later workflow gates unlock", async () => {
+    render(<HomePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Review the draft and approve the script/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Approve the script to unlock character selection/i)).toBeInTheDocument();
+    expect(screen.getByText(/Current step: Review Script/i)).toBeInTheDocument();
   });
 
   it("polls production status while a video is queued and refreshes to completed", async () => {
@@ -343,10 +358,10 @@ describe("Workflow home page", () => {
     render(<HomePage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Projects/i })).toBeInTheDocument();
+      expect(navButton(/Projects/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Projects/i }));
+    fireEvent.click(navButton(/Projects/i));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Duplicate/i })).toBeInTheDocument();
@@ -374,15 +389,11 @@ describe("Workflow home page", () => {
     render(<HomePage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Library/i })).toBeInTheDocument();
+      expect(navButton(/Library/i)).toBeInTheDocument();
     });
 
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: /Library Characters, scripts, and videos/i,
-        })
-      );
+      fireEvent.click(navButton(/Library Characters, scripts, and videos/i));
     });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /^Scripts$/i }));
@@ -446,10 +457,10 @@ describe("Workflow home page", () => {
     render(<HomePage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Projects/i })).toBeInTheDocument();
+      expect(navButton(/Projects/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Projects/i }));
+    fireEvent.click(navButton(/Projects/i));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Continue Project/i })).toBeInTheDocument();
