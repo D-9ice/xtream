@@ -178,6 +178,18 @@ describe("Workflow home page", () => {
     expect(screen.getByText(/Current step: Review Script/i)).toBeInTheDocument();
   });
 
+  it("shows explicit per-step status banners inside the create flow", async () => {
+    render(<HomePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Draft ready/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Review required/i)).toBeInTheDocument();
+    expect(screen.getByText(/Waiting on Step 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/Waiting on Step 3/i)).toBeInTheDocument();
+  });
+
   it("polls production status while a video is queued and refreshes to completed", async () => {
     vi.useFakeTimers();
 
@@ -238,7 +250,7 @@ describe("Workflow home page", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText(/Queued for production/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Queued for production/i).length).toBeGreaterThan(0);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4000);

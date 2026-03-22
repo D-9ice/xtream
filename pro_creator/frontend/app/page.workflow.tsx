@@ -285,6 +285,202 @@ function createWorkflowWarnings(project: WorkflowProject | null): string[] {
   return warnings;
 }
 
+type StepBannerTone = "info" | "warning" | "success" | "danger";
+
+function stepBannerClasses(tone: StepBannerTone): string {
+  switch (tone) {
+    case "warning":
+      return "border-amber-400/20 bg-amber-400/10 text-amber-50";
+    case "success":
+      return "border-emerald-400/20 bg-emerald-400/10 text-emerald-50";
+    case "danger":
+      return "border-red-500/20 bg-red-500/10 text-red-50";
+    default:
+      return "border-cyan-400/20 bg-cyan-400/10 text-cyan-50";
+  }
+}
+
+function stepOneStatus(project: WorkflowProject | null, busy: string | null): { label: string; detail: string; tone: StepBannerTone } {
+  if (busy === "script" || project?.workflow_state === "script_generating") {
+    return {
+      label: "Generating draft",
+      detail: "ProCreator is building the full script from your story request.",
+      tone: "info",
+    };
+  }
+  if ((project?.script_approved || "").trim()) {
+    return {
+      label: "Story locked in",
+      detail: "The approved script is saved and the story request is complete.",
+      tone: "success",
+    };
+  }
+  if ((project?.script_draft || "").trim()) {
+    return {
+      label: "Draft ready",
+      detail: "Your request has produced a draft. Review it before moving on.",
+      tone: "success",
+    };
+  }
+  return {
+    label: "Ready for input",
+    detail: "Enter a title and a short story idea to create the first script draft.",
+    tone: "info",
+  };
+}
+
+function stepTwoStatus(project: WorkflowProject | null, busy: string | null): { label: string; detail: string; tone: StepBannerTone } {
+  if (!stageUnlocked(project, 1)) {
+    return {
+      label: "Waiting on Step 1",
+      detail: "Generate a script first to unlock script review.",
+      tone: "warning",
+    };
+  }
+  if (busy === "save-script") {
+    return {
+      label: "Saving edits",
+      detail: "Your latest script changes are being stored.",
+      tone: "info",
+    };
+  }
+  if (busy === "approve-script") {
+    return {
+      label: "Approving script",
+      detail: "The script is being locked as the approved production version.",
+      tone: "info",
+    };
+  }
+  if (busy === "regenerate-script") {
+    return {
+      label: "Regenerating draft",
+      detail: "A fresh draft is being created and later approvals will reset for safety.",
+      tone: "warning",
+    };
+  }
+  if ((project?.script_approved || "").trim()) {
+    return {
+      label: "Approved",
+      detail: "The script is approved and character selection is unlocked.",
+      tone: "success",
+    };
+  }
+  return {
+    label: "Review required",
+    detail: "Read the draft carefully, make any edits, then approve it to continue.",
+    tone: "warning",
+  };
+}
+
+function stepThreeStatus(
+  project: WorkflowProject | null,
+  characters: WorkflowCharacterList | null,
+  busy: string | null
+): { label: string; detail: string; tone: StepBannerTone } {
+  if (!stageUnlocked(project, 2)) {
+    return {
+      label: "Waiting on Step 2",
+      detail: "Approve the script before choosing or creating characters.",
+      tone: "warning",
+    };
+  }
+  if (busy === "approve-characters") {
+    return {
+      label: "Approving cast",
+      detail: "The selected character package is being frozen for production.",
+      tone: "info",
+    };
+  }
+  if (busy?.startsWith("character-")) {
+    return {
+      label: "Updating cast",
+      detail: "Character changes are being applied to the project.",
+      tone: "info",
+    };
+  }
+  if (project?.character_package_approved) {
+    return {
+      label: "Cast approved",
+      detail: "The approved character package is locked and ready for production.",
+      tone: "success",
+    };
+  }
+  if ((characters?.selected_character_ids.length ?? 0) > 0) {
+    return {
+      label: "Approval pending",
+      detail: "Your cast is selected. Approve the character package to unlock production.",
+      tone: "warning",
+    };
+  }
+  return {
+    label: "Choose the cast",
+    detail: "Select saved characters or create new ones for this project.",
+    tone: "info",
+  };
+}
+
+function stepFourStatus(
+  project: WorkflowProject | null,
+  productionStatus: WorkflowProductionStatus | null,
+  productionConfirmed: boolean,
+  busy: string | null
+): { label: string; detail: string; tone: StepBannerTone } {
+  if (!stageUnlocked(project, 3)) {
+    return {
+      label: "Waiting on Step 3",
+      detail: "Approve the character package before video production can begin.",
+      tone: "warning",
+    };
+  }
+  if (busy === "start-production") {
+    return {
+      label: "Queueing production",
+      detail: "The approved script and cast are being submitted for rendering.",
+      tone: "info",
+    };
+  }
+  if (busy === "retry-production") {
+    return {
+      label: "Retrying production",
+      detail: "The project is being requeued with the same approved package.",
+      tone: "info",
+    };
+  }
+  if (project?.workflow_state === "production_failed") {
+    return {
+      label: "Production failed",
+      detail: productionStatus?.last_error || "Review the failure and retry from this step.",
+      tone: "danger",
+    };
+  }
+  if (project?.workflow_state === "video_completed") {
+    return {
+      label: "Video complete",
+      detail: "The final video is ready and saved to the project library.",
+      tone: "success",
+    };
+  }
+  if (project?.workflow_state === "production_queued" || project?.workflow_state === "production_running") {
+    return {
+      label: project.workflow_state === "production_running" ? "Rendering in progress" : "Queued for production",
+      detail: "ProCreator is processing the approved production package.",
+      tone: "info",
+    };
+  }
+  if (!productionConfirmed) {
+    return {
+      label: "Final approval needed",
+      detail: "Confirm the approved script and cast to unlock video production.",
+      tone: "warning",
+    };
+  }
+  return {
+    label: "Ready to produce",
+    detail: "The project has everything needed to start rendering the final video.",
+    tone: "success",
+  };
+}
+
 export default function WorkflowHomePage() {
   const [activeNav, setActiveNav] = useState<NavItem>("create");
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("characters");
@@ -321,6 +517,10 @@ export default function WorkflowHomePage() {
   const activeProject = selectedProject ?? projects[0] ?? null;
   const guidance = createGuidance(selectedProject, productionStatus, productionConfirmed);
   const workflowWarnings = createWorkflowWarnings(selectedProject);
+  const storyStatus = stepOneStatus(selectedProject, busy);
+  const scriptStatus = stepTwoStatus(selectedProject, busy);
+  const characterStatus = stepThreeStatus(selectedProject, characters, busy);
+  const productionStepStatus = stepFourStatus(selectedProject, productionStatus, productionConfirmed, busy);
 
   const approvedScripts = useMemo(
     () => (library?.scripts ?? projects.filter((project) => Boolean((project.script_approved || "").trim()))),
@@ -1158,6 +1358,10 @@ export default function WorkflowHomePage() {
                   </p>
                 </div>
               ) : null}
+              <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${stepBannerClasses(storyStatus.tone)}`}>
+                <p className="font-semibold text-white">{storyStatus.label}</p>
+                <p className="mt-1 text-slate-200/90">{storyStatus.detail}</p>
+              </div>
               <form className="mt-6 space-y-4" onSubmit={handleGenerateScript}>
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="space-y-2">
@@ -1243,6 +1447,10 @@ export default function WorkflowHomePage() {
                   {stageUnlocked(selectedProject, 1) ? "Unlocked" : "Locked"}
                 </span>
               </div>
+              <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${stepBannerClasses(scriptStatus.tone)}`}>
+                <p className="font-semibold text-white">{scriptStatus.label}</p>
+                <p className="mt-1 text-slate-200/90">{scriptStatus.detail}</p>
+              </div>
               <textarea
                 className="mt-6 min-h-[280px] w-full rounded-3xl border border-slate-700 bg-slate-900/70 px-4 py-4 text-sm leading-7 text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-70"
                 value={scriptInput}
@@ -1288,6 +1496,10 @@ export default function WorkflowHomePage() {
                 <span className={`rounded-full px-3 py-1 text-xs ${stageUnlocked(selectedProject, 2) ? "bg-aurora/15 text-aurora" : "bg-slate-800 text-slate-500"}`}>
                   {stageUnlocked(selectedProject, 2) ? "Unlocked" : "Approve script first"}
                 </span>
+              </div>
+              <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${stepBannerClasses(characterStatus.tone)}`}>
+                <p className="font-semibold text-white">{characterStatus.label}</p>
+                <p className="mt-1 text-slate-200/90">{characterStatus.detail}</p>
               </div>
 
               <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
@@ -1519,6 +1731,10 @@ export default function WorkflowHomePage() {
                   {stageUnlocked(selectedProject, 3) ? "Ready when you are" : "Approve characters first"}
                 </span>
               </div>
+              <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${stepBannerClasses(productionStepStatus.tone)}`}>
+                <p className="font-semibold text-white">{productionStepStatus.label}</p>
+                <p className="mt-1 text-slate-200/90">{productionStepStatus.detail}</p>
+              </div>
               <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Script</p>
@@ -1583,7 +1799,7 @@ export default function WorkflowHomePage() {
                 >
                   {busy === "start-production" ? "Queueing..." : "Start Video Production"}
                 </button>
-                {productionStatus?.can_retry ? (
+                {selectedProject?.workflow_state === "production_failed" || productionStatus?.can_retry ? (
                   <button
                     className="rounded-full border border-red-400/30 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
                     type="button"

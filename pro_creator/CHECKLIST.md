@@ -66,7 +66,7 @@ This checklist tracks the remaining work required to finish the guided workflow 
 ## Phase 6: Create Screen UX Completion
 
 - [ ] Polish the guided Create screen for production use.
-- [ ] Improve per-step loading, success, warning, and failure states.
+- [x] Improve per-step loading, success, warning, and failure states.
 - [x] Add explicit “what happens next” guidance inside the Create screen.
 - [x] Add clearer “final approval” UX before video production.
 - [x] Add better progress messaging while production is queued/running.
