@@ -112,14 +112,14 @@ This checklist tracks the remaining work required to finish the guided workflow 
 
 ## Phase 11: Data And Migration Verification
 
-- [ ] Apply and verify the workflow migration in the real runtime environment.
-- [ ] Validate old project rows upgrade safely.
-- [ ] Validate fallback schema sync does not break local/dev startup.
-- [ ] Verify the new tables/columns are populated correctly through the guided flow.
+- [x] Apply and verify the workflow migration in the real runtime environment.
+- [x] Validate old project rows upgrade safely.
+- [x] Validate fallback schema sync does not break local/dev startup.
+- [x] Verify the new tables/columns are populated correctly through the guided flow.
 
 ## Phase 12: Testing Completion
 
-- [ ] Run backend tests in a proper Python environment with dependencies installed.
+- [x] Run backend tests in a proper Python environment with dependencies installed.
 - [ ] Run frontend tests in supported Node 20.
 - [ ] Add missing backend tests for:
   - state transitions
@@ -153,5 +153,5 @@ This checklist tracks the remaining work required to finish the guided workflow 
 - [x] 2. Convert production to a real queued lifecycle with retry.
 - [x] 3. Implement approval reset rules completely.
 - [x] 4. Strengthen resolver + Character DNA injection.
-- [ ] 5. Run live integration verification and fix discovered bugs.
+- [x] 5. Run live integration verification and fix discovered bugs.
 - [ ] 6. Finish UX/library/projects polish.
