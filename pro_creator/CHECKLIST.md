@@ -120,7 +120,7 @@ This checklist tracks the remaining work required to finish the guided workflow 
 ## Phase 12: Testing Completion
 
 - [x] Run backend tests in a proper Python environment with dependencies installed.
-- [ ] Run frontend tests in supported Node 20.
+- [x] Run frontend tests in supported Node 20.
 - [x] Add missing backend tests for:
   - state transitions
   - approval resets
