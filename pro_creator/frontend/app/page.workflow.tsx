@@ -566,8 +566,17 @@ export default function WorkflowHomePage() {
       charactersRef.current,
       productionRef.current,
     ][stepIndex];
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (target && typeof target.scrollIntoView === "function") {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
+
+  useEffect(() => {
+    if (activeNav !== "create" || !selectedProject) {
+      return;
+    }
+    scrollToCreateStep(selectedStage);
+  }, [activeNav, selectedProject?.project_id, selectedStage]);
 
   async function refreshProjects(nextSelectedId?: string | null) {
     const [workflowProjects, credits, workflowLibrary] = await Promise.all([
@@ -1959,6 +1968,13 @@ export default function WorkflowHomePage() {
                       </span>
                     </div>
                   </div>
+                  <button
+                    className="mt-5 rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-sm font-semibold text-aurora"
+                    type="button"
+                    onClick={() => scrollToCreateStep(selectedStage)}
+                  >
+                    Jump to Current Step
+                  </button>
                 </>
               ) : (
                 <div className="mt-3 rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-4">
