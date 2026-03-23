@@ -31,8 +31,11 @@ from app.schemas import (
     Admin2FAStatusResponse,
     AdminAccessVerifyRequest,
     AdminAccessVerifyResponse,
+    AdminBillingSettingsUpdateRequest,
     AdminSubscriptionListResponse,
     AdminSubscriptionUpdateRequest,
+    BillingPricingSettingsResponse,
+    CharacterSlotPurchaseRequest,
     CreditPlan,
     CreditPlanListResponse,
     CreditBalanceResponse,
@@ -42,6 +45,13 @@ from app.schemas import (
     CreditsReserveRequest,
     StripeCheckoutSessionResponse,
 )
+from app.services.app_settings import (
+    get_character_slot_policy_payload,
+    get_or_create_settings,
+    get_plan_settings_payload,
+    update_billing_settings,
+)
+from app.services.character_slots import build_character_slot_summary, purchase_character_slot_pack
 from app.services.credits import (
     consume_credits as consume_credits_service,
     expire_credits,
@@ -63,41 +73,43 @@ try:
 except Exception:
     stripe = None
 
-PLAN_CATALOG: list[CreditPlan] = [
-    CreditPlan(
-        id="moderate",
-        name="Moderate",
-        credits=500,
-        price_usd=15,
-        stripe_price_id=STRIPE_PRICE_ID_MODERATE or None,
-        checkout_enabled=bool(STRIPE_PRICE_ID_MODERATE),
-    ),
-    CreditPlan(
-        id="pro",
-        name="Pro",
-        credits=2000,
-        price_usd=49,
-        popular=True,
-        stripe_price_id=STRIPE_PRICE_ID_PRO or None,
-        checkout_enabled=bool(STRIPE_PRICE_ID_PRO),
-    ),
-    CreditPlan(
-        id="studio",
-        name="Studio",
-        credits=6000,
-        price_usd=119,
-        stripe_price_id=STRIPE_PRICE_ID_STUDIO or None,
-        checkout_enabled=bool(STRIPE_PRICE_ID_STUDIO),
-    ),
-]
-
-
 def _is_stripe_ready() -> bool:
     return bool(stripe and STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET)
 
 
-def _get_plan_by_id(plan_id: str) -> CreditPlan:
-    plan = next((item for item in PLAN_CATALOG if item.id == plan_id), None)
+def _default_stripe_price_id(plan_id: str) -> str | None:
+    if plan_id == "moderate":
+        return STRIPE_PRICE_ID_MODERATE or None
+    if plan_id == "pro":
+        return STRIPE_PRICE_ID_PRO or None
+    if plan_id == "studio":
+        return STRIPE_PRICE_ID_STUDIO or None
+    return None
+
+
+def _plan_catalog(session: Session) -> list[CreditPlan]:
+    settings = get_or_create_settings(session)
+    plans: list[CreditPlan] = []
+    for item in get_plan_settings_payload(settings):
+        plan_id = str(item["id"])
+        stripe_price_id = item["stripe_price_id"] or _default_stripe_price_id(plan_id)
+        plans.append(
+            CreditPlan(
+                id=plan_id,
+                name=str(item["name"]),
+                credits=int(item["credits"]),
+                price_usd=int(item["price_usd"]),
+                base_character_slots=int(item["base_character_slots"]),
+                popular=plan_id == "pro",
+                stripe_price_id=stripe_price_id,
+                checkout_enabled=bool(stripe_price_id and _is_stripe_ready()),
+            )
+        )
+    return plans
+
+
+def _get_plan_by_id(session: Session, plan_id: str) -> CreditPlan:
+    plan = next((item for item in _plan_catalog(session) if item.id == plan_id), None)
     if not plan:
         raise HTTPException(status_code=404, detail="plan not found")
     return plan
@@ -183,7 +195,7 @@ def require_owner_dashboard_access(
     return current_user
 
 
-def _to_credit_response(user: User, subscription) -> CreditBalanceResponse:
+def _to_credit_response(session: Session, user: User, subscription) -> CreditBalanceResponse:
     return CreditBalanceResponse(
         email=user.email,
         plan_name=subscription.plan_name,
@@ -192,6 +204,8 @@ def _to_credit_response(user: User, subscription) -> CreditBalanceResponse:
         credits_reserved=subscription.credits_reserved,
         credits_used_total=subscription.credits_used_total,
         renewal_date=subscription.renewal_date,
+        extra_character_slots=subscription.extra_character_slots,
+        character_slots=build_character_slot_summary(session=session, subscription=subscription),
     )
 
 
@@ -201,16 +215,12 @@ def get_my_credits(
     current_user: User = Depends(get_current_user),
 ) -> CreditBalanceResponse:
     subscription = get_or_create_subscription(session, current_user)
-    return _to_credit_response(current_user, subscription)
+    return _to_credit_response(session, current_user, subscription)
 
 
 @router.get("/plans", response_model=CreditPlanListResponse, dependencies=[Depends(get_current_user)])
-def list_credit_plans() -> CreditPlanListResponse:
-    plans = [
-        plan.model_copy(update={"checkout_enabled": bool(plan.stripe_price_id and _is_stripe_ready())})
-        for plan in PLAN_CATALOG
-    ]
-    return CreditPlanListResponse(plans=plans)
+def list_credit_plans(session: Session = Depends(get_session)) -> CreditPlanListResponse:
+    return CreditPlanListResponse(plans=_plan_catalog(session))
 
 
 @router.post(
@@ -220,11 +230,12 @@ def list_credit_plans() -> CreditPlanListResponse:
 )
 def create_checkout_session(
     payload: CreditsPurchaseRequest,
+    session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> StripeCheckoutSessionResponse:
     if not _is_stripe_ready():
         raise HTTPException(status_code=503, detail="Stripe checkout is not configured")
-    plan = _get_plan_by_id(payload.plan_id)
+    plan = _get_plan_by_id(session, payload.plan_id)
     if not plan.stripe_price_id:
         raise HTTPException(status_code=400, detail="Selected plan has no Stripe price configured")
 
@@ -262,7 +273,7 @@ def purchase_credits_mock(
 ) -> CreditBalanceResponse:
     if ENVIRONMENT == "production":
         raise HTTPException(status_code=403, detail="Mock credit purchase is disabled in production")
-    plan = _get_plan_by_id(payload.plan_id)
+    plan = _get_plan_by_id(session, payload.plan_id)
     subscription = grant_credits(
         session=session,
         user=current_user,
@@ -271,7 +282,7 @@ def purchase_credits_mock(
         action="billing.purchase.mock",
         reference_id=payload.plan_id,
     )
-    return _to_credit_response(current_user, subscription)
+    return _to_credit_response(session, current_user, subscription)
 
 
 @router.post("/stripe/webhook")
@@ -318,10 +329,14 @@ async def stripe_webhook(
 
     plan_id = str(metadata.get("plan_id", "")).strip().lower()
     user_email = str(metadata.get("user_email", "")).strip().lower()
-    plan = next((item for item in PLAN_CATALOG if item.id == plan_id), None)
-    if not plan or not user_email:
+    if not user_email:
         reset_current_tenant_id(tenant_token)
         return {"received": True, "ignored": "missing metadata"}
+    try:
+        plan = _get_plan_by_id(session, plan_id)
+    except HTTPException:
+        reset_current_tenant_id(tenant_token)
+        return {"received": True, "ignored": "unknown plan"}
 
     user = session.exec(select(User).where(User.email == user_email)).first()
     if not user:
@@ -363,7 +378,7 @@ def consume_credits(
         reason=payload.reason,
         action="manual_consume",
     )
-    return _to_credit_response(current_user, subscription)
+    return _to_credit_response(session, current_user, subscription)
 
 
 @router.post("/reserve", response_model=CreditBalanceResponse, dependencies=[Depends(get_current_user)])
@@ -379,7 +394,7 @@ def reserve_my_credits(
         reason=payload.reason,
         action="manual_reserve",
     )
-    return _to_credit_response(current_user, subscription)
+    return _to_credit_response(session, current_user, subscription)
 
 
 @router.post("/refund", response_model=CreditBalanceResponse, dependencies=[Depends(get_current_user)])
@@ -396,7 +411,25 @@ def refund_my_credits(
         reason=payload.reason,
         action="manual_refund",
     )
-    return _to_credit_response(current_user, subscription)
+    return _to_credit_response(session, current_user, subscription)
+
+
+@router.post(
+    "/character-slots/purchase",
+    response_model=CreditBalanceResponse,
+    dependencies=[Depends(get_current_user)],
+)
+def purchase_character_slots(
+    payload: CharacterSlotPurchaseRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> CreditBalanceResponse:
+    subscription = purchase_character_slot_pack(
+        session=session,
+        user=current_user,
+        pack_count=payload.pack_count,
+    )
+    return _to_credit_response(session, current_user, subscription)
 
 
 @router.get(
@@ -456,8 +489,63 @@ def list_user_subscriptions(session: Session = Depends(get_session)) -> AdminSub
     items = []
     for user in users:
         subscription = get_or_create_subscription(session, user)
-        items.append(_to_credit_response(user, subscription))
+        items.append(_to_credit_response(session, user, subscription))
     return AdminSubscriptionListResponse(items=items)
+
+
+@router.get(
+    "/admin/pricing",
+    response_model=BillingPricingSettingsResponse,
+    dependencies=[Depends(require_owner_dashboard_access)],
+)
+def get_admin_billing_settings(session: Session = Depends(get_session)) -> BillingPricingSettingsResponse:
+    settings = get_or_create_settings(session)
+    policy = get_character_slot_policy_payload(settings)
+    return BillingPricingSettingsResponse(
+        plans=_plan_catalog(session),
+        free_base_character_slots=int(policy["free_base_slots"]),
+        character_slot_addon_size=int(policy["addon_pack_size"]),
+        character_slot_addon_cost_credits=int(policy["addon_pack_cost_credits"]),
+    )
+
+
+@router.patch(
+    "/admin/pricing",
+    response_model=BillingPricingSettingsResponse,
+    dependencies=[Depends(require_owner_dashboard_access)],
+)
+def update_admin_billing_settings(
+    payload: AdminBillingSettingsUpdateRequest,
+    session: Session = Depends(get_session),
+) -> BillingPricingSettingsResponse:
+    try:
+        settings = update_billing_settings(
+            session,
+            moderate_credits=payload.moderate_credits,
+            moderate_price_usd=payload.moderate_price_usd,
+            moderate_base_character_slots=payload.moderate_base_character_slots,
+            moderate_stripe_price_id=payload.moderate_stripe_price_id,
+            pro_credits=payload.pro_credits,
+            pro_price_usd=payload.pro_price_usd,
+            pro_base_character_slots=payload.pro_base_character_slots,
+            pro_stripe_price_id=payload.pro_stripe_price_id,
+            studio_credits=payload.studio_credits,
+            studio_price_usd=payload.studio_price_usd,
+            studio_base_character_slots=payload.studio_base_character_slots,
+            studio_stripe_price_id=payload.studio_stripe_price_id,
+            free_base_character_slots=payload.free_base_character_slots,
+            character_slot_addon_size=payload.character_slot_addon_size,
+            character_slot_addon_cost_credits=payload.character_slot_addon_cost_credits,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    policy = get_character_slot_policy_payload(settings)
+    return BillingPricingSettingsResponse(
+        plans=_plan_catalog(session),
+        free_base_character_slots=int(policy["free_base_slots"]),
+        character_slot_addon_size=int(policy["addon_pack_size"]),
+        character_slot_addon_cost_credits=int(policy["addon_pack_cost_credits"]),
+    )
 
 
 @router.post(
@@ -507,4 +595,4 @@ def update_user_subscription(
     session.add(subscription)
     session.commit()
     session.refresh(subscription)
-    return _to_credit_response(user, subscription)
+    return _to_credit_response(session, user, subscription)

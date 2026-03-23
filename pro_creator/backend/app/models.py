@@ -154,6 +154,7 @@ class SubscriptionAccount(SQLModel, table=True):
     credits_balance: int = Field(default=1000)
     credits_reserved: int = Field(default=0)
     credits_used_total: int = Field(default=0)
+    extra_character_slots: int = Field(default=0)
     renewal_date: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
@@ -187,5 +188,20 @@ class AppSettings(SQLModel, table=True):
 
     id: Optional[int] = Field(default=1, primary_key=True)
     auth_required: bool = Field(default=False)
+    plan_moderate_credits: int = Field(default=500)
+    plan_moderate_price_usd: int = Field(default=15)
+    plan_moderate_stripe_price_id: Optional[str] = None
+    plan_pro_credits: int = Field(default=2000)
+    plan_pro_price_usd: int = Field(default=49)
+    plan_pro_stripe_price_id: Optional[str] = None
+    plan_studio_credits: int = Field(default=6000)
+    plan_studio_price_usd: int = Field(default=119)
+    plan_studio_stripe_price_id: Optional[str] = None
+    free_character_slots: int = Field(default=100)
+    moderate_character_slots: int = Field(default=5)
+    pro_character_slots: int = Field(default=10)
+    studio_character_slots: int = Field(default=15)
+    character_slot_addon_size: int = Field(default=5)
+    character_slot_addon_cost_credits: int = Field(default=50)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)

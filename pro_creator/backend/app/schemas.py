@@ -377,6 +377,19 @@ class CreditBalanceResponse(BaseModel):
     credits_reserved: int = 0
     credits_used_total: int
     renewal_date: Optional[datetime] = None
+    extra_character_slots: int = 0
+    character_slots: "CharacterSlotSummaryResponse"
+
+
+class CharacterSlotSummaryResponse(BaseModel):
+    base_slots: int
+    extra_slots: int
+    total_slots: int
+    used_slots: int
+    remaining_slots: int
+    addon_pack_size: int
+    addon_pack_cost_credits: int
+    is_full: bool = False
 
 
 class CreditsConsumeRequest(BaseModel):
@@ -401,6 +414,7 @@ class CreditPlan(BaseModel):
     name: str
     credits: int
     price_usd: int
+    base_character_slots: int
     popular: bool = False
     stripe_price_id: Optional[str] = None
     checkout_enabled: bool = False
@@ -412,6 +426,10 @@ class CreditPlanListResponse(BaseModel):
 
 class CreditsPurchaseRequest(BaseModel):
     plan_id: str
+
+
+class CharacterSlotPurchaseRequest(BaseModel):
+    pack_count: int = 1
 
 
 class StripeCheckoutSessionResponse(BaseModel):
@@ -429,6 +447,31 @@ class AdminSubscriptionUpdateRequest(BaseModel):
 
 class AdminSubscriptionListResponse(BaseModel):
     items: List[CreditBalanceResponse]
+
+
+class BillingPricingSettingsResponse(BaseModel):
+    plans: List[CreditPlan]
+    free_base_character_slots: int
+    character_slot_addon_size: int
+    character_slot_addon_cost_credits: int
+
+
+class AdminBillingSettingsUpdateRequest(BaseModel):
+    moderate_credits: int
+    moderate_price_usd: int
+    moderate_base_character_slots: int
+    moderate_stripe_price_id: Optional[str] = None
+    pro_credits: int
+    pro_price_usd: int
+    pro_base_character_slots: int
+    pro_stripe_price_id: Optional[str] = None
+    studio_credits: int
+    studio_price_usd: int
+    studio_base_character_slots: int
+    studio_stripe_price_id: Optional[str] = None
+    free_base_character_slots: int
+    character_slot_addon_size: int
+    character_slot_addon_cost_credits: int
 
 
 class AdminAccessVerifyRequest(BaseModel):

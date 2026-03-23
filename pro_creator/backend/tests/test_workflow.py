@@ -1,4 +1,5 @@
 import json
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +9,7 @@ from app.database import engine
 from app.main import app
 from app.models import CharacterProfile, Project, ProjectCharacterPackage, ProjectScriptVersion
 from app.storage import project_key, storage_client
+from app.tenant import reset_current_tenant_id, set_current_tenant_id
 import app.services.workflow_service as workflow_service
 from app.services.workflow_service import (
     WORKFLOW_TRANSITIONS,
@@ -18,8 +20,12 @@ from app.services.workflow_service import (
 )
 
 
+def workflow_client() -> TestClient:
+    return TestClient(app, headers={"X-Tenant-ID": f"workflow-{uuid4().hex[:12]}"})
+
+
 def test_guided_workflow_gates_script_characters_and_production() -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     create_res = client.post(
         "/workflow/projects",
@@ -112,8 +118,148 @@ def test_guided_workflow_gates_script_characters_and_production() -> None:
     )
 
 
+def test_character_library_limit_blocks_create_generate_and_upload() -> None:
+    client = workflow_client()
+    tenant_headers = {"X-Tenant-ID": f"character-limit-{uuid4().hex[:8]}"}
+
+    verify_res = client.post(
+        "/billing/admin/access/verify",
+        json={"password": "ChangeMe123!"},
+        headers=tenant_headers,
+    )
+    assert verify_res.status_code == 200
+    admin_headers = {
+        **tenant_headers,
+        "X-Admin-Access-Token": verify_res.json()["access_token"],
+    }
+
+    update_pricing_res = client.patch(
+        "/billing/admin/pricing",
+        json={
+            "moderate_credits": 500,
+            "moderate_price_usd": 15,
+            "moderate_base_character_slots": 5,
+            "moderate_stripe_price_id": "",
+            "pro_credits": 2000,
+            "pro_price_usd": 49,
+            "pro_base_character_slots": 10,
+            "pro_stripe_price_id": "",
+            "studio_credits": 6000,
+            "studio_price_usd": 119,
+            "studio_base_character_slots": 15,
+            "studio_stripe_price_id": "",
+            "free_base_character_slots": 1,
+            "character_slot_addon_size": 5,
+            "character_slot_addon_cost_credits": 50,
+        },
+        headers=admin_headers,
+    )
+    assert update_pricing_res.status_code == 200
+
+    create_res = client.post(
+        "/workflow/projects",
+        json={
+            "title": "Character Limit Test",
+            "idea_prompt": "A compact cast production.",
+            "genre": "Drama",
+            "target_duration_minutes": 2,
+        },
+        headers=tenant_headers,
+    )
+    assert create_res.status_code == 200
+    project_id = create_res.json()["project_id"]
+
+    client.post(
+        f"/workflow/projects/{project_id}/generate-script",
+        json={
+            "title": "Character Limit Test",
+            "idea_prompt": "A compact cast production.",
+            "genre": "Drama",
+            "target_duration_minutes": 2,
+            "tone": "cinematic",
+        },
+        headers=tenant_headers,
+    )
+    client.post(f"/workflow/projects/{project_id}/approve-script", headers=tenant_headers)
+
+    first_character_res = client.post(
+        f"/workflow/projects/{project_id}/characters/create",
+        json={
+            "name": "Only Slot",
+            "role_type": "main",
+            "description": "The only saved character allowed right now.",
+            "select_after_create": True,
+        },
+        headers=tenant_headers,
+    )
+    assert first_character_res.status_code == 200
+
+    blocked_manual = client.post(
+        f"/workflow/projects/{project_id}/characters/create",
+        json={
+            "name": "Second Slot",
+            "role_type": "supporting",
+            "description": "Should be blocked by quota.",
+            "select_after_create": True,
+        },
+        headers=tenant_headers,
+    )
+    assert blocked_manual.status_code == 402
+    assert "Character library is full" in blocked_manual.json()["detail"]
+
+    blocked_generate = client.post(
+        f"/workflow/projects/{project_id}/characters/generate",
+        json={
+            "name": "Generated Slot",
+            "role_type": "supporting",
+            "description": "Should be blocked before generation starts.",
+            "select_after_create": True,
+        },
+        headers=tenant_headers,
+    )
+    assert blocked_generate.status_code == 402
+    assert "Character library is full" in blocked_generate.json()["detail"]
+
+    blocked_upload = client.post(
+        f"/workflow/projects/{project_id}/characters/upload",
+        data={
+            "name": "Uploaded Slot",
+            "role_type": "supporting",
+            "description": "Should be blocked before upload is saved.",
+            "select_after_create": "true",
+        },
+        files={"reference": ("blocked.png", b"fake-image", "image/png")},
+        headers=tenant_headers,
+    )
+    assert blocked_upload.status_code == 402
+    assert "Character library is full" in blocked_upload.json()["detail"]
+
+    restore_pricing_res = client.patch(
+        "/billing/admin/pricing",
+        json={
+            "moderate_credits": 500,
+            "moderate_price_usd": 15,
+            "moderate_base_character_slots": 5,
+            "moderate_stripe_price_id": "",
+            "pro_credits": 2000,
+            "pro_price_usd": 49,
+            "pro_base_character_slots": 10,
+            "pro_stripe_price_id": "",
+            "studio_credits": 6000,
+            "studio_price_usd": 119,
+            "studio_base_character_slots": 15,
+            "studio_stripe_price_id": "",
+            "free_base_character_slots": 100,
+            "character_slot_addon_size": 5,
+            "character_slot_addon_cost_credits": 50,
+        },
+        headers=admin_headers,
+    )
+    assert restore_pricing_res.status_code == 200
+
+
 def test_workflow_production_queues_then_completes(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     monkeypatch.setattr(
         workflow_service,
@@ -214,7 +360,7 @@ def test_workflow_production_queues_then_completes(monkeypatch: pytest.MonkeyPat
 def test_workflow_production_injects_character_identity_into_scene_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = TestClient(app)
+    client = workflow_client()
     captured: dict[str, object] = {}
 
     def capture_image(project_id: str, scene_id: int, prompt: str, style: str) -> dict[str, str]:
@@ -316,7 +462,7 @@ def test_workflow_production_injects_character_identity_into_scene_generation(
 def test_workflow_production_preserves_identity_snapshot_across_scenes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = TestClient(app)
+    client = workflow_client()
     captured_images: list[dict[str, object]] = []
     captured_voices: list[dict[str, object]] = []
 
@@ -438,7 +584,7 @@ def test_workflow_production_preserves_identity_snapshot_across_scenes(
 
 
 def test_workflow_production_retry_requeues_failed_job(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     monkeypatch.setattr(
         workflow_service,
@@ -537,7 +683,7 @@ def test_workflow_production_retry_requeues_failed_job(monkeypatch: pytest.Monke
 
 
 def test_workflow_character_creation_preserves_canonical_image_and_identity_lock() -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     create_res = client.post(
         "/workflow/projects",
@@ -642,7 +788,7 @@ def test_workflow_transition_matrix_matches_declared_rules() -> None:
 
 
 def test_regenerating_script_clears_downstream_approvals() -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     create_res = client.post(
         "/workflow/projects",
@@ -713,7 +859,7 @@ def test_regenerating_script_clears_downstream_approvals() -> None:
 
 
 def test_editing_script_clears_character_approval_and_returns_to_review_stage() -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     create_res = client.post(
         "/workflow/projects",
@@ -772,7 +918,7 @@ def test_editing_script_clears_character_approval_and_returns_to_review_stage() 
 
 
 def test_changing_character_selection_clears_character_approval() -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     create_res = client.post(
         "/workflow/projects",
@@ -840,7 +986,7 @@ def test_changing_character_selection_clears_character_approval() -> None:
 
 
 def test_approved_character_snapshot_survives_later_character_edits() -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     create_res = client.post(
         "/workflow/projects",
@@ -879,39 +1025,43 @@ def test_approved_character_snapshot_survives_later_character_edits() -> None:
         json={"selected_character_ids": selected_ids},
     )
 
-    with Session(engine) as session:
-        package = latest_character_package(session, project_id)
-        assert package is not None
-        original_bundle = resolve_approved_production_package(session, project_id)
-        profile = session.exec(
-            select(CharacterProfile).where(CharacterProfile.character_id == selected_ids[0])
-        ).first()
-        assert profile is not None
-        profile.name = "Changed Pilot"
-        profile.description = "A different description"
-        session.add(profile)
-        session.commit()
+    tenant_token = set_current_tenant_id(client.headers["X-Tenant-ID"])
+    try:
+        with Session(engine) as session:
+            package = latest_character_package(session, project_id)
+            assert package is not None
+            original_bundle = resolve_approved_production_package(session, project_id)
+            profile = session.exec(
+                select(CharacterProfile).where(CharacterProfile.character_id == selected_ids[0])
+            ).first()
+            assert profile is not None
+            profile.name = "Changed Pilot"
+            profile.description = "A different description"
+            session.add(profile)
+            session.commit()
 
-        preserved_bundle = resolve_approved_production_package(session, project_id)
-        snapshot = preserved_bundle["characters"][0]
-        assert snapshot["character_id"] == selected_ids[0]
-        assert snapshot["name"] == original_bundle["characters"][0]["name"]
-        assert snapshot["description"] == original_bundle["characters"][0]["description"]
-        assert snapshot["name"] != "Changed Pilot"
+            preserved_bundle = resolve_approved_production_package(session, project_id)
+            snapshot = preserved_bundle["characters"][0]
+            assert snapshot["character_id"] == selected_ids[0]
+            assert snapshot["name"] == original_bundle["characters"][0]["name"]
+            assert snapshot["description"] == original_bundle["characters"][0]["description"]
+            assert snapshot["name"] != "Changed Pilot"
 
-        stored_package = session.exec(
-            select(ProjectCharacterPackage).where(ProjectCharacterPackage.project_id == project_id)
-        ).first()
-        assert stored_package is not None
-        assert stored_package.package_snapshot_json == package.package_snapshot_json
-        assert selected_ids[0] in preserved_bundle["identity_rules"]
-        assert selected_ids[0] in preserved_bundle["reference_bundles"]
-        assert selected_ids[0] in preserved_bundle["voice_profiles"]
-        assert preserved_bundle["voice_profiles"][selected_ids[0]]["voice_profile"] == "default"
+            stored_package = session.exec(
+                select(ProjectCharacterPackage).where(ProjectCharacterPackage.project_id == project_id)
+            ).first()
+            assert stored_package is not None
+            assert stored_package.package_snapshot_json == package.package_snapshot_json
+            assert selected_ids[0] in preserved_bundle["identity_rules"]
+            assert selected_ids[0] in preserved_bundle["reference_bundles"]
+            assert selected_ids[0] in preserved_bundle["voice_profiles"]
+            assert preserved_bundle["voice_profiles"][selected_ids[0]]["voice_profile"] == "default"
+    finally:
+        reset_current_tenant_id(tenant_token)
 
 
 def test_resolve_approved_production_package_returns_full_identity_bundle() -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     create_res = client.post(
         "/workflow/projects",
@@ -966,8 +1116,12 @@ def test_resolve_approved_production_package_returns_full_identity_bundle() -> N
         json={"selected_character_ids": selected_ids},
     )
 
-    with Session(engine) as session:
-        bundle = resolve_approved_production_package(session, project_id)
+    tenant_token = set_current_tenant_id(client.headers["X-Tenant-ID"])
+    try:
+        with Session(engine) as session:
+            bundle = resolve_approved_production_package(session, project_id)
+    finally:
+        reset_current_tenant_id(tenant_token)
 
     assert bundle["project_id"] == project_id
     assert bundle["approved_script_snapshot"] == bundle["script"]
@@ -987,7 +1141,7 @@ def test_resolve_approved_production_package_returns_full_identity_bundle() -> N
 
 
 def test_archive_project_hides_it_from_active_project_list() -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     create_res = client.post(
         "/workflow/projects",
@@ -1019,7 +1173,7 @@ def test_archive_project_hides_it_from_active_project_list() -> None:
 def test_api_project_alias_supports_guided_workflow_endpoints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     monkeypatch.setattr(
         workflow_service,
@@ -1106,7 +1260,7 @@ def test_api_project_alias_supports_guided_workflow_endpoints(
 
 
 def test_duplicate_project_copies_guided_state_without_live_output_fields() -> None:
-    client = TestClient(app)
+    client = workflow_client()
 
     create_res = client.post(
         "/workflow/projects",

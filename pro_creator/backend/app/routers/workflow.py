@@ -241,12 +241,14 @@ def workflow_create_character(
     project_id: str,
     payload: WorkflowCharacterCreateRequest,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> WorkflowCharacterListResponse:
     project = get_project_or_404(session, project_id)
     try:
         require_script_approved_for_characters(project)
         profile = create_character_profile(
             session=session,
+            current_user=current_user,
             name=payload.name,
             role_type=payload.role_type,
             description=payload.description,
@@ -311,6 +313,7 @@ async def workflow_upload_character(
     select_after_create: bool = Form(True),
     reference: UploadFile = File(...),
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> WorkflowCharacterListResponse:
     project = get_project_or_404(session, project_id)
     try:
@@ -320,6 +323,7 @@ async def workflow_upload_character(
             raise HTTPException(status_code=400, detail="Reference upload is empty")
         profile = upload_character_reference(
             session=session,
+            current_user=current_user,
             name=name,
             role_type=role_type,
             description=description,

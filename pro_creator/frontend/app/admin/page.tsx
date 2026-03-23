@@ -2,13 +2,76 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import type { CreditBalance } from "../../lib/api";
+import type { BillingPricingSettings, CreditBalance } from "../../lib/api";
 import {
   fetchAdmin2FAStatus,
+  fetchAdminBillingPricing,
   fetchAdminSubscriptions,
+  updateAdminBillingPricing,
   updateAdminSubscription,
   verifyAdminAccess,
 } from "../../lib/api";
+
+type BillingPricingForm = {
+  moderate_credits: number;
+  moderate_price_usd: number;
+  moderate_base_character_slots: number;
+  moderate_stripe_price_id: string;
+  pro_credits: number;
+  pro_price_usd: number;
+  pro_base_character_slots: number;
+  pro_stripe_price_id: string;
+  studio_credits: number;
+  studio_price_usd: number;
+  studio_base_character_slots: number;
+  studio_stripe_price_id: string;
+  free_base_character_slots: number;
+  character_slot_addon_size: number;
+  character_slot_addon_cost_credits: number;
+};
+
+const DEFAULT_PRICING_FORM: BillingPricingForm = {
+  moderate_credits: 500,
+  moderate_price_usd: 15,
+  moderate_base_character_slots: 5,
+  moderate_stripe_price_id: "",
+  pro_credits: 2000,
+  pro_price_usd: 49,
+  pro_base_character_slots: 10,
+  pro_stripe_price_id: "",
+  studio_credits: 6000,
+  studio_price_usd: 119,
+  studio_base_character_slots: 15,
+  studio_stripe_price_id: "",
+  free_base_character_slots: 5,
+  character_slot_addon_size: 5,
+  character_slot_addon_cost_credits: 50,
+};
+
+function pricingFormFromSettings(settings: BillingPricingSettings): BillingPricingForm {
+  const moderate = settings.plans.find((plan) => plan.id === "moderate");
+  const pro = settings.plans.find((plan) => plan.id === "pro");
+  const studio = settings.plans.find((plan) => plan.id === "studio");
+  return {
+    moderate_credits: moderate?.credits ?? DEFAULT_PRICING_FORM.moderate_credits,
+    moderate_price_usd: moderate?.price_usd ?? DEFAULT_PRICING_FORM.moderate_price_usd,
+    moderate_base_character_slots:
+      moderate?.base_character_slots ?? DEFAULT_PRICING_FORM.moderate_base_character_slots,
+    moderate_stripe_price_id: moderate?.stripe_price_id ?? "",
+    pro_credits: pro?.credits ?? DEFAULT_PRICING_FORM.pro_credits,
+    pro_price_usd: pro?.price_usd ?? DEFAULT_PRICING_FORM.pro_price_usd,
+    pro_base_character_slots: pro?.base_character_slots ?? DEFAULT_PRICING_FORM.pro_base_character_slots,
+    pro_stripe_price_id: pro?.stripe_price_id ?? "",
+    studio_credits: studio?.credits ?? DEFAULT_PRICING_FORM.studio_credits,
+    studio_price_usd: studio?.price_usd ?? DEFAULT_PRICING_FORM.studio_price_usd,
+    studio_base_character_slots:
+      studio?.base_character_slots ?? DEFAULT_PRICING_FORM.studio_base_character_slots,
+    studio_stripe_price_id: studio?.stripe_price_id ?? "",
+    free_base_character_slots: settings.free_base_character_slots,
+    character_slot_addon_size: settings.character_slot_addon_size,
+    character_slot_addon_cost_credits: settings.character_slot_addon_cost_credits,
+  };
+}
 
 export default function AdminPage() {
   const [hasMounted, setHasMounted] = useState(false);
@@ -28,6 +91,8 @@ export default function AdminPage() {
   const [planName, setPlanName] = useState("free");
   const [status, setStatus] = useState("active");
   const [creditsDelta, setCreditsDelta] = useState(0);
+  const [pricingForm, setPricingForm] = useState<BillingPricingForm>(DEFAULT_PRICING_FORM);
+  const [pricingLoading, setPricingLoading] = useState(false);
 
   useEffect(() => {
     setHasMounted(true);
@@ -71,10 +136,14 @@ export default function AdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchAdminSubscriptions();
-      setItems(response.items);
-      if (!selectedEmail && response.items.length > 0) {
-        setSelectedEmail(response.items[0].email);
+      const [subscriptionResponse, pricingResponse] = await Promise.all([
+        fetchAdminSubscriptions(),
+        fetchAdminBillingPricing(),
+      ]);
+      setItems(subscriptionResponse.items);
+      setPricingForm(pricingFormFromSettings(pricingResponse));
+      if (!selectedEmail && subscriptionResponse.items.length > 0) {
+        setSelectedEmail(subscriptionResponse.items[0].email);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load admin data");
@@ -143,6 +212,25 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Failed to update subscription");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePricingUpdate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPricingLoading(true);
+    setError(null);
+    try {
+      const response = await updateAdminBillingPricing({
+        ...pricingForm,
+        moderate_stripe_price_id: pricingForm.moderate_stripe_price_id || undefined,
+        pro_stripe_price_id: pricingForm.pro_stripe_price_id || undefined,
+        studio_stripe_price_id: pricingForm.studio_stripe_price_id || undefined,
+      });
+      setPricingForm(pricingFormFromSettings(response));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update pricing");
+    } finally {
+      setPricingLoading(false);
     }
   };
 
@@ -350,67 +438,199 @@ export default function AdminPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-            <h2 className="text-lg font-semibold text-white">Update Subscription</h2>
-            <form className="mt-4 space-y-3" onSubmit={handleUpdate}>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-slate-400">
-                  User
-                </label>
-                <select
-                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
-                  value={selectedEmail}
-                  onChange={(event) => setSelectedEmail(event.target.value)}
+              <h2 className="text-lg font-semibold text-white">Update Subscription</h2>
+              <form className="mt-4 space-y-3" onSubmit={handleUpdate}>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    User
+                  </label>
+                  <select
+                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+                    value={selectedEmail}
+                    onChange={(event) => setSelectedEmail(event.target.value)}
+                  >
+                    {items.map((item) => (
+                      <option key={item.email} value={item.email}>
+                        {item.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Plan
+                  </label>
+                  <input
+                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+                    value={planName}
+                    onChange={(event) => setPlanName(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Status
+                  </label>
+                  <select
+                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+                    value={status}
+                    onChange={(event) => setStatus(event.target.value)}
+                  >
+                    <option value="active">active</option>
+                    <option value="paused">paused</option>
+                    <option value="canceled">canceled</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Credit Delta
+                  </label>
+                  <input
+                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+                    type="number"
+                    value={creditsDelta}
+                    onChange={(event) => setCreditsDelta(Number(event.target.value))}
+                  />
+                </div>
+                <button
+                  className="w-full rounded-lg border border-aurora/40 bg-aurora/10 px-3 py-2 text-sm font-semibold text-aurora"
+                  type="submit"
+                  disabled={loading}
                 >
-                  {items.map((item) => (
-                    <option key={item.email} value={item.email}>
-                      {item.email}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-slate-400">
-                  Plan
-                </label>
-                <input
-                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
-                  value={planName}
-                  onChange={(event) => setPlanName(event.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-slate-400">
-                  Status
-                </label>
-                <select
-                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value)}
+                  {loading ? "Saving..." : "Save changes"}
+                </button>
+              </form>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+              <h2 className="text-lg font-semibold text-white">Billing and Character Pricing</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                Edit subscription credits, displayed prices, included character slots, and the credit cost of extra slot packs.
+              </p>
+              <form className="mt-4 space-y-5" onSubmit={handlePricingUpdate}>
+                {[
+                  ["moderate", "Moderate"],
+                  ["pro", "Pro"],
+                  ["studio", "Studio"],
+                ].map(([planId, label]) => (
+                  <div key={planId} className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
+                    <p className="text-sm font-semibold text-white">{label}</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="text-xs uppercase tracking-wide text-slate-400">
+                        Credits
+                        <input
+                          className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                          type="number"
+                          value={pricingForm[`${planId}_credits` as keyof BillingPricingForm] as number}
+                          onChange={(event) =>
+                            setPricingForm((current) => ({
+                              ...current,
+                              [`${planId}_credits`]: Number(event.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="text-xs uppercase tracking-wide text-slate-400">
+                        Price USD
+                        <input
+                          className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                          type="number"
+                          value={pricingForm[`${planId}_price_usd` as keyof BillingPricingForm] as number}
+                          onChange={(event) =>
+                            setPricingForm((current) => ({
+                              ...current,
+                              [`${planId}_price_usd`]: Number(event.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="text-xs uppercase tracking-wide text-slate-400">
+                        Base Character Slots
+                        <input
+                          className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                          type="number"
+                          value={
+                            pricingForm[
+                              `${planId}_base_character_slots` as keyof BillingPricingForm
+                            ] as number
+                          }
+                          onChange={(event) =>
+                            setPricingForm((current) => ({
+                              ...current,
+                              [`${planId}_base_character_slots`]: Number(event.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="text-xs uppercase tracking-wide text-slate-400">
+                        Stripe Price ID
+                        <input
+                          className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                          value={pricingForm[`${planId}_stripe_price_id` as keyof BillingPricingForm] as string}
+                          onChange={(event) =>
+                            setPricingForm((current) => ({
+                              ...current,
+                              [`${planId}_stripe_price_id`]: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Free Base Slots
+                    <input
+                      className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                      type="number"
+                      value={pricingForm.free_base_character_slots}
+                      onChange={(event) =>
+                        setPricingForm((current) => ({
+                          ...current,
+                          free_base_character_slots: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Add-on Pack Size
+                    <input
+                      className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                      type="number"
+                      value={pricingForm.character_slot_addon_size}
+                      onChange={(event) =>
+                        setPricingForm((current) => ({
+                          ...current,
+                          character_slot_addon_size: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="text-xs uppercase tracking-wide text-slate-400">
+                    Add-on Cost Credits
+                    <input
+                      className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                      type="number"
+                      value={pricingForm.character_slot_addon_cost_credits}
+                      onChange={(event) =>
+                        setPricingForm((current) => ({
+                          ...current,
+                          character_slot_addon_cost_credits: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+
+                <button
+                  className="w-full rounded-lg border border-aurora/40 bg-aurora/10 px-3 py-2 text-sm font-semibold text-aurora"
+                  type="submit"
+                  disabled={pricingLoading}
                 >
-                  <option value="active">active</option>
-                  <option value="paused">paused</option>
-                  <option value="canceled">canceled</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-slate-400">
-                  Credit Delta
-                </label>
-                <input
-                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
-                  type="number"
-                  value={creditsDelta}
-                  onChange={(event) => setCreditsDelta(Number(event.target.value))}
-                />
-              </div>
-              <button
-                className="w-full rounded-lg border border-aurora/40 bg-aurora/10 px-3 py-2 text-sm font-semibold text-aurora"
-                type="submit"
-                disabled={loading}
-              >
-                {loading ? "Saving..." : "Save changes"}
-              </button>
-            </form>
+                  {pricingLoading ? "Saving pricing..." : "Save pricing controls"}
+                </button>
+              </form>
             </div>
           </section>
         </main>

@@ -25,6 +25,10 @@ def _infer_existing_revision(inspector) -> str | None:
         return None
 
     if "archived_at" in project_columns:
+        settings_columns = _column_names(inspector, "appsettings")
+        subscription_columns = _column_names(inspector, "subscriptionaccount")
+        if "character_slot_addon_cost_credits" in settings_columns and "extra_character_slots" in subscription_columns:
+            return "0007_character_slot_pricing"
         return "0006_workflow_project_archive"
 
     character_columns = _column_names(inspector, "characterprofile")
@@ -97,6 +101,7 @@ def upgrade_head(engine: Engine) -> None:
                 "0004_workflow_upgrade": 4,
                 "0005_character_reference_bundles": 5,
                 "0006_workflow_project_archive": 6,
+                "0007_character_slot_pricing": 7,
             }
             if revision_order.get(inferred_revision, 0) > revision_order.get(str(current_revision), 0):
                 command.stamp(cfg, inferred_revision)
@@ -149,6 +154,11 @@ def _fallback_schema_sync(engine: Engine) -> None:
         "subscriptionaccount",
         "credits_reserved",
         "ALTER TABLE subscriptionaccount ADD COLUMN credits_reserved INTEGER DEFAULT 0",
+    )
+    _ensure_column(
+        "subscriptionaccount",
+        "extra_character_slots",
+        "ALTER TABLE subscriptionaccount ADD COLUMN extra_character_slots INTEGER DEFAULT 0",
     )
 
     # Phase 1 tenant-ready columns.
@@ -227,6 +237,81 @@ def _fallback_schema_sync(engine: Engine) -> None:
         "characterprofile",
         "reference_image_urls_json",
         "ALTER TABLE characterprofile ADD COLUMN reference_image_urls_json TEXT NOT NULL DEFAULT '[]'",
+    )
+    _ensure_column(
+        "appsettings",
+        "plan_moderate_credits",
+        "ALTER TABLE appsettings ADD COLUMN plan_moderate_credits INTEGER NOT NULL DEFAULT 500",
+    )
+    _ensure_column(
+        "appsettings",
+        "plan_moderate_price_usd",
+        "ALTER TABLE appsettings ADD COLUMN plan_moderate_price_usd INTEGER NOT NULL DEFAULT 15",
+    )
+    _ensure_column(
+        "appsettings",
+        "plan_moderate_stripe_price_id",
+        "ALTER TABLE appsettings ADD COLUMN plan_moderate_stripe_price_id TEXT",
+    )
+    _ensure_column(
+        "appsettings",
+        "plan_pro_credits",
+        "ALTER TABLE appsettings ADD COLUMN plan_pro_credits INTEGER NOT NULL DEFAULT 2000",
+    )
+    _ensure_column(
+        "appsettings",
+        "plan_pro_price_usd",
+        "ALTER TABLE appsettings ADD COLUMN plan_pro_price_usd INTEGER NOT NULL DEFAULT 49",
+    )
+    _ensure_column(
+        "appsettings",
+        "plan_pro_stripe_price_id",
+        "ALTER TABLE appsettings ADD COLUMN plan_pro_stripe_price_id TEXT",
+    )
+    _ensure_column(
+        "appsettings",
+        "plan_studio_credits",
+        "ALTER TABLE appsettings ADD COLUMN plan_studio_credits INTEGER NOT NULL DEFAULT 6000",
+    )
+    _ensure_column(
+        "appsettings",
+        "plan_studio_price_usd",
+        "ALTER TABLE appsettings ADD COLUMN plan_studio_price_usd INTEGER NOT NULL DEFAULT 119",
+    )
+    _ensure_column(
+        "appsettings",
+        "plan_studio_stripe_price_id",
+        "ALTER TABLE appsettings ADD COLUMN plan_studio_stripe_price_id TEXT",
+    )
+    _ensure_column(
+        "appsettings",
+        "free_character_slots",
+        "ALTER TABLE appsettings ADD COLUMN free_character_slots INTEGER NOT NULL DEFAULT 100",
+    )
+    _ensure_column(
+        "appsettings",
+        "moderate_character_slots",
+        "ALTER TABLE appsettings ADD COLUMN moderate_character_slots INTEGER NOT NULL DEFAULT 5",
+    )
+    _ensure_column(
+        "appsettings",
+        "pro_character_slots",
+        "ALTER TABLE appsettings ADD COLUMN pro_character_slots INTEGER NOT NULL DEFAULT 10",
+    )
+    _ensure_column(
+        "appsettings",
+        "studio_character_slots",
+        "ALTER TABLE appsettings ADD COLUMN studio_character_slots INTEGER NOT NULL DEFAULT 15",
+    )
+    _ensure_column(
+        "appsettings",
+        "character_slot_addon_size",
+        "ALTER TABLE appsettings ADD COLUMN character_slot_addon_size INTEGER NOT NULL DEFAULT 5",
+    )
+    _ensure_column(
+        "appsettings",
+        "character_slot_addon_cost_credits",
+        "ALTER TABLE appsettings ADD COLUMN character_slot_addon_cost_credits INTEGER NOT NULL DEFAULT 50",
     )
 
     # Newer tenant-aware billing model: one subscription per (tenant_id, user_id).

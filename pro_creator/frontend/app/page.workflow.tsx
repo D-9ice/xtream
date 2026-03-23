@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  CreditBalance,
   WorkflowCharacterList,
   WorkflowLibrary,
   WorkflowProject,
@@ -23,6 +24,7 @@ import {
   fetchWorkflowProjects,
   generateWorkflowCharacter,
   generateWorkflowScript,
+  purchaseCharacterSlotPack,
   regenerateWorkflowScript,
   retryWorkflowProduction,
   selectWorkflowCharacters,
@@ -509,7 +511,7 @@ export default function WorkflowHomePage() {
   const [characters, setCharacters] = useState<WorkflowCharacterList | null>(null);
   const [library, setLibrary] = useState<WorkflowLibrary | null>(null);
   const [productionStatus, setProductionStatus] = useState<WorkflowProductionStatus | null>(null);
-  const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [creditSummary, setCreditSummary] = useState<CreditBalance | null>(null);
   const [productionEstimate, setProductionEstimate] = useState<number>(20);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -533,6 +535,9 @@ export default function WorkflowHomePage() {
   const [productionConfirmed, setProductionConfirmed] = useState(false);
   const [characterSearch, setCharacterSearch] = useState("");
   const [characterRoleFilter, setCharacterRoleFilter] = useState<CharacterRoleFilter>("all");
+  const creditBalance = creditSummary?.credits_balance ?? null;
+  const characterSlotSummary = creditSummary?.character_slots ?? null;
+  const characterLibraryFull = Boolean(characterSlotSummary?.is_full);
   const storyRequestRef = useRef<HTMLDivElement | null>(null);
   const scriptReviewRef = useRef<HTMLDivElement | null>(null);
   const charactersRef = useRef<HTMLDivElement | null>(null);
@@ -604,7 +609,7 @@ export default function WorkflowHomePage() {
       fetchWorkflowLibrary().catch(() => null),
     ]);
     setProjects(workflowProjects);
-    setCreditBalance(credits?.credits_balance ?? null);
+    setCreditSummary(credits);
     setLibrary(workflowLibrary);
 
     const preferredId =
@@ -637,7 +642,11 @@ export default function WorkflowHomePage() {
     setDurationInput(project.target_duration_minutes || 3);
     setProductionEstimate(summary?.estimated_credits ?? 20);
     if (summary?.current_credit_balance !== undefined) {
-      setCreditBalance(summary.current_credit_balance);
+      setCreditSummary((current) =>
+        current
+          ? { ...current, credits_balance: summary.current_credit_balance }
+          : current
+      );
     }
   }, []);
 
@@ -990,6 +999,23 @@ export default function WorkflowHomePage() {
     }
   }
 
+  async function handlePurchaseCharacterSlots() {
+    setBusy("purchase-character-slots");
+    setError(null);
+    setStatus(null);
+    try {
+      const updatedCredits = await purchaseCharacterSlotPack({ pack_count: 1 });
+      setCreditSummary(updatedCredits);
+      setStatus(
+        `Character library expanded by ${updatedCredits.character_slots.addon_pack_size} slots.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to buy more character slots");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleStartProduction() {
     if (!selectedProject) return;
     if (!productionConfirmed) {
@@ -1149,6 +1175,9 @@ export default function WorkflowHomePage() {
               </p>
               <p className="mt-2 text-sm text-slate-400">
                 Estimated cost for the next video: {productionEstimate} credits
+              </p>
+              <p className="mt-2 text-sm text-slate-500">
+                Characters: {characterSlotSummary ? `${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots}` : "—"}
               </p>
             </div>
           </div>
@@ -1399,8 +1428,15 @@ export default function WorkflowHomePage() {
                 <p className="mt-2 text-sm font-semibold text-white">{characters?.selected_character_ids.length ?? 0}</p>
               </div>
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Credits left</p>
-                <p className="mt-2 text-sm font-semibold text-white">{creditBalance ?? "—"}</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Credits and Slots</p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {creditBalance ?? "—"} credits
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {characterSlotSummary
+                    ? `${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots} characters used`
+                    : "Character library usage unavailable"}
+                </p>
               </div>
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Next unlock</p>
@@ -1666,6 +1702,43 @@ export default function WorkflowHomePage() {
                 </div>
               </div>
 
+              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+                      Character Library Capacity
+                    </p>
+                    <p className="mt-2 text-lg font-semibold text-white">
+                      {characterSlotSummary
+                        ? `${characterSlotSummary.used_slots} / ${characterSlotSummary.total_slots} used`
+                        : "Loading..."}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      {characterSlotSummary
+                        ? `${characterSlotSummary.remaining_slots} slots left. Buy +${characterSlotSummary.addon_pack_size} more for ${characterSlotSummary.addon_pack_cost_credits} credits.`
+                        : "Your plan decides how many saved characters the gallery can hold."}
+                    </p>
+                  </div>
+                  <button
+                    className="rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-sm font-semibold text-aurora disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    onClick={handlePurchaseCharacterSlots}
+                    disabled={busy === "purchase-character-slots" || !creditSummary}
+                  >
+                    {busy === "purchase-character-slots"
+                      ? "Updating..."
+                      : characterSlotSummary
+                        ? `Buy +${characterSlotSummary.addon_pack_size} Slots`
+                        : "Buy More Slots"}
+                  </button>
+                </div>
+                {characterLibraryFull ? (
+                  <p className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                    The saved character gallery is full. Buy more slots before adding another manual, uploaded, or AI-generated character.
+                  </p>
+                ) : null}
+              </div>
+
               <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -1677,7 +1750,7 @@ export default function WorkflowHomePage() {
                         className="w-full rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none"
                         value={characterName}
                         onChange={(event) => setCharacterName(event.target.value)}
-                        disabled={!stageUnlocked(selectedProject, 2)}
+                        disabled={!stageUnlocked(selectedProject, 2) || characterLibraryFull}
                       />
                     </label>
                     <label className="space-y-2">
@@ -1688,7 +1761,7 @@ export default function WorkflowHomePage() {
                         className="w-full rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none"
                         value={characterRole}
                         onChange={(event) => setCharacterRole(event.target.value)}
-                        disabled={!stageUnlocked(selectedProject, 2)}
+                        disabled={!stageUnlocked(selectedProject, 2) || characterLibraryFull}
                       >
                         <option value="main">Main</option>
                         <option value="supporting">Supporting</option>
@@ -1705,7 +1778,7 @@ export default function WorkflowHomePage() {
                       className="min-h-[120px] w-full rounded-3xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none"
                       value={characterDescription}
                       onChange={(event) => setCharacterDescription(event.target.value)}
-                      disabled={!stageUnlocked(selectedProject, 2)}
+                      disabled={!stageUnlocked(selectedProject, 2) || characterLibraryFull}
                     />
                   </label>
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -1718,7 +1791,7 @@ export default function WorkflowHomePage() {
                         placeholder="brave, witty, curious"
                         value={characterTraits}
                         onChange={(event) => setCharacterTraits(event.target.value)}
-                        disabled={!stageUnlocked(selectedProject, 2)}
+                        disabled={!stageUnlocked(selectedProject, 2) || characterLibraryFull}
                       />
                     </label>
                     <label className="space-y-2">
@@ -1729,7 +1802,7 @@ export default function WorkflowHomePage() {
                         className="w-full rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none"
                         value={characterVoice}
                         onChange={(event) => setCharacterVoice(event.target.value)}
-                        disabled={!stageUnlocked(selectedProject, 2)}
+                        disabled={!stageUnlocked(selectedProject, 2) || characterLibraryFull}
                       />
                     </label>
                   </div>
@@ -1742,7 +1815,7 @@ export default function WorkflowHomePage() {
                       placeholder="Optional image URLs, separated by commas"
                       value={referenceUrl}
                       onChange={(event) => setReferenceUrl(event.target.value)}
-                      disabled={!stageUnlocked(selectedProject, 2)}
+                      disabled={!stageUnlocked(selectedProject, 2) || characterLibraryFull}
                     />
                   </label>
                   <label className="space-y-2">
@@ -1754,7 +1827,7 @@ export default function WorkflowHomePage() {
                       placeholder="Optional approved hero image URL"
                       value={canonicalImageUrl}
                       onChange={(event) => setCanonicalImageUrl(event.target.value)}
-                      disabled={!stageUnlocked(selectedProject, 2)}
+                      disabled={!stageUnlocked(selectedProject, 2) || characterLibraryFull}
                     />
                   </label>
                   <label className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-3">
@@ -1763,7 +1836,7 @@ export default function WorkflowHomePage() {
                       type="checkbox"
                       checked={lockCharacterIdentity}
                       onChange={(event) => setLockCharacterIdentity(event.target.checked)}
-                      disabled={!stageUnlocked(selectedProject, 2)}
+                      disabled={!stageUnlocked(selectedProject, 2) || characterLibraryFull}
                     />
                     <span>
                       <span className="block text-sm font-semibold text-white">Lock character identity</span>
@@ -1781,7 +1854,7 @@ export default function WorkflowHomePage() {
                       type="file"
                       accept="image/*"
                       onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
-                      disabled={!stageUnlocked(selectedProject, 2)}
+                      disabled={!stageUnlocked(selectedProject, 2) || characterLibraryFull}
                     />
                   </label>
                   <div className="flex flex-wrap gap-3">
@@ -1789,7 +1862,12 @@ export default function WorkflowHomePage() {
                       className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                       type="button"
                       onClick={() => handleCreateCharacter("manual")}
-                      disabled={!selectedProject || !stageUnlocked(selectedProject, 2) || busy === "character-manual"}
+                      disabled={
+                        !selectedProject ||
+                        !stageUnlocked(selectedProject, 2) ||
+                        characterLibraryFull ||
+                        busy === "character-manual"
+                      }
                     >
                       {busy === "character-manual" ? "Creating..." : "Add Character"}
                     </button>
@@ -1797,7 +1875,12 @@ export default function WorkflowHomePage() {
                       className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                       type="button"
                       onClick={() => handleCreateCharacter("generate")}
-                      disabled={!selectedProject || !stageUnlocked(selectedProject, 2) || busy === "character-generate"}
+                      disabled={
+                        !selectedProject ||
+                        !stageUnlocked(selectedProject, 2) ||
+                        characterLibraryFull ||
+                        busy === "character-generate"
+                      }
                     >
                       {busy === "character-generate" ? "Generating..." : "Generate Character"}
                     </button>
@@ -1805,7 +1888,12 @@ export default function WorkflowHomePage() {
                       className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                       type="button"
                       onClick={() => handleCreateCharacter("upload")}
-                      disabled={!selectedProject || !stageUnlocked(selectedProject, 2) || busy === "character-upload"}
+                      disabled={
+                        !selectedProject ||
+                        !stageUnlocked(selectedProject, 2) ||
+                        characterLibraryFull ||
+                        busy === "character-upload"
+                      }
                     >
                       {busy === "character-upload" ? "Uploading..." : "Upload Character"}
                     </button>
@@ -2350,6 +2438,7 @@ export default function WorkflowHomePage() {
               <div className="flex flex-wrap items-center gap-3">
                 <div className="rounded-full border border-slate-800 bg-slate-900/60 px-4 py-2 text-sm text-slate-300">
                   Credits: {creditBalance ?? "—"}
+                  {characterSlotSummary ? ` • Characters ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots}` : ""}
                 </div>
                 {activeProject ? (
                   <div className={`rounded-full px-4 py-2 text-sm ${statusPill(activeProject.workflow_state)}`}>

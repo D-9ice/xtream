@@ -977,6 +977,17 @@ export async function deleteEditorClip(
   return response.json();
 }
 
+export type CharacterSlotSummary = {
+  base_slots: number;
+  extra_slots: number;
+  total_slots: number;
+  used_slots: number;
+  remaining_slots: number;
+  addon_pack_size: number;
+  addon_pack_cost_credits: number;
+  is_full: boolean;
+};
+
 export type CreditBalance = {
   email: string;
   plan_name: string;
@@ -985,6 +996,8 @@ export type CreditBalance = {
   credits_reserved?: number;
   credits_used_total: number;
   renewal_date?: string | null;
+  extra_character_slots?: number;
+  character_slots: CharacterSlotSummary;
 };
 
 export type CreditPlan = {
@@ -992,9 +1005,17 @@ export type CreditPlan = {
   name: string;
   credits: number;
   price_usd: number;
+  base_character_slots: number;
   popular?: boolean;
   stripe_price_id?: string | null;
   checkout_enabled?: boolean;
+};
+
+export type BillingPricingSettings = {
+  plans: CreditPlan[];
+  free_base_character_slots: number;
+  character_slot_addon_size: number;
+  character_slot_addon_cost_credits: number;
 };
 
 export async function fetchMyCredits(): Promise<CreditBalance> {
@@ -1077,6 +1098,65 @@ export async function updateAdminSubscription(
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
     throw new Error(detail?.detail ?? "Failed to update subscription");
+  }
+  return response.json();
+}
+
+export async function fetchAdminBillingPricing(): Promise<BillingPricingSettings> {
+  const response = await fetch(`${API_BASE}/billing/admin/pricing`, {
+    cache: "no-store",
+    headers: withOwnerDashboardHeaders(undefined),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? "Failed to load billing pricing");
+  }
+  return response.json();
+}
+
+export async function updateAdminBillingPricing(payload: {
+  moderate_credits: number;
+  moderate_price_usd: number;
+  moderate_base_character_slots: number;
+  moderate_stripe_price_id?: string | null;
+  pro_credits: number;
+  pro_price_usd: number;
+  pro_base_character_slots: number;
+  pro_stripe_price_id?: string | null;
+  studio_credits: number;
+  studio_price_usd: number;
+  studio_base_character_slots: number;
+  studio_stripe_price_id?: string | null;
+  free_base_character_slots: number;
+  character_slot_addon_size: number;
+  character_slot_addon_cost_credits: number;
+}): Promise<BillingPricingSettings> {
+  const response = await fetch(`${API_BASE}/billing/admin/pricing`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...normalizeHeaders(withOwnerDashboardHeaders(undefined)),
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? "Failed to update billing pricing");
+  }
+  return response.json();
+}
+
+export async function purchaseCharacterSlotPack(payload?: {
+  pack_count?: number;
+}): Promise<CreditBalance> {
+  const response = await fetch(`${API_BASE}/billing/character-slots/purchase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pack_count: payload?.pack_count ?? 1 }),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? "Failed to buy more character slots");
   }
   return response.json();
 }

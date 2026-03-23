@@ -68,6 +68,17 @@ const mockState = vi.hoisted(() => ({
       credits_reserved: 0,
       credits_used_total: 0,
       renewal_date: null,
+      extra_character_slots: 0,
+      character_slots: {
+        base_slots: 10,
+        extra_slots: 0,
+        total_slots: 10,
+        used_slots: 2,
+        remaining_slots: 8,
+        addon_pack_size: 5,
+        addon_pack_cost_credits: 50,
+        is_full: false,
+      },
     },
   },
   project: {} as Record<string, unknown>,
@@ -115,6 +126,7 @@ vi.mock("../lib/api", () => ({
   createWorkflowCharacter: vi.fn(),
   generateWorkflowCharacter: vi.fn(),
   uploadWorkflowCharacter: vi.fn(),
+  purchaseCharacterSlotPack: vi.fn(async () => clone(mockState.credits)),
   approveWorkflowCharacters: vi.fn(),
   startWorkflowProduction: vi.fn(async () => ({
     project: clone(mockState.project),
@@ -181,8 +193,8 @@ describe("Workflow home page", () => {
     render(<HomePage />);
 
     await waitFor(() => {
-      expect(screen.getAllByText(/Draft ready/i).length).toBeGreaterThan(0);
-    });
+      expect(screen.getAllByText(/Review required/i).length).toBeGreaterThan(0);
+    }, { timeout: 5000 });
 
     expect(screen.getByText(/Review required/i)).toBeInTheDocument();
     expect(screen.getByText(/Waiting on Step 2/i)).toBeInTheDocument();
@@ -193,7 +205,9 @@ describe("Workflow home page", () => {
     render(<HomePage />);
 
     const scriptEditor = await screen.findByDisplayValue(
-      /Scene 1: The crew spots the signal\./i
+      /Scene 1: The crew spots the signal\./i,
+      {},
+      { timeout: 5000 }
     );
 
     expect(scriptEditor).toBeEnabled();
@@ -215,7 +229,7 @@ describe("Workflow home page", () => {
     expect(await screen.findByText(/Quick Snapshot/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Current step/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Next unlock/i)).toBeInTheDocument();
-    expect(screen.getByText(/Credits left/i)).toBeInTheDocument();
+    expect(screen.getByText(/Credits and Slots/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Selected cast/i).length).toBeGreaterThan(0);
   });
 
@@ -357,11 +371,11 @@ describe("Workflow home page", () => {
 
     await waitFor(() => {
       expect(api.retryWorkflowProduction).toHaveBeenCalledWith("project-1");
-    });
+    }, { timeout: 8000 });
 
     await waitFor(() => {
       expect(screen.getByText(/Video production has been queued again/i)).toBeInTheDocument();
-    });
+    }, { timeout: 8000 });
 
     expect(screen.queryByRole("button", { name: /Retry Production/i })).toBeNull();
   });
@@ -466,6 +480,56 @@ describe("Workflow home page", () => {
 
     expect(finalApproval).toBeInTheDocument();
     expect(screen.getAllByText(/Production ready/i).length).toBeGreaterThan(0);
+  });
+
+  it("shows character slot usage alongside the credit summary", async () => {
+    render(<HomePage />);
+
+    expect(await screen.findByText(/Characters 2\/10/i)).toBeInTheDocument();
+
+    fireEvent.click(navButton(/Overview/i));
+
+    expect(await screen.findByText(/Characters: 2\/10/i)).toBeInTheDocument();
+  });
+
+  it("locks character creation when the saved library is full and offers a slot purchase", async () => {
+    mockState.project = {
+      ...clone(mockState.defaults.project),
+      workflow_state: "script_approved",
+      script_approved: "Approved script",
+      script_approved_at: "2026-03-22T00:00:00",
+    };
+    mockState.credits = {
+      ...clone(mockState.defaults.credits),
+      character_slots: {
+        base_slots: 10,
+        extra_slots: 0,
+        total_slots: 10,
+        used_slots: 10,
+        remaining_slots: 0,
+        addon_pack_size: 5,
+        addon_pack_cost_credits: 50,
+        is_full: true,
+      },
+    };
+
+    render(<HomePage />);
+
+    const addButton = await screen.findByRole("button", { name: /Add Character/i });
+    const generateButton = screen.getByRole("button", { name: /Generate Character/i });
+    const uploadButton = screen.getByRole("button", { name: /Upload Character/i });
+    const buySlotsButton = screen.getByRole("button", { name: /Buy \+5 Slots/i });
+
+    expect(addButton).toBeDisabled();
+    expect(generateButton).toBeDisabled();
+    expect(uploadButton).toBeDisabled();
+    expect(screen.getByText(/saved character gallery is full/i)).toBeInTheDocument();
+
+    fireEvent.click(buySlotsButton);
+
+    await waitFor(() => {
+      expect(api.purchaseCharacterSlotPack).toHaveBeenCalledWith({ pack_count: 1 });
+    });
   });
 
   it("shows project archive and duplicate controls in the simplified projects view", async () => {

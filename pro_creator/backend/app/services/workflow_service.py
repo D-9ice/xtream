@@ -30,6 +30,7 @@ from app.schemas import (
     WorkflowProjectResponse,
 )
 from app.services.credits import consume_credits, get_or_create_subscription
+from app.services.character_slots import ensure_character_slot_available
 from app.services.image_engine import generate_image_bytes, generate_image_for_scene
 from app.services.provider_routing import resolve_script_route
 from app.services.script_engine import generate_script
@@ -654,6 +655,7 @@ def _create_character_image(
 def create_character_profile(
     *,
     session: Session,
+    current_user: User,
     name: str,
     role_type: str,
     description: str,
@@ -666,6 +668,7 @@ def create_character_profile(
     negative_prompt_base: str | None,
     lock_identity: bool,
 ) -> CharacterProfile:
+    ensure_character_slot_available(session=session, user=current_user)
     clean_name = _validate_character_name(name)
     clean_description = description.strip()
     visual, negative = _build_character_prompts(clean_name, role_type, clean_description)
@@ -752,6 +755,7 @@ def generate_character_profile(
     style: str,
     lock_identity: bool,
 ) -> CharacterProfile:
+    ensure_character_slot_available(session=session, user=current_user)
     clean_name = _validate_character_name(name)
     clean_description = description.strip()
     visual, negative = _build_character_prompts(clean_name, role_type, clean_description)
@@ -796,6 +800,7 @@ def generate_character_profile(
 def upload_character_reference(
     *,
     session: Session,
+    current_user: User,
     name: str,
     role_type: str,
     description: str,
@@ -804,6 +809,7 @@ def upload_character_reference(
     voice_profile: str | None,
     lock_identity: bool,
 ) -> CharacterProfile:
+    ensure_character_slot_available(session=session, user=current_user)
     character_id = str(uuid4())
     suffix = Path(filename or "reference.png").suffix.lower() or ".png"
     content_type = "image/png" if suffix == ".png" else "image/jpeg"
@@ -812,6 +818,7 @@ def upload_character_reference(
     image_url = storage_client.public_url(key)
     return create_character_profile(
         session=session,
+        current_user=current_user,
         name=name,
         role_type=role_type,
         description=description,
