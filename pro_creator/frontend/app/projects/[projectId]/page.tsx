@@ -7,6 +7,8 @@ import {
 } from "../../../lib/api";
 import ScriptActions from "../../../components/ScriptActions";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProjectDetail({
   params,
 }: {
