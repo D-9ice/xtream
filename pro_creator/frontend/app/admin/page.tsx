@@ -542,7 +542,7 @@ export default function AdminPage() {
   };
 
   const persistPricingSettings = useCallback(
-    async (nextForm: PricingFormState) => {
+    async (nextForm: BillingPricingForm) => {
       setPricingLoading(true);
       setError(null);
       try {

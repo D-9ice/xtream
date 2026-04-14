@@ -38,7 +38,7 @@ function detectDeviceHint(): string {
   if (typeof navigator === "undefined") {
     return "unknown";
   }
-  const userAgentData = navigator.userAgentData as { mobile?: boolean } | undefined;
+  const userAgentData = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
   const ua = navigator.userAgent.toLowerCase();
   if (ua.includes("ipad") || ua.includes("tablet") || ua.includes("kindle") || ua.includes("silk")) {
     return "tablet";

@@ -249,7 +249,7 @@ function paymentProviderPillClasses(provider: BillingProvider): string {
     : "border-purple-400/70 bg-purple-950/90 text-purple-300";
 }
 
-function receiptProviderPillClasses(provider: BillingProvider | string): string {
+function receiptProviderPillClasses(provider: BillingProvider | string | null | undefined): string {
   return provider === "paystack"
     ? "border-blue-400/70 bg-blue-950/80 text-blue-300"
     : "border-purple-400/60 bg-purple-950/80 text-purple-300";
@@ -2027,11 +2027,6 @@ export default function WorkflowHomePage() {
         .split(",")
         .map((item) => item.trim())
         .filter(Boolean);
-      const referenceUrls = referenceUrl
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
-      const cleanCanonicalImageUrl = canonicalImageUrl.trim();
       let nextCharacters: WorkflowCharacterList;
       if (mode === "generate") {
         nextCharacters = await generateWorkflowCharacter(selectedProject.project_id, {
@@ -2062,9 +2057,6 @@ export default function WorkflowHomePage() {
           name: cleanName,
           role_type: characterRole,
           description: cleanDescription,
-          reference_image_url: referenceUrls[0],
-          reference_image_urls: referenceUrls,
-          canonical_image_url: cleanCanonicalImageUrl || undefined,
           personality_traits: traits,
           voice_profile: characterVoice,
           lock_identity: lockCharacterIdentity,
@@ -2075,8 +2067,6 @@ export default function WorkflowHomePage() {
       setCharacterName("");
       setCharacterDescription("");
       setCharacterTraits("");
-      setReferenceUrl("");
-      setCanonicalImageUrl("");
       setLockCharacterIdentity(true);
       setUploadFile(null);
       await refreshProjects(selectedProject.project_id);

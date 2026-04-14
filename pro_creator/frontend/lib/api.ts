@@ -376,6 +376,7 @@ export async function enqueueOrchestrationJob(payload: {
   project_id: string;
   kind: string;
   topic?: string;
+  genre?: string;
   duration_minutes?: number;
   tone?: string;
   voice_text?: string;
@@ -403,6 +404,7 @@ export async function enqueueOrchestrationBatch(payload: {
     project_id: string;
     kind: string;
     topic?: string;
+    genre?: string;
     duration_minutes?: number;
     tone?: string;
     voice_text?: string;

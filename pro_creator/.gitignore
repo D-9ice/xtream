@@ -39,3 +39,4 @@ deploy/secrets/*
 
 # Local binary dependencies (installed per-machine)
 deploy/bin/rhubarb
+.vercel

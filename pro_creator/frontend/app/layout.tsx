@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
 
 import "./globals.css";
@@ -35,7 +35,9 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <PwaRegister />
-        <AnalyticsTracker />
+        <Suspense fallback={null}>
+          <AnalyticsTracker />
+        </Suspense>
         <PwaInstallPrompt />
         {children}
       </body>
