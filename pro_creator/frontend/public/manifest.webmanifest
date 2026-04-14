@@ -1,21 +1,26 @@
 {
-  "name": "Pro Creator",
-  "short_name": "ProCreator",
+  "id": "/",
+  "name": "X'tream",
+  "short_name": "X'tream",
   "description": "AI-powered content creation platform",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone"],
   "background_color": "#020b2a",
   "theme_color": "#020b2a",
   "icons": [
     {
       "src": "/app-icon.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/app-icon.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

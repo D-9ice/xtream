@@ -28,10 +28,11 @@ export default async function ProjectDetail({
     project = null;
   }
   const apiBase =
-    process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
+    process.env.NEXT_PUBLIC_API_BASE ?? "/api";
   const projectsBase =
     process.env.NEXT_PUBLIC_PROJECTS_BASE ?? `${apiBase}/projects`;
   const projectBase = `${projectsBase}/${projectId}`;
+  const downloadsHref = `/?nav=downloads&project=${projectId}`;
 
   if (!project) {
     return (
@@ -39,29 +40,21 @@ export default async function ProjectDetail({
         <header className="border-b border-slate-800 bg-slate-950/70">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
-                Pro Creator
-              </p>
               <h1 className="text-3xl font-semibold text-white">
                 Project not found
               </h1>
-              <p className="mt-2 text-sm text-slate-400">
-                This project may have been deleted.
-              </p>
             </div>
             <Link
               className="rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-xs font-semibold text-aurora"
               href="/"
             >
-              ← Back to Guided Studio
+              Back
             </Link>
           </div>
         </header>
         <main className="mx-auto flex max-w-6xl items-center justify-center px-6 py-16">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-8 text-center">
-            <p className="text-sm text-slate-300">
-              We couldn’t load that project. Create a new one from Guided Studio.
-            </p>
+            <p className="text-sm text-slate-300">Unavailable.</p>
           </div>
         </main>
       </div>
@@ -73,19 +66,15 @@ export default async function ProjectDetail({
       <header className="border-b border-slate-800 bg-slate-950/70">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
-              Pro Creator
-            </p>
             <h1 className="text-3xl font-semibold text-white">
               {project.title}
             </h1>
-            <p className="mt-2 text-sm text-slate-400">{project.topic}</p>
           </div>
           <Link
             className="rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-xs font-semibold text-aurora"
             href="/"
           >
-            ← Back to Guided Studio
+            Back
           </Link>
         </div>
       </header>
@@ -94,65 +83,24 @@ export default async function ProjectDetail({
         <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6">
             <h2 className="text-xl font-semibold">Script preview</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              Generated script output stored in the project directory.
-            </p>
             <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-200 whitespace-pre-line">
-              {script || "No script yet. Open the guided Create workflow to generate and approve the script first."}
+              {script || "No script yet."}
             </div>
-            <a
-              className="mt-4 inline-flex text-xs font-semibold text-aurora"
-              href={`${projectBase}/script.txt`}
-              download
-            >
-              Download script
-            </a>
             <ScriptActions projectId={projectId} scriptText={script} />
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6">
-            <h2 className="text-xl font-semibold">Downloads</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              Access generated media assets.
-            </p>
-            <div className="mt-4 space-y-3 text-sm">
-              <a
-                className="flex items-center justify-between rounded-xl border border-aurora/40 bg-aurora/10 px-4 py-3 text-aurora"
-                href={`${apiBase}/project/${projectId}/bundle`}
+            <h2 className="text-xl font-semibold">Download</h2>
+            <div className="mt-4">
+              <Link
+                className="inline-flex rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-sm font-semibold text-aurora"
+                href={downloadsHref}
               >
-                Project bundle (zip)
-                <span className="text-xs">Download</span>
-              </a>
-              <a
-                className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3"
-                href={`${projectBase}/audio/scene_1.wav`}
-                download
-              >
-                Voice narration
-                <span className="text-xs text-aurora">Download</span>
-              </a>
-              <a
-                className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3"
-                href={`${projectBase}/images/scene_1.png`}
-                download
-              >
-                Scene image
-                <span className="text-xs text-aurora">Download</span>
-              </a>
-              <a
-                className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3"
-                href={`${projectBase}/video/final.mp4`}
-                download
-              >
-                Final video
-                <span className="text-xs text-aurora">Download</span>
-              </a>
+                Download
+              </Link>
             </div>
             <div className="mt-6 space-y-4">
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-400">
-                  Audio preview
-                </p>
                 <audio
                   className="mt-2 w-full"
                   controls
@@ -160,9 +108,6 @@ export default async function ProjectDetail({
                 />
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-400">
-                  Image preview
-                </p>
                 <img
                   className="mt-2 w-full rounded-xl border border-slate-800"
                   src={`${projectBase}/images/scene_1.png`}
@@ -170,9 +115,6 @@ export default async function ProjectDetail({
                 />
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-400">
-                  Video preview
-                </p>
                 <video
                   className="mt-2 w-full rounded-xl border border-slate-800"
                   controls
@@ -185,14 +127,9 @@ export default async function ProjectDetail({
 
         <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6">
           <h2 className="text-xl font-semibold">Scene preview</h2>
-          <p className="mt-2 text-sm text-slate-400">
-            Scene breakdown generated from the approved project script.
-          </p>
           <div className="mt-4 grid gap-4">
             {scenes.length === 0 ? (
-              <p className="text-sm text-slate-400">
-                No scenes yet. Return to the guided Create workflow to generate or update the script.
-              </p>
+              <p className="text-sm text-slate-400">No scenes.</p>
             ) : (
               scenes.map((scene) => (
                 <div
@@ -235,15 +172,6 @@ export default async function ProjectDetail({
                         src={scene.image_path || `${projectBase}/images/scene_1.png`}
                         alt={`Scene ${scene.id}`}
                       />
-                      <a
-                        className="mt-2 inline-flex text-[10px] font-semibold text-aurora"
-                        href={
-                          scene.image_path || `${projectBase}/images/scene_1.png`
-                        }
-                        download
-                      >
-                        Download image
-                      </a>
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-wide text-slate-500">
@@ -254,15 +182,6 @@ export default async function ProjectDetail({
                         controls
                         src={scene.audio_path || `${projectBase}/audio/scene_1.wav`}
                       />
-                      <a
-                        className="mt-2 inline-flex text-[10px] font-semibold text-aurora"
-                        href={
-                          scene.audio_path || `${projectBase}/audio/scene_1.wav`
-                        }
-                        download
-                      >
-                        Download audio
-                      </a>
                     </div>
                   </div>
                 </div>

@@ -1,5 +1,5 @@
 // Keep this conservative: caching dev bundles (/_next/*) will break Next.js development.
-const CACHE_NAME = "pro-creator-v2";
+const CACHE_NAME = "pro-creator-v3";
 const PRECACHE_URLS = ["/", "/manifest.webmanifest", "/app-icon.png", "/favicon.ico"];
 
 self.addEventListener("install", (event) => {

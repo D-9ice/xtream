@@ -8,7 +8,7 @@ Pro Creator is a modular AI-powered content creation platform with a production-
 - **Async jobs** with Celery + Redis
 - **Storage abstraction** for local or S3-compatible backends
 - **Next.js frontend** with editor, automation, and voice workflows
-- **TTS provider switching** (XTTS or ElevenLabs)
+- **xAI/Grok-first generation** for script, speech, images, and video, with legacy provider overrides still available
 - **Lip sync artifacts** (viseme timelines) for downstream animation (Rhubarb optional)
 - **Deployment assets** for single-VM production (Caddy + Spaces)
 
@@ -97,53 +97,49 @@ The frontend runs on **Next.js 16 + TypeScript + Tailwind CSS**. See `frontend/R
 - Password fields in the account panel include show/hide (eye) toggles.
 - The API badge is visible in development, but hidden in production builds.
 
-### TTS providers
+### xAI / Grok defaults
 
-You can switch between XTTS (self-hosted) and ElevenLabs via `TTS_PROVIDER` and the Voice panel selector.
-Set `XTTS_ENDPOINT` for XTTS or `ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` for ElevenLabs.
+The normal workflow uses xAI for text, speech, and images, and Grok Imagine for video.
+Legacy provider overrides are no longer part of the supported user path.
 
-### Image generation provider
+Set:
 
-Image generation supports OpenAI Images with quality-first defaults. Set:
+```zsh
+XAI_API_KEY=<your_xai_key>
+SCRIPT_PROVIDER=xai
+IMAGE_PROVIDER=xai
+TTS_PROVIDER=xai
+VIDEO_PROVIDER_DEFAULT=grok_imagine
+```
 
-- `IMAGE_PROVIDER=openai`
-- `OPENAI_API_KEY=<your key>`
-- Optional tuning: `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_SIZE`, `OPENAI_IMAGE_QUALITY`
+### xAI / Grok Imagine mode
 
-If `IMAGE_PROVIDER=auto`, the backend uses OpenAI when a key is configured, otherwise local placeholder generation.
-
-### AI video generation strategy (Runway + FFmpeg fallback)
-
-The render pipeline supports an optional hybrid mode:
-- Default scene model: `gen4_turbo` (cost-efficient)
-- Premium override for hero scenes: `gen4.5`
-- Automatic fallback to FFmpeg image-motion rendering if Runway fails/timeouts
+The backend uses xAI as the unified provider path for script, image, voice, and final video generation.
+The video renderer chains short clips by feeding the last frame of each clip into the next one.
 
 Configure:
 
 ```zsh
-RUNWAY_VIDEO_ENABLED=true
-RUNWAY_API_KEY=<your_runway_key>
-RUNWAY_VIDEO_MODEL_DEFAULT=gen4_turbo
-RUNWAY_VIDEO_MODEL_PREMIUM=gen4.5
-RUNWAY_HERO_SCENES=first,last
-RUNWAY_VIDEO_DURATION_SECONDS=5
+XAI_API_KEY=<your_xai_key>
+SCRIPT_PROVIDER=xai
+IMAGE_PROVIDER=xai
+TTS_PROVIDER=xai
+VIDEO_PROVIDER_DEFAULT=grok_imagine
 ```
 
-### External-provider fail-fast validation
-
-In production, invalid provider/billing env combinations now fail at startup with explicit errors.
-You can enable the same behavior locally:
+Optional tuning:
 
 ```zsh
-STRICT_PROVIDER_VALIDATION=true
+XAI_BASE_URL=https://api.x.ai/v1
+XAI_TEXT_MODEL=grok-4.20-beta-latest-non-reasoning
+XAI_IMAGE_MODEL=grok-imagine-image
+XAI_VIDEO_MODEL=grok-imagine-video
+GROK_IMAGINE_TARGET_SEGMENT_SECONDS=15
+GROK_IMAGINE_INITIAL_CHUNK_SECONDS=15
+GROK_IMAGINE_EXTENSION_CHUNK_SECONDS=10
 ```
 
-Examples:
-- `SCRIPT_PROVIDER=openai` requires `OPENAI_API_KEY`
-- `IMAGE_PROVIDER=openai` requires `OPENAI_API_KEY`
-- `TTS_PROVIDER=elevenlabs` requires `ELEVENLABS_API_KEY`
-- Stripe price IDs require both `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`
+Stripe price IDs still require both `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`.
 
 ### Lip sync (Rhubarb)
 
@@ -159,14 +155,6 @@ python scripts/install_rhubarb.py --sha256 <EXPECTED_SHA256>
 ```
 
 Set `RHUBARB_PATH` to the installed binary.
-
-To validate ElevenLabs once keys are available, run `backend/scripts/validate_elevenlabs.py`.
-
-To validate ElevenLabs credentials, run the helper script:
-
-```zsh
-python backend/scripts/validate_elevenlabs.py
-```
 
 ## Desktop app (Electron)
 

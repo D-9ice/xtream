@@ -113,43 +113,32 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
 ENABLE_CELERY = os.getenv("ENABLE_CELERY", "false").lower() == "true"
+FACTORY_MODE_ENABLED = os.getenv(
+    "FACTORY_MODE_ENABLED",
+    os.getenv("NEXT_PUBLIC_FACTORY_MODE_ENABLED", "false"),
+).lower() == "true"
 
-# Voice/TTS
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "xtts")  # xtts | elevenlabs
-ELEVENLABS_API_KEY = _env_file_or_aws("ELEVENLABS_API_KEY", "")
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
-ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
-XTTS_ENDPOINT = os.getenv("XTTS_ENDPOINT", "")
+# Voice/TTS and provider routing are fixed to xAI/Grok.
+TTS_PROVIDER = "xai"
+SCRIPT_PROVIDER = "xai"
+IMAGE_PROVIDER = "xai"
+VOICE_PROVIDER_DEFAULT = "xai"
+VIDEO_PROVIDER_DEFAULT = "grok_imagine"
 
-# Multi-provider routing
-SCRIPT_PROVIDER = os.getenv("SCRIPT_PROVIDER", "auto").lower()  # auto | openai | template
-IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "local").lower()  # local | replicate | openai | ...
-VOICE_PROVIDER_DEFAULT = os.getenv("VOICE_PROVIDER_DEFAULT", TTS_PROVIDER).lower()
+# xAI / Grok
+XAI_API_KEY = _env_file_or_aws("XAI_API_KEY", "").strip()
+XAI_BASE_URL = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1").rstrip("/")
+XAI_TEXT_MODEL = os.getenv("XAI_TEXT_MODEL", "grok-4.20-beta-latest-non-reasoning").strip()
+XAI_IMAGE_MODEL = os.getenv("XAI_IMAGE_MODEL", "grok-imagine-image").strip()
+XAI_VIDEO_MODEL = os.getenv("XAI_VIDEO_MODEL", "grok-imagine-video").strip()
+XAI_TTS_VOICE_ID = os.getenv("XAI_TTS_VOICE_ID", "eve").strip()
+XAI_TTS_MODEL = XAI_TTS_VOICE_ID
+GROK_IMAGINE_TARGET_SEGMENT_SECONDS = max(10, int(os.getenv("GROK_IMAGINE_TARGET_SEGMENT_SECONDS", "15")))
+GROK_IMAGINE_INITIAL_CHUNK_SECONDS = max(1, min(15, int(os.getenv("GROK_IMAGINE_INITIAL_CHUNK_SECONDS", "15"))))
+GROK_IMAGINE_EXTENSION_CHUNK_SECONDS = max(1, min(10, int(os.getenv("GROK_IMAGINE_EXTENSION_CHUNK_SECONDS", "10"))))
+GROK_IMAGINE_ASPECT_RATIO = os.getenv("GROK_IMAGINE_ASPECT_RATIO", "16:9").strip()
+GROK_IMAGINE_RESOLUTION = os.getenv("GROK_IMAGINE_RESOLUTION", "720p").strip()
 
-# Script model tiers
-OPENAI_API_KEY = _env_file_or_aws("OPENAI_API_KEY", "").strip()
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-OPENAI_MODEL_DRAFT = os.getenv("OPENAI_MODEL_DRAFT", "gpt-4o-mini")
-OPENAI_MODEL_STANDARD = os.getenv("OPENAI_MODEL_STANDARD", "gpt-4o-mini")
-OPENAI_MODEL_PREMIUM = os.getenv("OPENAI_MODEL_PREMIUM", "gpt-4.1")
-OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1").strip()
-OPENAI_IMAGE_SIZE = os.getenv("OPENAI_IMAGE_SIZE", "1536x1024").strip()
-OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "high").strip().lower()
-
-# AI video generation (Runway) + FFmpeg fallback
-RUNWAY_VIDEO_ENABLED = os.getenv("RUNWAY_VIDEO_ENABLED", "false").lower() == "true"
-RUNWAY_API_KEY = _env_file_or_aws("RUNWAY_API_KEY", "").strip()
-RUNWAY_API_BASE = os.getenv("RUNWAY_API_BASE", "https://api.dev.runwayml.com").strip()
-RUNWAY_API_VERSION = os.getenv("RUNWAY_API_VERSION", "2024-11-06").strip()
-RUNWAY_VIDEO_MODEL_DEFAULT = os.getenv("RUNWAY_VIDEO_MODEL_DEFAULT", "gen4_turbo").strip()
-RUNWAY_VIDEO_MODEL_PREMIUM = os.getenv("RUNWAY_VIDEO_MODEL_PREMIUM", "gen4.5").strip()
-RUNWAY_HERO_SCENES = os.getenv("RUNWAY_HERO_SCENES", "first,last").strip()
-RUNWAY_VIDEO_DURATION_SECONDS = max(
-    5,
-    min(10, int(os.getenv("RUNWAY_VIDEO_DURATION_SECONDS", "5"))),
-)
-RUNWAY_POLL_TIMEOUT_SECONDS = int(os.getenv("RUNWAY_POLL_TIMEOUT_SECONDS", "240"))
-RUNWAY_POLL_INTERVAL_SECONDS = float(os.getenv("RUNWAY_POLL_INTERVAL_SECONDS", "4"))
 FFMPEG_SCENE_RENDER_TIMEOUT_SECONDS = max(
     30,
     int(os.getenv("FFMPEG_SCENE_RENDER_TIMEOUT_SECONDS", "180")),
@@ -159,7 +148,7 @@ FFMPEG_CONCAT_TIMEOUT_SECONDS = max(
     int(os.getenv("FFMPEG_CONCAT_TIMEOUT_SECONDS", "300")),
 )
 
-# Billing / Stripe
+# Billing / Stripe / Paystack
 STRIPE_SECRET_KEY = _env_file_or_aws("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = _env_file_or_aws("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "http://localhost:3000/?checkout=success")
@@ -167,6 +156,28 @@ STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "http://localhost:3000/?check
 STRIPE_PRICE_ID_MODERATE = os.getenv("STRIPE_PRICE_ID_MODERATE", "")
 STRIPE_PRICE_ID_PRO = os.getenv("STRIPE_PRICE_ID_PRO", "")
 STRIPE_PRICE_ID_STUDIO = os.getenv("STRIPE_PRICE_ID_STUDIO", "")
+FACTORY_MODE_ONE_TIME_PRICE_USD = max(0, int(os.getenv("FACTORY_MODE_ONE_TIME_PRICE_USD", "149")))
+FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID = os.getenv("FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID", "")
+FACTORY_MODE_SUBSCRIPTION_PRICE_USD = max(0, int(os.getenv("FACTORY_MODE_SUBSCRIPTION_PRICE_USD", "39")))
+FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID = os.getenv("FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID", "")
+FACTORY_MODE_SUBSCRIPTION_PERIOD_DAYS = max(1, int(os.getenv("FACTORY_MODE_SUBSCRIPTION_PERIOD_DAYS", "30")))
+PAYSTACK_SECRET_KEY = _env_file_or_aws("PAYSTACK_SECRET_KEY", "")
+PAYSTACK_CALLBACK_URL = os.getenv(
+    "PAYSTACK_CALLBACK_URL",
+    "http://localhost:3000/?checkout=success&provider=paystack",
+)
+PAYSTACK_CURRENCY = os.getenv("PAYSTACK_CURRENCY", "GHS").strip().upper() or "GHS"
+
+# Email receipts / notifications
+EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Pro Creator").strip() or "Pro Creator"
+EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", ADMIN_EMAIL).strip() or ADMIN_EMAIL
+EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "").strip()
+EMAIL_SMTP_HOST = os.getenv("EMAIL_SMTP_HOST", "").strip()
+EMAIL_SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", "587"))
+EMAIL_SMTP_USERNAME = os.getenv("EMAIL_SMTP_USERNAME", "").strip()
+EMAIL_SMTP_PASSWORD = _env_file_or_aws("EMAIL_SMTP_PASSWORD", "")
+EMAIL_SMTP_USE_TLS = os.getenv("EMAIL_SMTP_USE_TLS", "true").lower() == "true"
+EMAIL_SMTP_USE_SSL = os.getenv("EMAIL_SMTP_USE_SSL", "false").lower() == "true"
 
 # Credit costs per action
 CREDITS_COST_SCRIPT_GENERATE = int(os.getenv("CREDITS_COST_SCRIPT_GENERATE", "6"))
@@ -191,6 +202,8 @@ else:
     RATE_LIMIT_ENABLED = _rate_limit_enabled_env.lower() == "true"
 RATE_LIMIT_AUTH_REQUESTS = int(os.getenv("RATE_LIMIT_AUTH_REQUESTS", "15"))
 RATE_LIMIT_HEAVY_REQUESTS = int(os.getenv("RATE_LIMIT_HEAVY_REQUESTS", "30"))
+RATE_LIMIT_ANALYTICS_REQUESTS = int(os.getenv("RATE_LIMIT_ANALYTICS_REQUESTS", "120"))
+RATE_LIMIT_ANALYTICS_MAX_BODY_BYTES = int(os.getenv("RATE_LIMIT_ANALYTICS_MAX_BODY_BYTES", "8192"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 PROVIDER_RETRY_ATTEMPTS = max(1, int(os.getenv("PROVIDER_RETRY_ATTEMPTS", "2")))
 PROVIDER_RETRY_BACKOFF_SECONDS = float(os.getenv("PROVIDER_RETRY_BACKOFF_SECONDS", "0.25"))
@@ -209,20 +222,55 @@ def validate_external_service_config() -> None:
 
     errors: list[str] = []
 
-    if SCRIPT_PROVIDER == "openai" and not OPENAI_API_KEY.strip():
-        errors.append("SCRIPT_PROVIDER=openai requires OPENAI_API_KEY.")
-    if IMAGE_PROVIDER == "openai" and not OPENAI_API_KEY.strip():
-        errors.append("IMAGE_PROVIDER=openai requires OPENAI_API_KEY.")
-    if TTS_PROVIDER == "elevenlabs" and not ELEVENLABS_API_KEY.strip():
-        errors.append("TTS_PROVIDER=elevenlabs requires ELEVENLABS_API_KEY.")
-    if RUNWAY_VIDEO_ENABLED and not RUNWAY_API_KEY.strip():
-        errors.append("RUNWAY_VIDEO_ENABLED=true requires RUNWAY_API_KEY.")
+    if not XAI_API_KEY.strip():
+        errors.append("XAI_API_KEY is required for the xAI/Grok workflow.")
+
+    if not AUTH_REQUIRED:
+        errors.append("AUTH_REQUIRED must be enabled in production.")
+
+    if not OWNER_EMAIL_ALLOWLIST:
+        errors.append("OWNER_EMAIL_ALLOWLIST must be set in production.")
+
+    normalized_origins = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
+    if not normalized_origins:
+        errors.append("ALLOWED_ORIGINS must contain at least one origin in production.")
+    if "*" in normalized_origins:
+        errors.append("ALLOWED_ORIGINS must not include wildcard origins in production.")
+    if any("localhost" in origin or "127.0.0.1" in origin for origin in normalized_origins):
+        errors.append("ALLOWED_ORIGINS must not include local origins in production.")
+
+    if not RATE_LIMIT_ENABLED:
+        errors.append("RATE_LIMIT_ENABLED must be true in production.")
+    if RATE_LIMIT_ANALYTICS_REQUESTS < 1:
+        errors.append("RATE_LIMIT_ANALYTICS_REQUESTS must be at least 1.")
+    if RATE_LIMIT_ANALYTICS_MAX_BODY_BYTES < 1024:
+        errors.append("RATE_LIMIT_ANALYTICS_MAX_BODY_BYTES must be at least 1024.")
+
+    if len(JWT_SECRET.strip()) < 32:
+        errors.append("JWT_SECRET should be at least 32 characters long in production.")
+
+    if len(ADMIN_PASSWORD.strip()) < 12:
+        errors.append("ADMIN_PASSWORD should be at least 12 characters long in production.")
+
+    if len(ADMIN_DASHBOARD_PASSWORD.strip()) < 12:
+        errors.append("ADMIN_DASHBOARD_PASSWORD should be at least 12 characters long in production.")
+
+    if ADMIN_2FA_ENABLED and not ADMIN_2FA_TOTP_SECRET:
+        errors.append("ADMIN_2FA_TOTP_SECRET is required when ADMIN_2FA_ENABLED is true.")
+
+    if STORAGE_BACKEND == "s3":
+        if S3_ACCESS_KEY.strip() in {"", "minioadmin"}:
+            errors.append("S3_ACCESS_KEY must be set to a non-default value for S3 storage.")
+        if S3_SECRET_KEY.strip() in {"", "minioadmin"}:
+            errors.append("S3_SECRET_KEY must be set to a non-default value for S3 storage.")
 
     any_stripe_price = any(
         [
             STRIPE_PRICE_ID_MODERATE.strip(),
             STRIPE_PRICE_ID_PRO.strip(),
             STRIPE_PRICE_ID_STUDIO.strip(),
+            FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID.strip(),
+            FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID.strip(),
         ]
     )
     if any_stripe_price and not STRIPE_SECRET_KEY.strip():

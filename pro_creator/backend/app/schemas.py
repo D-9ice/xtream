@@ -1,7 +1,7 @@
-from datetime import datetime
-from typing import List, Optional
+from datetime import date, datetime
+from typing import Any, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ProjectCreateRequest(BaseModel):
@@ -47,6 +47,7 @@ class ScriptRequest(BaseModel):
     topic: str
     duration_minutes: float = 3
     tone: str = "neutral"
+    genre: Optional[str] = None
 
 
 class ScriptImportRequest(BaseModel):
@@ -73,7 +74,6 @@ class VoiceRequest(BaseModel):
     project_id: str
     text: str
     voice_profile: str = "default"
-    tts_provider: Optional[str] = None
 
 
 class VoiceResponse(BaseModel):
@@ -85,7 +85,6 @@ class CharacterVoiceProfile(BaseModel):
     character_id: str
     display_name: str
     voice_profile: str = "default"
-    tts_provider: Optional[str] = None
     voice_id: Optional[str] = None
 
 
@@ -98,7 +97,6 @@ class DialogueLine(BaseModel):
     text: str
     pause_ms: int = 250
     voice_profile: Optional[str] = None
-    tts_provider: Optional[str] = None
     voice_id: Optional[str] = None
 
 
@@ -110,7 +108,6 @@ class DialogueSceneRequest(BaseModel):
 class DialogueRenderRequest(BaseModel):
     project_id: str
     scenes: List[DialogueSceneRequest]
-    default_tts_provider: Optional[str] = None
     write_scene_audio_paths: bool = True
 
 
@@ -148,7 +145,6 @@ class ImageResponse(BaseModel):
 
 class VideoRequest(BaseModel):
     project_id: str
-    render_provider: str = "ffmpeg"  # ffmpeg | runway_gen4_turbo | runway_gen4_5
 
 
 class VideoResponse(BaseModel):
@@ -235,6 +231,68 @@ class ExportStatusResponse(BaseModel):
     exports: List[ExportStatusEntry]
 
 
+class SocialAccountConnectionRequest(BaseModel):
+    connection_id: Optional[str] = None
+    platform: str
+    account_label: str
+    account_identifier: Optional[str] = None
+    access_token: Optional[str] = None
+    access_token_secret: Optional[str] = None
+    refresh_token: Optional[str] = None
+    client_key: Optional[str] = None
+    client_secret: Optional[str] = None
+    token_expires_at: Optional[datetime] = None
+    scopes: List[str] = Field(default_factory=list)
+    metadata: dict[str, str] = Field(default_factory=dict)
+    enabled: bool = True
+
+
+class SocialAccountConnectionResponse(BaseModel):
+    connection_id: str
+    platform: str
+    account_label: str
+    account_identifier: Optional[str] = None
+    scopes: List[str] = Field(default_factory=list)
+    metadata: dict[str, str] = Field(default_factory=dict)
+    enabled: bool = True
+    token_expires_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SocialAccountConnectionListResponse(BaseModel):
+    items: List[SocialAccountConnectionResponse]
+
+
+class SocialPublishRequest(BaseModel):
+    project_id: str
+    connection_ids: List[str] = Field(default_factory=list)
+    message: Optional[str] = None
+    title: Optional[str] = None
+
+
+class SocialPublishJobResponse(BaseModel):
+    job_id: str
+    project_id: str
+    connection_id: str
+    platform: str
+    status: str
+    remote_post_id: Optional[str] = None
+    published_url: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    published_at: Optional[datetime] = None
+
+
+class SocialPublishJobListResponse(BaseModel):
+    items: List[SocialPublishJobResponse]
+
+
+class SocialDeleteResponse(BaseModel):
+    deleted: bool
+
+
 class EditByTextRequest(BaseModel):
     project_id: str
     remove_ranges: List[List[float]]
@@ -311,6 +369,12 @@ class OrchestrationQueueRequest(BaseModel):
     topic: Optional[str] = None
     duration_minutes: float = 3
     tone: str = "neutral"
+    genre: Optional[str] = None
+    titles: List[str] = Field(default_factory=list)
+    short_description: Optional[str] = None
+    start_credits: Optional[str] = None
+    end_credits: Optional[str] = None
+    publish_message: Optional[str] = None
     voice_text: Optional[str] = None
     image_prompt: Optional[str] = None
     export_preset: str = "social-vertical"
@@ -378,6 +442,11 @@ class CreditBalanceResponse(BaseModel):
     credits_used_total: int
     renewal_date: Optional[datetime] = None
     extra_character_slots: int = 0
+    owner_mode_enabled: bool = False
+    factory_mode_status: str = "inactive"
+    factory_mode_access: str = "none"
+    factory_mode_renewal_date: Optional[datetime] = None
+    factory_mode_purchased_at: Optional[datetime] = None
     character_slots: "CharacterSlotSummaryResponse"
 
 
@@ -412,12 +481,17 @@ class CreditsRefundRequest(BaseModel):
 class CreditPlan(BaseModel):
     id: str
     name: str
+    kind: str = "credits"
     credits: int
     price_usd: int
     base_character_slots: int
     popular: bool = False
     stripe_price_id: Optional[str] = None
+    checkout_providers: List[str] = Field(default_factory=list)
     checkout_enabled: bool = False
+    access_mode: Optional[str] = None
+    access_days: Optional[int] = None
+    description: Optional[str] = None
 
 
 class CreditPlanListResponse(BaseModel):
@@ -426,15 +500,73 @@ class CreditPlanListResponse(BaseModel):
 
 class CreditsPurchaseRequest(BaseModel):
     plan_id: str
+    provider: str = "stripe"
 
 
 class CharacterSlotPurchaseRequest(BaseModel):
     pack_count: int = 1
 
 
-class StripeCheckoutSessionResponse(BaseModel):
+class BillingCheckoutSessionResponse(BaseModel):
+    provider: str = "stripe"
     session_id: str
     checkout_url: str
+
+
+class StripeCheckoutSessionResponse(BillingCheckoutSessionResponse):
+    provider: str = "stripe"
+
+
+class BillingReceiptItem(BaseModel):
+    receipt_id: int
+    created_at: datetime
+    kind: str
+    action: Optional[str] = None
+    amount: int
+    reason: Optional[str] = None
+    reference_id: Optional[str] = None
+    provider: Optional[str] = None
+    balance_after: int
+    reserved_after: int
+    plan_id: Optional[str] = None
+    plan_kind: Optional[str] = None
+    access_mode: Optional[str] = None
+    purchase_label: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class BillingReceiptListResponse(BaseModel):
+    items: List[BillingReceiptItem]
+
+
+class BillingReceiptDeleteResponse(BaseModel):
+    deleted: bool
+    receipt_id: int
+    deleted_permanently: bool = False
+
+
+class BillingTransactionRecordItem(BaseModel):
+    record_id: int
+    created_at: datetime
+    kind: str
+    action: Optional[str] = None
+    amount: int
+    reason: Optional[str] = None
+    reference_id: Optional[str] = None
+    provider: Optional[str] = None
+    balance_after: int
+    reserved_after: int
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class BillingTransactionRecordListResponse(BaseModel):
+    items: List[BillingTransactionRecordItem]
+
+
+class BillingTransactionRecordClearResponse(BaseModel):
+    deleted: bool
+    deleted_count: int
+    deleted_ids: List[int]
 
 
 class AdminSubscriptionUpdateRequest(BaseModel):
@@ -443,14 +575,28 @@ class AdminSubscriptionUpdateRequest(BaseModel):
     credits_delta: Optional[int] = None
     credits_balance: Optional[int] = None
     renewal_date: Optional[datetime] = None
+    factory_mode_access: Optional[str] = None
+    factory_mode_renewal_date: Optional[datetime] = None
 
 
 class AdminSubscriptionListResponse(BaseModel):
     items: List[CreditBalanceResponse]
 
 
+class AdminUserDeleteResponse(BaseModel):
+    deleted: bool
+    email: str
+
+
+class AdminUserBulkDeleteResponse(BaseModel):
+    deleted_count: int
+    deleted_emails: List[str]
+
+
 class BillingPricingSettingsResponse(BaseModel):
     plans: List[CreditPlan]
+    owner_mode_enabled: bool
+    receipts_live_mode: bool
     free_base_character_slots: int
     character_slot_addon_size: int
     character_slot_addon_cost_credits: int
@@ -469,6 +615,12 @@ class AdminBillingSettingsUpdateRequest(BaseModel):
     studio_price_usd: int
     studio_base_character_slots: int
     studio_stripe_price_id: Optional[str] = None
+    factory_one_time_price_usd: int
+    factory_one_time_stripe_price_id: Optional[str] = None
+    factory_subscription_price_usd: int
+    factory_subscription_stripe_price_id: Optional[str] = None
+    owner_mode_enabled: bool
+    receipts_live_mode: bool
     free_base_character_slots: int
     character_slot_addon_size: int
     character_slot_addon_cost_credits: int
@@ -506,6 +658,22 @@ class WorkflowProjectCreateRequest(BaseModel):
     target_duration_minutes: int = 3
 
 
+class WorkflowAutoCreateCharacterRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    role_type: str = Field(default="supporting", max_length=40)
+    description: Optional[str] = Field(default=None, max_length=500)
+
+
+class WorkflowAutoCreateRequest(BaseModel):
+    title: str
+    duration_minutes: int = 3
+    genre: Optional[str] = None
+    short_description: Optional[str] = None
+    start_credits: Optional[str] = None
+    end_credits: Optional[str] = None
+    custom_characters: List[WorkflowAutoCreateCharacterRequest] = Field(default_factory=list)
+
+
 class WorkflowProjectUpdateRequest(BaseModel):
     title: Optional[str] = None
     idea_prompt: Optional[str] = None
@@ -519,8 +687,11 @@ class WorkflowProjectResponse(BaseModel):
     topic: str
     status: str
     idea_prompt: Optional[str] = None
+    short_description: Optional[str] = None
     genre: Optional[str] = None
     target_duration_minutes: Optional[int] = None
+    start_credits: Optional[str] = None
+    end_credits: Optional[str] = None
     workflow_state: str
     script_draft: Optional[str] = None
     script_approved: Optional[str] = None
@@ -635,7 +806,116 @@ class WorkflowProductionStartResponse(BaseModel):
     video_path: Optional[str] = None
 
 
+class WorkflowAutoCreateResponse(BaseModel):
+    project: WorkflowProjectResponse
+    status: WorkflowProductionStatusResponse
+    video_path: Optional[str] = None
+    requested_duration_minutes: int
+    applied_duration_minutes: int
+    max_affordable_duration_minutes: int
+    estimated_credits: int
+
+
 class WorkflowLibraryResponse(BaseModel):
     characters: List[WorkflowCharacterResponse]
     scripts: List[WorkflowProjectResponse]
     videos: List[WorkflowProjectResponse]
+
+
+class WorkflowFeedbackRequest(BaseModel):
+    subject: str = Field(min_length=3, max_length=120)
+    message: str = Field(min_length=10, max_length=5000)
+    page: Optional[str] = Field(default=None, max_length=120)
+    project_id: Optional[str] = Field(default=None, max_length=120)
+
+
+class WorkflowFeedbackResponse(BaseModel):
+    feedback_id: str
+    subject: str
+    page: Optional[str] = None
+    project_id: Optional[str] = None
+    email_sent: bool = False
+    created_at: datetime
+
+
+class CommunityPostCreateRequest(BaseModel):
+    subject: str = Field(min_length=3, max_length=120)
+    message: str = Field(min_length=10, max_length=5000)
+
+
+class CommunityPostResponse(BaseModel):
+    post_id: str
+    subject: str
+    message: str
+    author_label: str
+    author_email: str
+    applause_count: int = 0
+    created_at: datetime
+
+
+class CommunityPostListResponse(BaseModel):
+    items: list[CommunityPostResponse]
+
+
+class VisitEventCreateRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    path: str = Field(min_length=1, max_length=512)
+    referrer: Optional[str] = Field(default=None, max_length=512)
+    user_agent: Optional[str] = Field(default=None, max_length=512)
+    device_hint: Optional[str] = Field(default=None, max_length=40)
+    country_hint: Optional[str] = Field(default=None, max_length=40)
+    page_title: Optional[str] = Field(default=None, max_length=200)
+    session_id: Optional[str] = Field(default=None, max_length=120)
+    event_type: str = Field(default="page_view", max_length=40)
+    bot_hint: bool = False
+
+
+class VisitEventResponse(BaseModel):
+    visit_id: str
+    path: str
+    referrer: Optional[str] = None
+    device_type: Optional[str] = None
+    country_code: Optional[str] = None
+    page_title: Optional[str] = None
+    session_id: Optional[str] = None
+    event_type: str = "page_view"
+    is_bot: bool = False
+    bot_reason: Optional[str] = None
+    created_at: datetime
+
+
+class VisitAnalyticsTopPathResponse(BaseModel):
+    path: str
+    visits: int
+    human_visits: int
+    bot_visits: int
+
+
+class VisitAnalyticsBreakdownResponse(BaseModel):
+    label: str
+    visits: int
+    human_visits: int
+    bot_visits: int
+
+
+class VisitAnalyticsDailyPointResponse(BaseModel):
+    day: date
+    visits: int
+    human_visits: int
+    bot_visits: int
+
+
+class VisitAnalyticsSummaryResponse(BaseModel):
+    total_visits: int
+    human_visits: int
+    bot_visits: int
+    unique_sessions: int
+    unique_paths: int
+    visits_last_24h: int
+    visits_last_7d: int
+    top_paths: list[VisitAnalyticsTopPathResponse] = Field(default_factory=list)
+    top_devices: list[VisitAnalyticsBreakdownResponse] = Field(default_factory=list)
+    top_countries: list[VisitAnalyticsBreakdownResponse] = Field(default_factory=list)
+    recent_visits: list[VisitEventResponse] = Field(default_factory=list)
+    daily_visits: list[VisitAnalyticsDailyPointResponse] = Field(default_factory=list)

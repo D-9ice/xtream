@@ -53,6 +53,7 @@ def generate_script_endpoint(
             payload.tone,
             script_provider=script_provider,
             model_name=script_model,
+            genre=payload.genre,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Script generation failed: {exc}") from exc

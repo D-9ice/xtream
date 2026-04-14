@@ -6,8 +6,10 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.database import engine
+from app.config import PROJECTS_DIR
 from app.main import app
-from app.models import CharacterProfile, Project, ProjectCharacterPackage, ProjectScriptVersion
+from app.models import CharacterProfile, OrchestrationJob, Project, ProjectCharacterPackage, ProjectScriptVersion, User, UserFeedback
+import app.routers.workflow as workflow_router
 from app.storage import project_key, storage_client
 from app.tenant import reset_current_tenant_id, set_current_tenant_id
 import app.services.workflow_service as workflow_service
@@ -118,6 +120,455 @@ def test_guided_workflow_gates_script_characters_and_production() -> None:
     )
 
 
+def test_workflow_library_drops_blank_character_slots() -> None:
+    tenant_id = f"blank-character-cleanup-{uuid4().hex[:8]}"
+    client = TestClient(app, headers={"X-Tenant-ID": tenant_id})
+
+    with Session(engine) as session:
+        session.add(
+            CharacterProfile(
+                tenant_id=tenant_id,
+                name="",
+                role_type="main",
+                description="",
+                visual_prompt_base="",
+                negative_prompt_base="",
+                consistency_seed="blank-seed",
+                identity_hash="blank-hash",
+            )
+        )
+        session.add(
+            CharacterProfile(
+                tenant_id=tenant_id,
+                name="Valid Character",
+                role_type="supporting",
+                description="Keeps the library list intact.",
+                visual_prompt_base="",
+                negative_prompt_base="",
+                consistency_seed="valid-seed",
+                identity_hash="valid-hash",
+            )
+        )
+        session.commit()
+
+    library_res = client.get("/workflow/library")
+    assert library_res.status_code == 200
+    characters = library_res.json()["characters"]
+    assert [character["name"] for character in characters] == ["Valid Character"]
+
+    with Session(engine) as session:
+        remaining = session.exec(
+            select(CharacterProfile).where(CharacterProfile.tenant_id == tenant_id)
+        ).all()
+        assert [profile.name for profile in remaining] == ["Valid Character"]
+
+
+def test_workflow_auto_create_runs_full_pipeline_from_title_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = workflow_client()
+
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_script",
+        lambda topic, duration_minutes, tone, script_provider=None, model_name=None, genre=None: {
+            "full_script": "Scene 1: A skyline rescue begins.\nScene 2: The rescue lands safely.",
+            "scenes": [
+                {"id": 1, "text": "Scene 1: A skyline rescue begins."},
+                {"id": 2, "text": "Scene 2: The rescue lands safely."},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_image_bytes",
+        lambda **_kwargs: (b"fake-image", "image/png"),
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_image_for_scene",
+        lambda project_id, scene_id, prompt, style: {
+            "image_path": f"/tmp/{project_id}-{scene_id}.png"
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_voice_for_scene",
+        lambda project_id, scene_id, text, voice_profile="default": {
+            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "render_video",
+        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+    )
+
+    auto_res = client.post(
+        "/workflow/auto-create",
+        json={"title": "Skyline Rescue", "duration_minutes": 45, "genre": "Adventure"},
+    )
+    assert auto_res.status_code == 200
+    payload = auto_res.json()
+
+    assert payload["project"]["title"] == "Skyline Rescue"
+    assert payload["project"]["genre"] == "Adventure"
+    assert payload["project"]["topic"] == "Skyline Rescue\n\nGenre: Adventure"
+    assert payload["project"]["workflow_state"] == "video_completed"
+    assert payload["project"]["target_duration_minutes"] == 45
+    assert payload["project"]["script_approved"] is not None
+    assert payload["project"]["character_package_approved"] is True
+    assert len(payload["project"]["selected_character_ids"]) >= 1
+    assert payload["status"]["workflow_state"] == "video_completed"
+    assert payload["status"]["queue_status"] == "complete"
+    assert payload["requested_duration_minutes"] == 45
+    assert payload["applied_duration_minutes"] == 45
+    assert payload["max_affordable_duration_minutes"] >= 45
+    assert payload["estimated_credits"] >= 1
+    assert payload["video_path"] == payload["project"]["final_video_url"]
+
+    status_res = client.get(f"/workflow/projects/{payload['project']['project_id']}/production-status")
+    assert status_res.status_code == 200
+    assert status_res.json()["workflow_state"] == "video_completed"
+
+
+def test_workflow_auto_create_uses_custom_cast_and_credits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = workflow_client()
+    generate_character_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_script",
+        lambda topic, duration_minutes, tone, script_provider=None, model_name=None, genre=None: {
+            "full_script": "Scene 1: The studio lights rise.\nScene 2: Credits roll into the finale.",
+            "scenes": [
+                {"id": 1, "text": "Scene 1: The studio lights rise."},
+                {"id": 2, "text": "Scene 2: Credits roll into the finale."},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_image_bytes",
+        lambda **_kwargs: (b"fake-image", "image/png"),
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_image_for_scene",
+        lambda project_id, scene_id, prompt, style: {
+            "image_path": f"/tmp/{project_id}-{scene_id}.png"
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_voice_for_scene",
+        lambda project_id, scene_id, text, voice_profile="default": {
+            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "render_video",
+        lambda project_id: {"video_path": f"https://example.test/{project_id}-custom.mp4"},
+    )
+
+    def fail_generate_character_profile(**kwargs):
+        generate_character_calls.append(kwargs)
+        raise AssertionError("AI character generation should be skipped when custom characters are supplied")
+
+    monkeypatch.setattr(workflow_service, "generate_character_profile", fail_generate_character_profile)
+
+    auto_res = client.post(
+        "/workflow/auto-create",
+        json={
+            "title": "Studio Premiere",
+            "duration_minutes": 30,
+            "genre": "Drama",
+            "short_description": "A compact studio-style launch piece.",
+            "start_credits": "Starring\nLead Actor\nDirected by X'tream",
+            "end_credits": "Thanks for watching\nProduced by X'tream",
+            "custom_characters": [
+                {
+                    "name": "Ava Nova",
+                    "role_type": "main",
+                    "description": "Confident producer leading the feature launch.",
+                }
+            ],
+        },
+    )
+    assert auto_res.status_code == 200
+    payload = auto_res.json()
+
+    assert payload["project"]["title"] == "Studio Premiere"
+    assert payload["project"]["short_description"] == "A compact studio-style launch piece."
+    assert payload["project"]["start_credits"] == "Starring\nLead Actor\nDirected by X'tream"
+    assert payload["project"]["end_credits"] == "Thanks for watching\nProduced by X'tream"
+    assert payload["project"]["workflow_state"] == "video_completed"
+    assert payload["project"]["final_video_url"] == payload["video_path"]
+    assert len(payload["project"]["selected_character_ids"]) == 1
+    assert generate_character_calls == []
+
+
+def test_auto_create_project_allows_real_events_without_characters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_script",
+        lambda topic, duration_minutes, tone, script_provider=None, model_name=None, genre=None: {
+            "full_script": "Scene 1: Narration leads the archive cut.",
+            "scenes": [
+                {"id": 1, "text": "Scene 1: Narration leads the archive cut."},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_image_bytes",
+        lambda **_kwargs: (b"fake-image", "image/png"),
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_image_for_scene",
+        lambda project_id, scene_id, prompt, style: {
+            "image_path": f"/tmp/{project_id}-{scene_id}.png"
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_voice_for_scene",
+        lambda project_id, scene_id, text, voice_profile="default": {
+            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "render_video",
+        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+    )
+
+    with Session(engine) as session:
+        user = User(email=f"real-events-{uuid4().hex[:8]}@example.com", hashed_password="hashed", role="admin")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        result = workflow_service.auto_create_project(
+            session=session,
+            current_user=user,
+            title="Archive Minute",
+            duration_minutes=5,
+            genre="Real Events",
+            short_description="A factual cut about a documented public event.",
+        )
+        assert result.project.genre == "Real Events"
+        assert result.project.workflow_state == "video_completed"
+        assert result.project.character_package_approved is True
+        assert result.project.selected_character_ids == []
+
+
+def test_auto_create_project_rejects_factory_only_series_genre_outside_factory_mode() -> None:
+    with pytest.raises(ValueError, match="Factory Mode only"):
+        workflow_service.auto_create_project(
+            session=None,  # type: ignore[arg-type]
+            current_user=None,  # type: ignore[arg-type]
+            title="Episode One",
+            duration_minutes=10,
+            genre="Series Video Maker (Factory Mode Only)",
+        )
+
+
+def test_owner_mode_allows_locked_genres_in_auto_create(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(workflow_service, "has_owner_mode_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_script",
+        lambda topic, duration_minutes, tone, script_provider=None, model_name=None, genre=None: {
+            "full_script": "Scene 1: Owner mode unlocks the gate.",
+            "scenes": [
+                {"id": 1, "text": "Scene 1: Owner mode unlocks the gate."},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_image_bytes",
+        lambda **_kwargs: (b"fake-image", "image/png"),
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_image_for_scene",
+        lambda project_id, scene_id, prompt, style: {
+            "image_path": f"/tmp/{project_id}-{scene_id}.png"
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "generate_voice_for_scene",
+        lambda project_id, scene_id, text, voice_profile="default": {
+            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
+        },
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "render_video",
+        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+    )
+
+    with Session(engine) as session:
+        user = User(email=f"owner-{uuid4().hex[:8]}@example.com", hashed_password="hashed", role="admin")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        real_events_result = workflow_service.auto_create_project(
+            session=session,
+            current_user=user,
+            title="Archive Minute",
+            duration_minutes=5,
+            genre="Real Events",
+        )
+        assert real_events_result.project.genre == "Real Events"
+        assert real_events_result.project.workflow_state == "video_completed"
+
+        series_result = workflow_service.auto_create_project(
+            session=session,
+            current_user=user,
+            title="Episode One",
+            duration_minutes=5,
+            genre="Series Video Maker (Factory Mode Only)",
+        )
+        assert series_result.project.genre == "Series Video Maker (Factory Mode Only)"
+        assert series_result.project.workflow_state == "video_completed"
+
+
+def test_factory_mode_runs_titles_and_publishes_each_project(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class _FakeSubscription:
+        credits_balance = 1000
+
+    class _FakeProject:
+        def __init__(self, project_id: str, title: str) -> None:
+            self.project_id = project_id
+            self.title = title
+            self.final_video_url = f"https://example.test/{project_id}.mp4"
+
+    class _FakeAutoCreateResponse:
+        def __init__(self, project_id: str, title: str) -> None:
+            self.project = _FakeProject(project_id, title)
+            self.video_path = self.project.final_video_url
+
+    monkeypatch.setattr(workflow_service, "FACTORY_MODE_ENABLED", True)
+    monkeypatch.setattr(
+        workflow_service,
+        "has_factory_mode_access",
+        lambda _subscription, **_kwargs: True,
+    )
+    monkeypatch.setattr(workflow_service, "get_or_create_subscription", lambda _session, _user: _FakeSubscription())
+
+    def fake_auto_create_project(**kwargs):
+        calls.append(
+            {
+                "kind": "auto_create",
+                "title": kwargs["title"],
+                "genre": kwargs.get("genre"),
+                "allow_factory_mode_genre": kwargs.get("allow_factory_mode_genre"),
+            }
+        )
+        return _FakeAutoCreateResponse(f"factory-{len(calls)}", kwargs["title"])
+
+    def fake_publish_to_all_connections(**kwargs):
+        calls.append({"kind": "publish", "project_id": kwargs["project_id"], "message": kwargs["message"]})
+        return [type("Job", (), {"job_id": f"pub-{len(calls)}"})()]
+
+    monkeypatch.setattr(workflow_service, "auto_create_project", fake_auto_create_project)
+    monkeypatch.setattr(workflow_service, "publish_to_all_connections", fake_publish_to_all_connections)
+
+    with Session(engine) as session:
+        user = User(email=f"factory-{uuid4().hex[:8]}@example.com", hashed_password="hashed", role="admin")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        job = OrchestrationJob(
+            tenant_id="default",
+            project_id="factory-mode",
+            kind="factory_mode",
+            payload=json.dumps(
+                {
+                    "user_id": user.id,
+                    "titles": ["First Title", "Second Title"],
+                    "duration_minutes": 10,
+                    "genre": "Series Video Maker (Factory Mode Only)",
+                }
+            ),
+        )
+        result = workflow_service.execute_factory_mode_job(session=session, job=job)
+
+    assert result["processed_titles"] == 2
+    assert [item["kind"] for item in calls] == ["auto_create", "publish", "auto_create", "publish"]
+    assert [item["title"] for item in calls if item["kind"] == "auto_create"] == ["First Title", "Second Title"]
+    assert [
+        item["genre"]
+        for item in calls
+        if item["kind"] == "auto_create"
+    ] == ["Series Video Maker (Factory Mode Only)", "Series Video Maker (Factory Mode Only)"]
+    assert [
+        item["allow_factory_mode_genre"]
+        for item in calls
+        if item["kind"] == "auto_create"
+    ] == [True, True]
+    assert [item["project_id"] for item in calls if item["kind"] == "publish"] == ["factory-1", "factory-3"]
+
+
+def test_workflow_feedback_submission_persists_and_emails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = workflow_client()
+    calls: list[dict[str, object]] = []
+
+    def capture_feedback_email(**kwargs):
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(workflow_router, "send_feedback_email", capture_feedback_email)
+
+    response = client.post(
+        "/workflow/feedback",
+        json={
+            "subject": "Feature suggestion",
+            "message": "Please add a faster publish preview and more timeline controls.",
+            "page": "publish",
+            "project_id": "project-1",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["subject"] == "Feature suggestion"
+    assert payload["page"] == "publish"
+    assert payload["project_id"] == "project-1"
+    assert payload["email_sent"] is True
+
+    assert calls
+    assert calls[0]["subject"] == "Feature suggestion"
+    assert calls[0]["page"] == "publish"
+    assert calls[0]["project_id"] == "project-1"
+
+    with Session(engine) as session:
+        feedback = session.exec(
+            select(UserFeedback).where(UserFeedback.feedback_id == payload["feedback_id"])
+        ).first()
+        assert feedback is not None
+        assert feedback.subject == "Feature suggestion"
+        assert feedback.message.startswith("Please add a faster publish preview")
+        assert feedback.email_sent is True
+
+
 def test_character_library_limit_blocks_create_generate_and_upload() -> None:
     client = workflow_client()
     tenant_headers = {"X-Tenant-ID": f"character-limit-{uuid4().hex[:8]}"}
@@ -148,6 +599,12 @@ def test_character_library_limit_blocks_create_generate_and_upload() -> None:
             "studio_price_usd": 119,
             "studio_base_character_slots": 15,
             "studio_stripe_price_id": "",
+            "factory_one_time_price_usd": 149,
+            "factory_one_time_stripe_price_id": "",
+            "factory_subscription_price_usd": 39,
+            "factory_subscription_stripe_price_id": "",
+            "owner_mode_enabled": False,
+            "receipts_live_mode": False,
             "free_base_character_slots": 1,
             "character_slot_addon_size": 5,
             "character_slot_addon_cost_credits": 50,
@@ -249,6 +706,12 @@ def test_character_library_limit_blocks_create_generate_and_upload() -> None:
             "studio_price_usd": 119,
             "studio_base_character_slots": 15,
             "studio_stripe_price_id": "",
+            "factory_one_time_price_usd": 149,
+            "factory_one_time_stripe_price_id": "",
+            "factory_subscription_price_usd": 39,
+            "factory_subscription_stripe_price_id": "",
+            "owner_mode_enabled": False,
+            "receipts_live_mode": False,
             "free_base_character_slots": 100,
             "character_slot_addon_size": 5,
             "character_slot_addon_cost_credits": 50,
@@ -680,6 +1143,77 @@ def test_workflow_production_retry_requeues_failed_job(monkeypatch: pytest.Monke
     assert completed_status["queue_status"] == "complete"
     assert completed_status["final_video_url"] == f"https://example.test/{project_id}-retry.mp4"
     assert completed_status["can_retry"] is False
+
+
+def test_workflow_production_grok_mode_skips_scene_assets(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = workflow_client()
+
+    monkeypatch.setattr(workflow_service, "XAI_API_KEY", "xai-test")
+    monkeypatch.setattr(workflow_service, "resolve_video_provider", lambda: "grok_imagine")
+    monkeypatch.setattr(
+        workflow_service,
+        "render_video",
+        lambda project_id: {
+            "video_path": f"https://example.test/{project_id}-grok.mp4"
+        },
+    )
+
+    def _unexpected(*_args, **_kwargs):
+        raise AssertionError("legacy image/voice generation should be skipped in Grok mode")
+
+    monkeypatch.setattr(workflow_service, "generate_image_for_scene", _unexpected)
+    monkeypatch.setattr(workflow_service, "generate_voice_for_scene", _unexpected)
+
+    create_res = client.post(
+        "/workflow/projects",
+        json={
+            "title": "Grok Mode Test",
+            "idea_prompt": "A hero speaks while the scene continues seamlessly.",
+            "genre": "Sci-Fi",
+            "target_duration_minutes": 2,
+        },
+    )
+    assert create_res.status_code == 200
+    project_id = create_res.json()["project_id"]
+
+    client.post(
+        f"/workflow/projects/{project_id}/generate-script",
+        json={
+            "title": "Grok Mode Test",
+            "idea_prompt": "A hero speaks while the scene continues seamlessly.",
+            "genre": "Sci-Fi",
+            "target_duration_minutes": 2,
+            "tone": "cinematic",
+        },
+    )
+    client.post(f"/workflow/projects/{project_id}/approve-script")
+    create_character_res = client.post(
+        f"/workflow/projects/{project_id}/characters/create",
+        json={
+            "name": "Hero",
+            "role_type": "main",
+            "description": "Brave lead character",
+            "select_after_create": True,
+        },
+    )
+    selected_ids = create_character_res.json()["selected_character_ids"]
+    client.post(
+        f"/workflow/projects/{project_id}/approve-characters",
+        json={"selected_character_ids": selected_ids},
+    )
+
+    start_res = client.post(f"/workflow/projects/{project_id}/start-production")
+    assert start_res.status_code == 200
+
+    process_res = client.post("/orchestration/queue/process?limit=1")
+    assert process_res.status_code == 200
+    assert process_res.json()["failed"] == []
+
+    status_res = client.get(f"/workflow/projects/{project_id}/production-status")
+    assert status_res.status_code == 200
+    status = status_res.json()
+    assert status["workflow_state"] == "video_completed"
+    assert status["final_video_url"] == f"https://example.test/{project_id}-grok.mp4"
 
 
 def test_workflow_character_creation_preserves_canonical_image_and_identity_lock() -> None:
@@ -1168,6 +1702,48 @@ def test_archive_project_hides_it_from_active_project_list() -> None:
     get_res = client.get(f"/workflow/projects/{project_id}")
     assert get_res.status_code == 200
     assert get_res.json()["archived_at"] is not None
+
+
+def test_delete_all_workflow_projects_clears_records_and_files() -> None:
+    client = workflow_client()
+
+    create_res_one = client.post(
+        "/workflow/projects",
+        json={
+            "title": "Delete One",
+            "idea_prompt": "First test project.",
+            "genre": "Drama",
+            "target_duration_minutes": 2,
+        },
+    )
+    create_res_two = client.post(
+        "/workflow/projects",
+        json={
+            "title": "Delete Two",
+            "idea_prompt": "Second test project.",
+            "genre": "Drama",
+            "target_duration_minutes": 2,
+        },
+    )
+    assert create_res_one.status_code == 200
+    assert create_res_two.status_code == 200
+    project_id_one = create_res_one.json()["project_id"]
+    project_id_two = create_res_two.json()["project_id"]
+
+    assert (PROJECTS_DIR / project_id_one).exists()
+    assert (PROJECTS_DIR / project_id_two).exists()
+
+    delete_res = client.delete("/workflow/projects")
+    assert delete_res.status_code == 200
+    payload = delete_res.json()
+    assert payload["deleted_count"] == 2
+    assert set(payload["deleted_ids"]) == {project_id_one, project_id_two}
+
+    list_res = client.get("/workflow/projects")
+    assert list_res.status_code == 200
+    assert list_res.json() == []
+    assert not (PROJECTS_DIR / project_id_one).exists()
+    assert not (PROJECTS_DIR / project_id_two).exists()
 
 
 def test_api_project_alias_supports_guided_workflow_endpoints(

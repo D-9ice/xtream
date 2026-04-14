@@ -66,7 +66,9 @@ import {
   upsertCharacterVoiceProfile,
 } from "../lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
+const XTREAM_LOGO_SRC = "/xtream-logo.png";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 const PROJECTS_BASE =
   process.env.NEXT_PUBLIC_PROJECTS_BASE ?? `${API_BASE}/projects`;
 
@@ -176,7 +178,6 @@ export default function HomePage() {
   const [voiceText, setVoiceText] = useState(
     "Narrate the project in a calm, professional tone."
   );
-  const [voiceProvider, setVoiceProvider] = useState("xtts");
   const [voiceProfiles, setVoiceProfiles] = useState<string[]>(["default"]);
   const [selectedVoiceProfile, setSelectedVoiceProfile] = useState("default");
   const [voiceResult, setVoiceResult] = useState<VoiceResponse | null>(null);
@@ -210,9 +211,6 @@ export default function HomePage() {
   const [imageResult, setImageResult] = useState<ImageResponse | null>(null);
 
   const [videoResult, setVideoResult] = useState<VideoResponse | null>(null);
-  const [videoRenderProvider, setVideoRenderProvider] = useState<
-    "ffmpeg" | "runway_gen4_turbo" | "runway_gen4_5"
-  >("ffmpeg");
   const [videoImportUrl, setVideoImportUrl] = useState("");
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [thumbnailResult, setThumbnailResult] = useState<ThumbnailResponse | null>(null);
@@ -442,10 +440,10 @@ export default function HomePage() {
     }
     const onKeyDown = (event: KeyboardEvent) => {
       const isAccel = event.metaKey || event.ctrlKey;
-      if (!isAccel || !event.shiftKey) {
+      if (!isAccel || !event.shiftKey || !event.altKey) {
         return;
       }
-      if (event.key.toLowerCase() !== "a") {
+      if (event.code !== "KeyA") {
         return;
       }
       event.preventDefault();
@@ -459,7 +457,7 @@ export default function HomePage() {
     if (typeof window === "undefined") {
       return;
     }
-    const confirmed = window.confirm("Sign out of Pro Creator?");
+    const confirmed = window.confirm("Sign out of X'tream?");
     if (!confirmed) {
       return;
     }
@@ -909,7 +907,6 @@ export default function HomePage() {
         project_id: selectedProjectId,
         text: resolvedVoiceText,
         voice_profile: selectedVoiceProfile,
-        tts_provider: voiceProvider,
       });
       setVoiceResult(response);
       await refreshCredits();
@@ -932,7 +929,6 @@ export default function HomePage() {
         project_id: selectedProjectId,
         profile_name: voiceProfileName,
         file: voiceProfileFile,
-        tts_provider: voiceProvider,
       });
       setVoiceProfilePath(response.profile_path);
       setVoiceCloneStatus("Voice clone complete.");
@@ -962,7 +958,6 @@ export default function HomePage() {
         character_id: characterIdInput.trim(),
         display_name: characterNameInput.trim() || characterIdInput.trim(),
         voice_profile: characterVoiceProfileInput.trim() || "default",
-        tts_provider: voiceProvider,
       });
       setCharacterProfiles(updated);
       setCharacterIdInput("");
@@ -1007,7 +1002,6 @@ export default function HomePage() {
       const response = await renderDialogue({
         project_id: selectedProjectId,
         scenes: parsed,
-        default_tts_provider: voiceProvider,
         write_scene_audio_paths: true,
       });
       if (response.scenes.length > 0) {
@@ -1140,7 +1134,6 @@ export default function HomePage() {
     try {
       const response = await renderVideo({
         project_id: selectedProjectId,
-        render_provider: videoRenderProvider,
       });
       setVideoResult(response);
       setVideoPreviewUrl(resolveMediaUrl(response.video_path));
@@ -1569,6 +1562,7 @@ export default function HomePage() {
         ].map((tab) => (
           <button
             key={tab.key}
+            data-active-glow={enginesTab === tab.key ? "true" : undefined}
             className={`rounded-full border px-3 py-1 ${
               enginesTab === tab.key
                 ? "border-aurora/40 bg-aurora/10 text-aurora"
@@ -1730,21 +1724,12 @@ export default function HomePage() {
                 Generate
               </button>
             </div>
-            <label
-              className="text-xs uppercase tracking-wide text-slate-400"
-              htmlFor="voice-provider"
-            >
-              TTS provider
-            </label>
-            <select
-              id="voice-provider"
-              className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
-              value={voiceProvider}
-              onChange={(event) => setVoiceProvider(event.target.value)}
-            >
-              <option value="xtts">XTTS (self-hosted)</option>
-              <option value="elevenlabs">ElevenLabs</option>
-            </select>
+            <p className="text-xs uppercase tracking-wide text-slate-400">
+              Speech engine
+            </p>
+            <div className="mt-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200">
+              xAI speech
+            </div>
             <label
               className="text-xs uppercase tracking-wide text-slate-400"
               htmlFor="voice-profile"
@@ -2066,29 +2051,12 @@ export default function HomePage() {
               Render a full mp4 and review it below or in the project preview
               screen.
             </p>
-            <label
-              className="mt-3 block text-xs uppercase tracking-wide text-slate-400"
-              htmlFor="video-render-provider"
-            >
-              Render provider
-            </label>
-            <select
-              id="video-render-provider"
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
-              value={videoRenderProvider}
-              onChange={(event) =>
-                setVideoRenderProvider(
-                  event.target.value as
-                    | "ffmpeg"
-                    | "runway_gen4_turbo"
-                    | "runway_gen4_5"
-                )
-              }
-            >
-              <option value="ffmpeg">FFmpeg</option>
-              <option value="runway_gen4_turbo">Runway gen4_turbo</option>
-              <option value="runway_gen4_5">Runway gen4.5</option>
-            </select>
+            <p className="mt-3 text-xs uppercase tracking-wide text-slate-400">
+              Video engine
+            </p>
+            <div className="mt-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200">
+              Grok Imagine
+            </div>
             {videoResult ? (
               <p className="mt-2 text-xs text-slate-400">
                 Video ready: {videoResult.video_path}
@@ -2156,7 +2124,7 @@ export default function HomePage() {
                   }
                 >
                   <option value="classic">Classic thumbnail (from project media)</option>
-                  <option value="ai">AI thumbnail (OpenAI quality mode)</option>
+                  <option value="ai">AI thumbnail (xAI quality mode)</option>
                 </select>
                 <input
                   className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
@@ -2408,6 +2376,7 @@ export default function HomePage() {
         ].map((tab) => (
           <button
             key={tab.key}
+            data-active-glow={automationTab === tab.key ? "true" : undefined}
             className={`rounded-full border px-3 py-1 ${
               automationTab === tab.key
                 ? "border-aurora/40 bg-aurora/10 text-aurora"
@@ -2721,11 +2690,9 @@ export default function HomePage() {
     <div className="flex h-screen flex-col bg-midnight text-slate-100">
       <header className="border-b border-slate-800 bg-slate-950/70">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-4xl font-black tracking-wide text-white">
-              Pro Creator
-            </h1>
-            <p className="mt-1 text-sm uppercase tracking-[0.3em] text-slate-400">
+          <div className="flex flex-col">
+            <img className="h-[187px] w-auto -translate-y-[47px] object-contain" src={XTREAM_LOGO_SRC} alt="X'tream" />
+            <p className="relative -top-[110px] mt-[3px] text-sm font-bold uppercase tracking-[0.3em] text-white">
               Production Dashboard
             </p>
           </div>
@@ -3182,6 +3149,7 @@ export default function HomePage() {
               {panels.map((panel) => (
                 <button
                   key={panel.id}
+                  data-active-glow={activePanel === panel.id ? "true" : undefined}
                   className={`w-full rounded-lg border px-3 py-2 text-left text-xs font-semibold transition ${
                     activePanel === panel.id
                       ? "border-white bg-aurora/10 text-aurora"
@@ -3701,6 +3669,7 @@ export default function HomePage() {
                     ] as const).map((filter) => (
                       <button
                         key={filter.key}
+                        data-active-glow={logFilter === filter.key ? "true" : undefined}
                         className={`rounded-full border px-3 py-1 ${
                           logFilter === filter.key
                             ? "border-aurora/40 bg-aurora/10 text-aurora"

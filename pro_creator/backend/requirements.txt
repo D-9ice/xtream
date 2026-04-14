@@ -9,7 +9,6 @@ requests
 httpx
 pytest
 Pillow
-# openai-whisper is excluded from local Docker builds to avoid multi-GB GPU dependency pulls.
 boto3
 celery
 redis

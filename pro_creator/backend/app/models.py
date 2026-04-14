@@ -18,8 +18,11 @@ class Project(SQLModel, table=True):
     topic: str
     status: str = Field(default="created")
     idea_prompt: Optional[str] = None
+    short_description: Optional[str] = None
     genre: Optional[str] = None
     target_duration_minutes: Optional[int] = None
+    start_credits: Optional[str] = None
+    end_credits: Optional[str] = None
     workflow_state: str = Field(default="draft", index=True)
     script_draft: Optional[str] = None
     script_approved: Optional[str] = None
@@ -155,6 +158,10 @@ class SubscriptionAccount(SQLModel, table=True):
     credits_reserved: int = Field(default=0)
     credits_used_total: int = Field(default=0)
     extra_character_slots: int = Field(default=0)
+    factory_mode_status: str = Field(default="inactive")
+    factory_mode_access: str = Field(default="none")
+    factory_mode_renewal_date: Optional[datetime] = None
+    factory_mode_purchased_at: Optional[datetime] = None
     renewal_date: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
@@ -180,6 +187,18 @@ class CreditLedgerEntry(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now, index=True)
 
 
+class HiddenReceipt(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "ledger_entry_id", name="uq_hiddenreceipt_tenant_user_ledger"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    ledger_entry_id: int = Field(foreign_key="creditledgerentry.id", index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class AppSettings(SQLModel, table=True):
     """
     Local runtime settings that shouldn't require rebuilding containers.
@@ -197,6 +216,12 @@ class AppSettings(SQLModel, table=True):
     plan_studio_credits: int = Field(default=6000)
     plan_studio_price_usd: int = Field(default=119)
     plan_studio_stripe_price_id: Optional[str] = None
+    factory_one_time_price_usd: int = Field(default=149)
+    factory_one_time_stripe_price_id: Optional[str] = None
+    factory_subscription_price_usd: int = Field(default=39)
+    factory_subscription_stripe_price_id: Optional[str] = None
+    owner_mode_enabled: bool = Field(default=False)
+    billing_receipts_live_mode: bool = Field(default=False)
     free_character_slots: int = Field(default=100)
     moderate_character_slots: int = Field(default=5)
     pro_character_slots: int = Field(default=10)
@@ -205,3 +230,86 @@ class AppSettings(SQLModel, table=True):
     character_slot_addon_cost_credits: int = Field(default=50)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class SocialAccountConnection(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    connection_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
+    platform: str = Field(index=True)
+    account_label: str
+    account_identifier: Optional[str] = Field(default=None, index=True)
+    access_token_encrypted: str
+    access_token_secret_encrypted: Optional[str] = None
+    refresh_token_encrypted: Optional[str] = None
+    client_key_encrypted: Optional[str] = None
+    client_secret_encrypted: Optional[str] = None
+    token_expires_at: Optional[datetime] = None
+    scopes_json: str = "[]"
+    metadata_json: str = "{}"
+    enabled: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class SocialPublishJob(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    job_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
+    project_id: str = Field(index=True)
+    connection_id: str = Field(index=True)
+    platform: str = Field(index=True)
+    status: str = Field(default="queued", index=True)
+    remote_post_id: Optional[str] = None
+    published_url: Optional[str] = None
+    error_message: Optional[str] = None
+    payload_json: str = "{}"
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+    published_at: Optional[datetime] = None
+
+
+class UserFeedback(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    feedback_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
+    subject: str
+    message: str
+    page: Optional[str] = Field(default=None, index=True)
+    project_id: Optional[str] = Field(default=None, index=True)
+    developer_email: str = Field(default="")
+    email_sent: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class CommunityPost(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    post_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
+    subject: str
+    message: str
+    author_label: str = Field(default="")
+    author_email: str = Field(default="")
+    applause_count: int = Field(default=0)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class VisitEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: str = Field(default="default", index=True)
+    visit_id: str = Field(default_factory=lambda: str(uuid4()), index=True, unique=True)
+    path: str = Field(index=True)
+    referrer: Optional[str] = Field(default=None, index=True)
+    user_agent: Optional[str] = None
+    device_type: Optional[str] = Field(default=None, index=True)
+    country_code: Optional[str] = Field(default=None, index=True)
+    page_title: Optional[str] = None
+    session_id: Optional[str] = Field(default=None, index=True)
+    event_type: str = Field(default="page_view", index=True)
+    is_bot: bool = Field(default=False, index=True)
+    bot_reason: Optional[str] = None
+    created_at: datetime = Field(default_factory=utc_now, index=True)

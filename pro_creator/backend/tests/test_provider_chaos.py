@@ -22,9 +22,10 @@ class _FakeResponse:
             raise RuntimeError(f"HTTP {self.status_code}")
 
 
-def test_script_openai_timeout_falls_back_to_template(monkeypatch):
-    monkeypatch.setattr(script_engine, "SCRIPT_PROVIDER", "auto")
-    monkeypatch.setattr(script_engine, "OPENAI_API_KEY", "sk-test")
+def test_script_xai_timeout_falls_back_to_template(monkeypatch):
+    monkeypatch.setattr(script_engine, "XAI_API_KEY", "xai-test")
+    monkeypatch.setattr(script_engine, "XAI_BASE_URL", "https://api.x.ai/v1")
+    monkeypatch.setattr(script_engine, "XAI_TEXT_MODEL", "grok-4.20-beta-latest-non-reasoning")
     monkeypatch.setattr(script_engine, "PROVIDER_RETRY_ATTEMPTS", 2)
     monkeypatch.setattr(script_engine, "PROVIDER_RETRY_BACKOFF_SECONDS", 0.0)
 
@@ -37,13 +38,13 @@ def test_script_openai_timeout_falls_back_to_template(monkeypatch):
     assert out.get("scenes")
 
 
-def test_image_openai_retries_then_succeeds(monkeypatch):
+def test_image_xai_retries_then_succeeds(monkeypatch):
     png_bytes = b"\x89PNG\r\n\x1a\nchaos"
     encoded = base64.b64encode(png_bytes).decode("ascii")
     calls = {"count": 0}
 
-    monkeypatch.setattr(image_engine, "OPENAI_API_KEY", "sk-test")
-    monkeypatch.setattr(image_engine, "OPENAI_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setattr(image_engine, "XAI_API_KEY", "xai-test")
+    monkeypatch.setattr(image_engine, "XAI_BASE_URL", "https://api.x.ai/v1")
     monkeypatch.setattr(image_engine, "PROVIDER_RETRY_ATTEMPTS", 2)
     monkeypatch.setattr(image_engine, "PROVIDER_RETRY_BACKOFF_SECONDS", 0.0)
 
@@ -58,16 +59,16 @@ def test_image_openai_retries_then_succeeds(monkeypatch):
         prompt="cinematic city",
         style="cinematic",
         scene_id=1,
-        provider="openai",
+        provider="xai",
     )
-    assert provider == "openai"
+    assert provider == "xai"
     assert image == png_bytes
     assert calls["count"] >= 2
 
 
-def test_voice_elevenlabs_timeout_uses_tone_fallback(monkeypatch):
-    monkeypatch.setattr(voice_engine, "ELEVENLABS_API_KEY", "key")
-    monkeypatch.setattr(voice_engine, "ELEVENLABS_VOICE_ID", "voice")
+def test_voice_xai_timeout_uses_tone_fallback(monkeypatch):
+    monkeypatch.setattr(voice_engine, "XAI_API_KEY", "xai-test")
+    monkeypatch.setattr(voice_engine, "XAI_TTS_VOICE_ID", "voice")
     monkeypatch.setattr(voice_engine, "PROVIDER_RETRY_ATTEMPTS", 2)
     monkeypatch.setattr(voice_engine, "PROVIDER_RETRY_BACKOFF_SECONDS", 0.0)
 
@@ -75,6 +76,6 @@ def test_voice_elevenlabs_timeout_uses_tone_fallback(monkeypatch):
         raise requests.Timeout("simulated timeout")
 
     monkeypatch.setattr(voice_engine.requests, "post", _always_timeout)
-    audio = voice_engine._generate_with_elevenlabs("hello world", "voice")
+    audio = voice_engine._generate_with_xai_tts("hello world", "voice")
     assert isinstance(audio, (bytes, bytearray))
     assert len(audio) > 100

@@ -1,14 +1,21 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.auth import get_current_user
 from app.database import get_session
-from app.models import User
+from app.models import Project, User, UserFeedback
+from app.tenant import current_tenant_id
 from app.schemas import (
+    WorkflowAutoCreateRequest,
+    WorkflowAutoCreateResponse,
+    ProjectBulkDeleteResponse,
+    ProjectDeleteResponse,
     WorkflowCharacterCreateRequest,
     WorkflowCharacterGenerateRequest,
     WorkflowCharacterListResponse,
     WorkflowCharacterSelectRequest,
+    WorkflowFeedbackRequest,
+    WorkflowFeedbackResponse,
     WorkflowGenerateScriptRequest,
     WorkflowLibraryResponse,
     WorkflowProductionStartResponse,
@@ -23,10 +30,13 @@ from app.services.workflow_service import (
     approve_character_package,
     approve_script,
     archive_project,
+    auto_create_project,
     build_character_list_response,
     create_character_profile,
     create_project,
     duplicate_project,
+    delete_project,
+    delete_projects,
     generate_character_profile,
     generate_project_script,
     get_project_or_404,
@@ -43,6 +53,7 @@ from app.services.workflow_service import (
     workflow_library,
     workflow_production_summary,
 )
+from app.services.receipt_email import send_feedback_email
 
 router = APIRouter(
     prefix="/workflow",
@@ -76,6 +87,31 @@ def create_workflow_project(
         genre=payload.genre,
         target_duration_minutes=payload.target_duration_minutes,
     )
+
+
+@router.post("/auto-create", response_model=WorkflowAutoCreateResponse)
+@api_router.post("/auto-create", response_model=WorkflowAutoCreateResponse)
+def workflow_auto_create(
+    payload: WorkflowAutoCreateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowAutoCreateResponse:
+    try:
+        return auto_create_project(
+            session=session,
+            current_user=current_user,
+            title=payload.title,
+            duration_minutes=payload.duration_minutes,
+            genre=payload.genre,
+            short_description=payload.short_description,
+            custom_characters=[character.model_dump() for character in payload.custom_characters],
+            start_credits=payload.start_credits,
+            end_credits=payload.end_credits,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Auto-create failed: {exc}") from exc
 
 
 @router.get("/projects/{project_id}", response_model=WorkflowProjectResponse)
@@ -124,6 +160,27 @@ def workflow_duplicate_project(
 ) -> WorkflowProjectResponse:
     project = get_project_or_404(session, project_id)
     return duplicate_project(session=session, project=project)
+
+
+@router.delete("/projects/{project_id}", response_model=ProjectDeleteResponse)
+@api_router.delete("/projects/{project_id}", response_model=ProjectDeleteResponse)
+def workflow_delete_project(
+    project_id: str,
+    session: Session = Depends(get_session),
+) -> ProjectDeleteResponse:
+    project = get_project_or_404(session, project_id)
+    delete_project(session=session, project=project)
+    return ProjectDeleteResponse(deleted=True)
+
+
+@router.delete("/projects", response_model=ProjectBulkDeleteResponse)
+@api_router.delete("/projects", response_model=ProjectBulkDeleteResponse)
+def workflow_delete_all_projects(
+    session: Session = Depends(get_session),
+) -> ProjectBulkDeleteResponse:
+    projects = session.exec(select(Project).where(Project.tenant_id == current_tenant_id())).all()
+    deleted_ids = delete_projects(session=session, projects=projects)
+    return ProjectBulkDeleteResponse(deleted_count=len(deleted_ids), deleted_ids=deleted_ids)
 
 
 @router.post("/projects/{project_id}/generate-script", response_model=WorkflowProjectResponse)
@@ -215,6 +272,81 @@ def workflow_project_characters(
 ) -> WorkflowCharacterListResponse:
     project = get_project_or_404(session, project_id)
     return build_character_list_response(session=session, project=project)
+
+
+@router.post("/characters/create", response_model=WorkflowLibraryResponse)
+@api_router.post("/characters/create", response_model=WorkflowLibraryResponse)
+def workflow_create_library_character(
+    payload: WorkflowCharacterCreateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowLibraryResponse:
+    create_character_profile(
+        session=session,
+        current_user=current_user,
+        name=payload.name,
+        role_type=payload.role_type,
+        description=payload.description,
+        personality_traits=payload.personality_traits,
+        voice_profile=payload.voice_profile,
+        reference_image_url=payload.reference_image_url,
+        reference_image_urls=payload.reference_image_urls,
+        canonical_image_url=payload.canonical_image_url,
+        visual_prompt_base=payload.visual_prompt_base,
+        negative_prompt_base=payload.negative_prompt_base,
+        lock_identity=payload.lock_identity,
+    )
+    return workflow_library(session)
+
+
+@router.post("/characters/generate", response_model=WorkflowLibraryResponse)
+@api_router.post("/characters/generate", response_model=WorkflowLibraryResponse)
+def workflow_generate_library_character(
+    payload: WorkflowCharacterGenerateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowLibraryResponse:
+    generate_character_profile(
+        session=session,
+        current_user=current_user,
+        name=payload.name,
+        role_type=payload.role_type,
+        description=payload.description,
+        personality_traits=payload.personality_traits,
+        voice_profile=payload.voice_profile,
+        style=payload.style,
+        lock_identity=payload.lock_identity,
+    )
+    return workflow_library(session)
+
+
+@router.post("/characters/upload", response_model=WorkflowLibraryResponse)
+@api_router.post("/characters/upload", response_model=WorkflowLibraryResponse)
+async def workflow_upload_library_character(
+    name: str = Form(...),
+    role_type: str = Form("supporting"),
+    description: str = Form(""),
+    voice_profile: str | None = Form(None),
+    lock_identity: bool = Form(True),
+    reference: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowLibraryResponse:
+    content = await reference.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Reference upload is empty")
+    upload_character_reference(
+        session=session,
+        current_user=current_user,
+        name=name,
+        role_type=role_type,
+        description=description,
+        filename=reference.filename or "reference.png",
+        content=content,
+        voice_profile=voice_profile,
+        lock_identity=lock_identity,
+    )
+    return workflow_library(session)
 
 
 @router.post("/projects/{project_id}/characters/select", response_model=WorkflowCharacterListResponse)
@@ -423,3 +555,49 @@ def workflow_retry_production(
 @router.get("/library", response_model=WorkflowLibraryResponse)
 def workflow_get_library(session: Session = Depends(get_session)) -> WorkflowLibraryResponse:
     return workflow_library(session)
+
+
+@router.post("/feedback", response_model=WorkflowFeedbackResponse)
+@api_router.post("/feedback", response_model=WorkflowFeedbackResponse)
+def workflow_submit_feedback(
+    payload: WorkflowFeedbackRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowFeedbackResponse:
+    feedback = UserFeedback(
+        tenant_id=current_tenant_id(),
+        user_id=current_user.id or 0,
+        subject=payload.subject.strip(),
+        message=payload.message.strip(),
+        page=(payload.page or "").strip() or None,
+        project_id=(payload.project_id or "").strip() or None,
+        developer_email=current_user.email,
+    )
+    session.add(feedback)
+    session.commit()
+    session.refresh(feedback)
+
+    email_sent = False
+    try:
+        email_sent = send_feedback_email(
+            sender_email=current_user.email,
+            subject=feedback.subject,
+            message=feedback.message,
+            page=feedback.page,
+            project_id=feedback.project_id,
+        )
+    except Exception:
+        email_sent = False
+
+    feedback.email_sent = email_sent
+    session.add(feedback)
+    session.commit()
+    session.refresh(feedback)
+    return WorkflowFeedbackResponse(
+        feedback_id=feedback.feedback_id,
+        subject=feedback.subject,
+        page=feedback.page,
+        project_id=feedback.project_id,
+        email_sent=email_sent,
+        created_at=feedback.created_at,
+    )

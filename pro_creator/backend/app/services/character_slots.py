@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 
 from app.models import CharacterProfile, SubscriptionAccount, User, utc_now
 from app.services.app_settings import get_or_create_settings
-from app.services.credits import consume_credits, get_or_create_subscription
+from app.services.credits import consume_credits, get_or_create_subscription, has_owner_mode_access
 from app.tenant import current_tenant_id
 
 
@@ -69,6 +69,8 @@ def ensure_character_slot_available(
     session: Session,
     user: User,
 ) -> dict[str, int | bool]:
+    if has_owner_mode_access(session, user):
+        return get_character_slot_summary(session=session, user=user)
     summary = get_character_slot_summary(session=session, user=user)
     if bool(summary["remaining_slots"]):
         return summary

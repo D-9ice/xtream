@@ -102,6 +102,16 @@ def upgrade_head(engine: Engine) -> None:
                 "0005_character_reference_bundles": 5,
                 "0006_workflow_project_archive": 6,
                 "0007_character_slot_pricing": 7,
+                "0008_social_publishing": 8,
+                "0009_user_feedback": 9,
+                "0010_auto_create_studio_controls": 10,
+                "0011_xtreamer_community_posts": 11,
+                "0012_xtreamer_community_reactions": 12,
+                "0013_factory_mode_access": 13,
+                "0014_hidden_receipts": 14,
+                "0015_factory_mode_pricing": 15,
+                "0016_receipt_mode": 16,
+                "0017_visit_analytics": 17,
             }
             if revision_order.get(inferred_revision, 0) > revision_order.get(str(current_revision), 0):
                 command.stamp(cfg, inferred_revision)
@@ -160,6 +170,26 @@ def _fallback_schema_sync(engine: Engine) -> None:
         "extra_character_slots",
         "ALTER TABLE subscriptionaccount ADD COLUMN extra_character_slots INTEGER DEFAULT 0",
     )
+    _ensure_column(
+        "subscriptionaccount",
+        "factory_mode_status",
+        "ALTER TABLE subscriptionaccount ADD COLUMN factory_mode_status TEXT NOT NULL DEFAULT 'inactive'",
+    )
+    _ensure_column(
+        "subscriptionaccount",
+        "factory_mode_access",
+        "ALTER TABLE subscriptionaccount ADD COLUMN factory_mode_access TEXT NOT NULL DEFAULT 'none'",
+    )
+    _ensure_column(
+        "subscriptionaccount",
+        "factory_mode_renewal_date",
+        "ALTER TABLE subscriptionaccount ADD COLUMN factory_mode_renewal_date DATETIME",
+    )
+    _ensure_column(
+        "subscriptionaccount",
+        "factory_mode_purchased_at",
+        "ALTER TABLE subscriptionaccount ADD COLUMN factory_mode_purchased_at DATETIME",
+    )
 
     # Phase 1 tenant-ready columns.
     tenant_tables = [
@@ -180,12 +210,15 @@ def _fallback_schema_sync(engine: Engine) -> None:
 
     # Guided workflow project fields.
     _ensure_column("project", "idea_prompt", "ALTER TABLE project ADD COLUMN idea_prompt TEXT")
+    _ensure_column("project", "short_description", "ALTER TABLE project ADD COLUMN short_description TEXT")
     _ensure_column("project", "genre", "ALTER TABLE project ADD COLUMN genre TEXT")
     _ensure_column(
         "project",
         "target_duration_minutes",
         "ALTER TABLE project ADD COLUMN target_duration_minutes INTEGER",
     )
+    _ensure_column("project", "start_credits", "ALTER TABLE project ADD COLUMN start_credits TEXT")
+    _ensure_column("project", "end_credits", "ALTER TABLE project ADD COLUMN end_credits TEXT")
     _ensure_column(
         "project",
         "workflow_state",
@@ -239,6 +272,11 @@ def _fallback_schema_sync(engine: Engine) -> None:
         "ALTER TABLE characterprofile ADD COLUMN reference_image_urls_json TEXT NOT NULL DEFAULT '[]'",
     )
     _ensure_column(
+        "communitypost",
+        "applause_count",
+        "ALTER TABLE communitypost ADD COLUMN applause_count INTEGER NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
         "appsettings",
         "plan_moderate_credits",
         "ALTER TABLE appsettings ADD COLUMN plan_moderate_credits INTEGER NOT NULL DEFAULT 500",
@@ -285,6 +323,31 @@ def _fallback_schema_sync(engine: Engine) -> None:
     )
     _ensure_column(
         "appsettings",
+        "factory_one_time_price_usd",
+        "ALTER TABLE appsettings ADD COLUMN factory_one_time_price_usd INTEGER NOT NULL DEFAULT 149",
+    )
+    _ensure_column(
+        "appsettings",
+        "factory_one_time_stripe_price_id",
+        "ALTER TABLE appsettings ADD COLUMN factory_one_time_stripe_price_id TEXT",
+    )
+    _ensure_column(
+        "appsettings",
+        "factory_subscription_price_usd",
+        "ALTER TABLE appsettings ADD COLUMN factory_subscription_price_usd INTEGER NOT NULL DEFAULT 39",
+    )
+    _ensure_column(
+        "appsettings",
+        "factory_subscription_stripe_price_id",
+        "ALTER TABLE appsettings ADD COLUMN factory_subscription_stripe_price_id TEXT",
+    )
+    _ensure_column(
+        "appsettings",
+        "owner_mode_enabled",
+        "ALTER TABLE appsettings ADD COLUMN owner_mode_enabled BOOLEAN NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
+        "appsettings",
         "free_character_slots",
         "ALTER TABLE appsettings ADD COLUMN free_character_slots INTEGER NOT NULL DEFAULT 100",
     )
@@ -312,6 +375,11 @@ def _fallback_schema_sync(engine: Engine) -> None:
         "appsettings",
         "character_slot_addon_cost_credits",
         "ALTER TABLE appsettings ADD COLUMN character_slot_addon_cost_credits INTEGER NOT NULL DEFAULT 50",
+    )
+    _ensure_column(
+        "appsettings",
+        "billing_receipts_live_mode",
+        "ALTER TABLE appsettings ADD COLUMN billing_receipts_live_mode BOOLEAN NOT NULL DEFAULT 0",
     )
 
     # Newer tenant-aware billing model: one subscription per (tenant_id, user_id).

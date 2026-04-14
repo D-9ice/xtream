@@ -1,4 +1,3 @@
-import base64
 import io
 import math
 import time
@@ -7,13 +6,12 @@ import wave
 import requests
 
 from app.config import (
-    ELEVENLABS_API_KEY,
-    ELEVENLABS_MODEL,
-    ELEVENLABS_VOICE_ID,
     PROVIDER_RETRY_ATTEMPTS,
     PROVIDER_RETRY_BACKOFF_SECONDS,
+    XAI_API_KEY,
+    XAI_BASE_URL,
+    XAI_TTS_VOICE_ID,
     TTS_PROVIDER,
-    XTTS_ENDPOINT,
 )
 from app.storage import project_key, storage_client
 from app.utils.file_manager import read_voice_profile_metadata
@@ -57,92 +55,38 @@ def _write_audio(
     return storage_client.public_url(key)
 
 
-def _generate_with_elevenlabs(text: str, voice_id: str | None) -> bytes:
-    if not ELEVENLABS_API_KEY or not voice_id:
-        logger.warning("ElevenLabs not configured, using tone fallback")
+def _generate_with_xai_tts(text: str, voice_id: str | None) -> bytes:
+    if not XAI_API_KEY.strip():
         return _write_tone(max(2.0, len(text.split()) / 2.0))
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-    headers = {
-        "xi-api-key": ELEVENLABS_API_KEY,
-        "accept": "audio/mpeg",
-        "content-type": "application/json",
-    }
     payload = {
         "text": text,
-        "model_id": ELEVENLABS_MODEL,
-        "voice_settings": {
-            "stability": 0.55,
-            "similarity_boost": 0.75,
-        },
+        "voice_id": voice_id or XAI_TTS_VOICE_ID,
     }
     attempts = max(1, PROVIDER_RETRY_ATTEMPTS)
     for attempt in range(1, attempts + 1):
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
-            if response.ok:
+            response = requests.post(
+                f"{XAI_BASE_URL}/tts",
+                headers={
+                    "Authorization": f"Bearer {XAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=60,
+            )
+            if response.ok and response.content:
                 return response.content
-            logger.warning("ElevenLabs request failed (attempt %s/%s): %s", attempt, attempts, response.text)
+            logger.warning("xAI TTS request failed (attempt %s/%s): %s", attempt, attempts, response.text)
         except Exception as exc:
-            logger.warning("ElevenLabs request error (attempt %s/%s): %s", attempt, attempts, exc)
-        if attempt < attempts:
-            time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
-    return _write_tone(max(2.0, len(text.split()) / 2.0))
-
-
-def _generate_with_xtts(text: str, speaker_wav_b64: str | None) -> bytes:
-    if not XTTS_ENDPOINT:
-        logger.warning("XTTS endpoint not configured, using tone fallback")
-        return _write_tone(max(2.0, len(text.split()) / 2.0))
-    payload = {
-        "text": text,
-        "speaker_wav": speaker_wav_b64,
-        "language": "en",
-    }
-    attempts = max(1, PROVIDER_RETRY_ATTEMPTS)
-    for attempt in range(1, attempts + 1):
-        try:
-            response = requests.post(XTTS_ENDPOINT, json=payload, timeout=60)
-            if not response.ok:
-                logger.warning("XTTS request failed (attempt %s/%s): %s", attempt, attempts, response.text)
-            else:
-                if response.headers.get("content-type", "").startswith("application/json"):
-                    data = response.json()
-                    audio_b64 = data.get("audio") or data.get("wav")
-                    if audio_b64:
-                        return base64.b64decode(audio_b64)
-                return response.content
-        except Exception as exc:
-            logger.warning("XTTS request error (attempt %s/%s): %s", attempt, attempts, exc)
+            logger.warning("xAI TTS request error (attempt %s/%s): %s", attempt, attempts, exc)
         if attempt < attempts:
             time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
     return _write_tone(max(2.0, len(text.split()) / 2.0))
 
 
 def clone_voice_profile(profile_name: str, sample_bytes: bytes, provider: str | None) -> dict:
-    resolved_provider = _resolve_provider(provider)
-    if resolved_provider != "elevenlabs":
-        return {"provider": resolved_provider}
-    if not ELEVENLABS_API_KEY:
-        logger.warning("ElevenLabs API key missing, skipping voice clone")
-        return {"provider": resolved_provider}
-    url = "https://api.elevenlabs.io/v1/voices/add"
-    headers = {"xi-api-key": ELEVENLABS_API_KEY}
-    files = {
-        "files": ("sample.wav", sample_bytes, "audio/wav"),
-    }
-    data = {
-        "name": profile_name,
-        "description": "Pro Creator voice clone",
-    }
-    response = requests.post(url, headers=headers, data=data, files=files, timeout=30)
-    if not response.ok:
-        logger.warning("ElevenLabs clone failed: %s", response.text)
-        return {"provider": resolved_provider}
-    payload = response.json()
-    return {
-        "provider": resolved_provider,
-        "voice_id": payload.get("voice_id"),
-    }
+    _resolve_provider(provider)
+    return {"provider": "xai"}
 
 
 def generate_voice_for_scene(
@@ -154,22 +98,11 @@ def generate_voice_for_scene(
 ) -> dict:
     duration_seconds = max(2.0, len(text.split()) / 2.0)
     metadata = read_voice_profile_metadata(project_id)
-    resolved_provider = _resolve_provider(provider)
     profile_data = metadata.get(voice_profile or "", {})
-    audio_bytes = None
-    extension = "wav"
-    content_type = "audio/wav"
-    if resolved_provider == "elevenlabs":
-        voice_id = profile_data.get("voice_id") or ELEVENLABS_VOICE_ID
-        audio_bytes = _generate_with_elevenlabs(text, voice_id)
-        extension = "mp3"
-        content_type = "audio/mpeg"
-    else:
-        speaker_key = profile_data.get("sample_key")
-        speaker_b64 = None
-        if speaker_key and storage_client.exists(speaker_key):
-            speaker_b64 = base64.b64encode(storage_client.read_bytes(speaker_key)).decode("utf-8")
-        audio_bytes = _generate_with_xtts(text, speaker_b64)
+    voice_id = profile_data.get("voice_id") or XAI_TTS_VOICE_ID
+    audio_bytes = _generate_with_xai_tts(text, voice_id)
+    extension = "mp3"
+    content_type = "audio/mpeg"
     if not audio_bytes:
         audio_bytes = _write_tone(duration_seconds)
     audio_path = _write_audio(project_id, scene_id, audio_bytes, extension, content_type)
@@ -197,14 +130,6 @@ def generate_voice_bytes(
     Returns: (audio_bytes, extension, content_type)
     """
     metadata = read_voice_profile_metadata(project_id)
-    resolved_provider = _resolve_provider(provider)
     profile_data = metadata.get(voice_profile or "", {})
-    if resolved_provider == "elevenlabs":
-        voice_id = override_voice_id or profile_data.get("voice_id") or ELEVENLABS_VOICE_ID
-        return _generate_with_elevenlabs(text, voice_id), "mp3", "audio/mpeg"
-
-    speaker_key = profile_data.get("sample_key")
-    speaker_b64 = None
-    if speaker_key and storage_client.exists(speaker_key):
-        speaker_b64 = base64.b64encode(storage_client.read_bytes(speaker_key)).decode("utf-8")
-    return _generate_with_xtts(text, speaker_b64), "wav", "audio/wav"
+    voice_id = override_voice_id or profile_data.get("voice_id") or XAI_TTS_VOICE_ID
+    return _generate_with_xai_tts(text, voice_id), "mp3", "audio/mpeg"

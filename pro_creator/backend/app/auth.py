@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -12,14 +12,13 @@ from app.config import (
     ADMIN_EMAIL,
     ADMIN_PASSWORD,
     AUTH_REQUIRED,
-    ENVIRONMENT,
     JWT_ALGORITHM,
     JWT_SECRET,
-    OWNER_EMAIL_ALLOWLIST,
 )
 from app.database import get_session
 from app.models import User
 from app.services.app_settings import get_or_create_settings
+from app.services.credits import has_owner_mode_access
 from app.tenant import current_tenant_id
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -116,24 +115,35 @@ def require_role(required_role: str):
     return _role_dependency
 
 
-def require_owner(current_user: User = Depends(get_current_user)) -> User:
+def require_owner(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> User:
     """
     Owner access is stricter than role=admin.
-    In production, OWNER_EMAIL_ALLOWLIST must be set and the current user's email must be listed.
-    In non-production, an empty allowlist means "allow admins" for easier local dev.
+    Owner mode must be enabled in settings, and the current user's email must be listed
+    if an allowlist is configured.
     """
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Owner access required")
 
-    allowlist = set(OWNER_EMAIL_ALLOWLIST or [])
-    if not allowlist:
-        if ENVIRONMENT != "production":
-            return current_user
-        raise HTTPException(
-            status_code=500,
-            detail="OWNER_EMAIL_ALLOWLIST must be set in production to use owner features",
-        )
-
-    if current_user.email.strip().lower() not in allowlist:
+    if not has_owner_mode_access(session, current_user):
         raise HTTPException(status_code=403, detail="Owner access required")
     return current_user
+
+
+def require_admin_dashboard_access(
+    admin_access_token: str | None = Header(None, alias="X-Admin-Access-Token"),
+) -> str:
+    if not admin_access_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing admin access token")
+    try:
+        payload = jwt.decode(admin_access_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except JWTError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin access token") from exc
+    if payload.get("scope") != "admin_dashboard":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin access scope")
+    subject = payload.get("sub")
+    if not isinstance(subject, str) or not subject:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin access token")
+    return subject

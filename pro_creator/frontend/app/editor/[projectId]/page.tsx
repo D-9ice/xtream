@@ -53,6 +53,7 @@ export default function EditorShell({
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const downloadsHref = `/?nav=downloads&project=${projectId}`;
 
   const orderedClips = useMemo(
     () => [...clips].sort((a, b) => a.order_index - b.order_index),
@@ -207,20 +208,6 @@ export default function EditorShell({
     return () => clearInterval(interval);
   }, [isPlaying, playbackSpeed, timelineDuration]);
 
-  const downloadJson = (payload: object, filename: string) => {
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.URL.revokeObjectURL(url);
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-midnight text-slate-100">
@@ -246,46 +233,33 @@ export default function EditorShell({
       <header className="border-b border-slate-800 bg-slate-950/70">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
-              Pro Creator Editor
-            </p>
             <h1 className="text-3xl font-semibold text-white">
               {project.title}
             </h1>
-            <p className="mt-2 text-sm text-slate-400">{project.topic}</p>
           </div>
           <Link
             className="rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-xs font-semibold text-aurora"
             href="/"
           >
-            ← Back to Guided Studio
+            Back
           </Link>
         </div>
       </header>
 
       <main className="mx-auto grid max-w-6xl gap-6 px-6 py-10 lg:grid-cols-[2fr_1fr]">
         <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 lg:col-span-2">
-          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
-            Advanced Workspace
-          </p>
-          <p className="mt-2 text-sm text-slate-300">
-            This editor is an advanced internal workspace. The normal production path should continue through the guided Create flow.
-          </p>
+          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Workspace</p>
         </section>
 
         <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold">Timeline</h2>
-              <p className="mt-2 text-sm text-slate-400">
-                Arrange clips, trims, and cuts. Drag-and-drop support can be
-                added after the first workflow is validated.
-              </p>
             </div>
           </div>
           <div className="mt-6 space-y-3">
             {orderedClips.length === 0 ? (
-              <p className="text-sm text-slate-400">No clips yet.</p>
+              <p className="text-sm text-slate-400">No clips.</p>
             ) : (
               orderedClips.map((clip, index) => (
                 <div
@@ -381,28 +355,12 @@ export default function EditorShell({
                 />
                 Auto-refresh
               </label>
-              <button
-                className="rounded-md border border-slate-700 px-2 py-1"
-                type="button"
-                onClick={() => downloadJson(lipsync ?? {}, "lipsync.json")}
-                disabled={!lipsync}
+              <Link
+                className="rounded-md border border-aurora/40 bg-aurora/10 px-3 py-1 text-[11px] font-semibold text-aurora"
+                href={downloadsHref}
               >
-                Download JSON
-              </button>
-              {activeLipsyncScene ? (
-                <button
-                  className="rounded-md border border-slate-700 px-2 py-1"
-                  type="button"
-                  onClick={() =>
-                    downloadJson(
-                      activeLipsyncScene,
-                      `lipsync_scene_${activeLipsyncScene.scene_id}.json`
-                    )
-                  }
-                >
-                  Download scene
-                </button>
-              ) : null}
+                Download
+              </Link>
             </div>
             {lipsyncScenes.length > 1 ? (
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
@@ -478,9 +436,9 @@ export default function EditorShell({
               Add generated scenes into your timeline.
             </p>
             <div className="mt-4 space-y-2 text-xs text-slate-300">
-              {scenes.length === 0 ? (
-                <p className="text-sm text-slate-400">No scenes yet.</p>
-              ) : (
+            {scenes.length === 0 ? (
+              <p className="text-sm text-slate-400">No scenes.</p>
+            ) : (
                 scenes.map((scene) => (
                   <div
                     key={scene.id}

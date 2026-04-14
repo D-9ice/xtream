@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import math
 import hashlib
 import json
 from pathlib import Path
@@ -11,10 +12,19 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.config import CREDITS_COST_IMAGE_GENERATE, CREDITS_COST_SCRIPT_GENERATE, CREDITS_COST_VIDEO_RENDER
+from app.config import (
+    CREDITS_COST_IMAGE_GENERATE,
+    CREDITS_COST_SCRIPT_GENERATE,
+    CREDITS_COST_VIDEO_RENDER,
+    CREDITS_COST_VOICE_GENERATE,
+    FACTORY_MODE_ENABLED,
+    XAI_API_KEY,
+)
 from app.models import (
     CharacterProfile,
+    Clip,
     OrchestrationJob,
+    OrchestrationSchedule,
     Project,
     ProjectCharacterPackage,
     ProjectScriptVersion,
@@ -22,6 +32,7 @@ from app.models import (
     User,
 )
 from app.schemas import (
+    WorkflowAutoCreateResponse,
     WorkflowCharacterListResponse,
     WorkflowCharacterResponse,
     WorkflowLibraryResponse,
@@ -29,21 +40,31 @@ from app.schemas import (
     WorkflowProductionSummaryResponse,
     WorkflowProjectResponse,
 )
-from app.services.credits import consume_credits, get_or_create_subscription
+from app.services.credits import consume_credits, get_or_create_subscription, has_factory_mode_access, has_owner_mode_access
 from app.services.character_slots import ensure_character_slot_available
 from app.services.image_engine import generate_image_bytes, generate_image_for_scene
-from app.services.provider_routing import resolve_script_route
+from app.services.provider_routing import resolve_script_route, resolve_video_provider
 from app.services.script_engine import generate_script
+from app.services.social_publish import publish_to_all_connections
 from app.services.video_engine import render_video
 from app.services.voice_engine import generate_voice_for_scene
+from app.config import XAI_VIDEO_MODEL
 from app.storage import project_key, storage_client
 from app.tenant import current_tenant_id
 from app.utils.file_manager import (
+    delete_project_dir,
     ensure_project_dirs,
     write_character_voice_profiles,
     write_scene_metadata,
     write_script,
 )
+
+FACTORY_MODE_SERIES_GENRE = "Series Video Maker (Factory Mode Only)"
+REAL_EVENTS_GENRE = "Real Events"
+
+
+def _is_real_events_genre(genre: str | None) -> bool:
+    return (genre or "").strip() == REAL_EVENTS_GENRE
 
 WORKFLOW_STAGE_ORDER = {
     "draft": 0,
@@ -283,8 +304,11 @@ def project_to_response(project: Project) -> WorkflowProjectResponse:
         topic=project.topic,
         status=project.status,
         idea_prompt=project.idea_prompt,
+        short_description=getattr(project, "short_description", None),
         genre=project.genre,
         target_duration_minutes=project.target_duration_minutes,
+        start_credits=getattr(project, "start_credits", None),
+        end_credits=getattr(project, "end_credits", None),
         workflow_state=project.workflow_state,
         script_draft=project.script_draft,
         script_approved=project.script_approved,
@@ -319,13 +343,82 @@ def list_projects(session: Session, *, include_archived: bool = False) -> list[W
     return [project_to_response(project) for project in projects]
 
 
+def delete_projects(
+    *,
+    session: Session,
+    projects: list[Project],
+) -> list[str]:
+    deleted_ids = [project.project_id for project in projects]
+    if not deleted_ids:
+        return []
+
+    tenant_id = projects[0].tenant_id
+    session.exec(
+        ProjectScriptVersion.__table__.delete().where(
+            ProjectScriptVersion.tenant_id == tenant_id,
+            ProjectScriptVersion.project_id.in_(deleted_ids),
+        )
+    )
+    session.exec(
+        ProjectCharacterPackage.__table__.delete().where(
+            ProjectCharacterPackage.tenant_id == tenant_id,
+            ProjectCharacterPackage.project_id.in_(deleted_ids),
+        )
+    )
+    session.exec(
+        Scene.__table__.delete().where(
+            Scene.tenant_id == tenant_id,
+            Scene.project_id.in_(deleted_ids),
+        )
+    )
+    session.exec(
+        Clip.__table__.delete().where(
+            Clip.tenant_id == tenant_id,
+            Clip.project_id.in_(deleted_ids),
+        )
+    )
+    session.exec(
+        OrchestrationJob.__table__.delete().where(
+            OrchestrationJob.tenant_id == tenant_id,
+            OrchestrationJob.project_id.in_(deleted_ids),
+        )
+    )
+    session.exec(
+        OrchestrationSchedule.__table__.delete().where(
+            OrchestrationSchedule.tenant_id == tenant_id,
+            OrchestrationSchedule.project_id.in_(deleted_ids),
+        )
+    )
+    session.exec(
+        Project.__table__.delete().where(
+            Project.tenant_id == tenant_id,
+            Project.project_id.in_(deleted_ids),
+        )
+    )
+    session.commit()
+    for project_id in deleted_ids:
+        delete_project_dir(project_id)
+    return deleted_ids
+
+
+def delete_project(
+    *,
+    session: Session,
+    project: Project,
+) -> None:
+    delete_projects(session=session, projects=[project])
+
+
 def create_project(
     *,
     session: Session,
     title: str,
     idea_prompt: str | None,
+    short_description: str | None = None,
     genre: str | None,
     target_duration_minutes: int,
+    start_credits: str | None = None,
+    end_credits: str | None = None,
 ) -> WorkflowProjectResponse:
     project = Project(
         tenant_id=current_tenant_id(),
@@ -333,8 +426,11 @@ def create_project(
         title=title.strip(),
         topic=_topic_from_inputs(title, idea_prompt, genre),
         idea_prompt=(idea_prompt or "").strip() or None,
+        short_description=(short_description or "").strip() or None,
         genre=(genre or "").strip() or None,
         target_duration_minutes=max(1, int(target_duration_minutes or 3)),
+        start_credits=(start_credits or "").strip() or None,
+        end_credits=(end_credits or "").strip() or None,
         status="draft",
         workflow_state="draft",
     )
@@ -351,17 +447,26 @@ def update_project_metadata(
     project: Project,
     title: str | None = None,
     idea_prompt: str | None = None,
+    short_description: str | None = None,
     genre: str | None = None,
     target_duration_minutes: int | None = None,
+    start_credits: str | None = None,
+    end_credits: str | None = None,
 ) -> WorkflowProjectResponse:
     if title is not None and title.strip():
         project.title = title.strip()
     if idea_prompt is not None:
         project.idea_prompt = idea_prompt.strip() or None
+    if short_description is not None:
+        project.short_description = short_description.strip() or None
     if genre is not None:
         project.genre = genre.strip() or None
     if target_duration_minutes is not None:
         project.target_duration_minutes = max(1, int(target_duration_minutes))
+    if start_credits is not None:
+        project.start_credits = start_credits.strip() or None
+    if end_credits is not None:
+        project.end_credits = end_credits.strip() or None
     project.topic = _topic_from_inputs(project.title, project.idea_prompt, project.genre)
     project.updated_at = utc_now()
     session.add(project)
@@ -409,8 +514,11 @@ def duplicate_project(
         topic=project.topic,
         status=duplicate_state,
         idea_prompt=project.idea_prompt,
+        short_description=getattr(project, "short_description", None),
         genre=project.genre,
         target_duration_minutes=project.target_duration_minutes,
+        start_credits=getattr(project, "start_credits", None),
+        end_credits=getattr(project, "end_credits", None),
         workflow_state=duplicate_state,
         script_draft=project.script_draft,
         script_approved=project.script_approved,
@@ -558,6 +666,7 @@ def generate_project_script(
         tone,
         script_provider=script_provider,
         model_name=script_model,
+        genre=project.genre,
     )
     script_text = result["full_script"]
     scenes = result["scenes"]
@@ -701,11 +810,24 @@ def create_character_profile(
 
 def list_character_profiles(session: Session) -> list[CharacterProfile]:
     tenant_id = current_tenant_id()
-    return session.exec(
+    profiles = list(
+        session.exec(
         select(CharacterProfile)
         .where(CharacterProfile.tenant_id == tenant_id)
         .order_by(CharacterProfile.updated_at.desc())
-    ).all()
+        ).all()
+    )
+    cleaned_profiles: list[CharacterProfile] = []
+    removed_empty_profile = False
+    for profile in profiles:
+        if not (profile.name or "").strip():
+            session.delete(profile)
+            removed_empty_profile = True
+            continue
+        cleaned_profiles.append(profile)
+    if removed_empty_profile:
+        session.commit()
+    return cleaned_profiles
 
 
 def build_character_list_response(*, session: Session, project: Project) -> WorkflowCharacterListResponse:
@@ -754,8 +876,10 @@ def generate_character_profile(
     voice_profile: str | None,
     style: str,
     lock_identity: bool,
+    skip_character_slot_check: bool = False,
 ) -> CharacterProfile:
-    ensure_character_slot_available(session=session, user=current_user)
+    if not skip_character_slot_check:
+        ensure_character_slot_available(session=session, user=current_user)
     clean_name = _validate_character_name(name)
     clean_description = description.strip()
     visual, negative = _build_character_prompts(clean_name, role_type, clean_description)
@@ -916,13 +1040,31 @@ def resolve_approved_production_package(session: Session, project_id: str) -> di
     project = get_project_or_404(session, project_id)
     if not (project.script_approved or "").strip():
         raise ValueError("Script approval required")
-    if not project.character_package_approved:
+    narration_only = _is_real_events_genre(project.genre)
+    if not narration_only and not project.character_package_approved:
         raise ValueError("Character approval required")
     package = latest_character_package(session, project_id)
     if not package:
+        if narration_only:
+            return {
+                "project_id": project_id,
+                "approved_script_snapshot": project.script_approved,
+                "approved_character_package_snapshot": [],
+                "script": project.script_approved,
+                "short_description": getattr(project, "short_description", None),
+                "start_credits": getattr(project, "start_credits", None),
+                "end_credits": getattr(project, "end_credits", None),
+                "characters": [],
+                "references": {},
+                "seeds": {},
+                "prompts": {},
+                "identity_rules": {},
+                "reference_bundles": {},
+                "voice_profiles": {},
+            }
         raise ValueError("Approved character package not found")
     snapshot = _loads_json(package.package_snapshot_json)
-    if not isinstance(snapshot, list) or not snapshot:
+    if not isinstance(snapshot, list) or (not snapshot and not narration_only):
         raise ValueError("Approved character package snapshot is empty")
     prompts = {
         item["character_id"]: {
@@ -963,6 +1105,9 @@ def resolve_approved_production_package(session: Session, project_id: str) -> di
         "approved_script_snapshot": project.script_approved,
         "approved_character_package_snapshot": snapshot,
         "script": project.script_approved,
+        "short_description": getattr(project, "short_description", None),
+        "start_credits": getattr(project, "start_credits", None),
+        "end_credits": getattr(project, "end_credits", None),
         "characters": snapshot,
         "references": {
             item.get("character_id"): (_snapshot_reference_image_urls(item)[0] if _snapshot_reference_image_urls(item) else None)
@@ -1137,8 +1282,9 @@ def workflow_production_summary(
 ) -> WorkflowProductionSummaryResponse:
     subscription = get_or_create_subscription(session, current_user)
     selected_ids = _project_selected_character_ids(project)
+    narration_only = _is_real_events_genre(project.genre)
     characters = []
-    if selected_ids:
+    if selected_ids and not narration_only:
         profiles = session.exec(
             select(CharacterProfile).where(
                 CharacterProfile.tenant_id == current_tenant_id(),
@@ -1155,7 +1301,7 @@ def workflow_production_summary(
         project_id=project.project_id,
         workflow_state=project.workflow_state,
         script_ready=bool((project.script_approved or "").strip()),
-        characters_ready=bool(project.character_package_approved),
+        characters_ready=narration_only or bool(project.character_package_approved),
         estimated_credits=CREDITS_COST_VIDEO_RENDER,
         current_credit_balance=subscription.credits_balance,
         target_duration_minutes=max(1, int(project.target_duration_minutes or 3)),
@@ -1218,6 +1364,8 @@ def _perform_production(
     _persist_project_script(session=session, project=project, script_text=approved_script, scenes=scenes)
     _write_production_bundle_artifact(project.project_id, bundle)
     _write_character_dna_artifacts(project.project_id, bundle)
+    video_provider = resolve_video_provider()
+    grok_mode = video_provider in {"grok_imagine", "grok"} and bool(XAI_API_KEY.strip())
     scene_rows = {
         int(scene.id or 0): scene
         for scene in session.exec(
@@ -1240,6 +1388,8 @@ def _perform_production(
                 "voice_profile": scene_context["voice_profile"],
             }
         )
+        if grok_mode:
+            continue
         if not _image_exists(project.project_id, scene_id):
             image_result = generate_image_for_scene(
                 project.project_id,
@@ -1274,8 +1424,8 @@ def _perform_production(
         reason="workflow video production",
         action="workflow.production.start",
         reference_id=project.project_id,
-        provider="video",
-        model="ffmpeg",
+        provider="xai" if grok_mode else "video",
+        model=XAI_VIDEO_MODEL if grok_mode else "ffmpeg",
     )
     session.commit()
     session.refresh(project)
@@ -1368,6 +1518,345 @@ def start_production(
     session.commit()
     session.refresh(project)
     return project_to_response(project), production_status(session, project), None
+
+
+def _auto_create_character_specs(title: str) -> list[dict[str, str]]:
+    clean_title = title.strip() or "Untitled"
+    short_title = clean_title[:28].rstrip() or "Story"
+    return [
+        {
+            "name": f"{short_title} Lead",
+            "role_type": "main",
+            "description": f"Primary character for {clean_title}.",
+            "voice_profile": "default",
+        },
+        {
+            "name": f"{short_title} Support",
+            "role_type": "supporting",
+            "description": f"Supporting character for {clean_title}.",
+            "voice_profile": "default",
+        },
+    ]
+
+
+def _auto_create_custom_character_specs(custom_characters: list[dict[str, Any]]) -> list[dict[str, str]]:
+    specs: list[dict[str, str]] = []
+    for item in custom_characters[:10]:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        role_type = str(item.get("role_type", "supporting")).strip() or "supporting"
+        description = str(item.get("description", "")).strip()
+        if not name:
+            raise ValueError("Each custom character needs a name")
+        specs.append(
+            {
+                "name": name,
+                "role_type": role_type,
+                "description": description,
+                "voice_profile": str(item.get("voice_profile", "")).strip() or "default",
+            }
+        )
+    return specs
+
+
+def _auto_create_scene_count(duration_minutes: int) -> int:
+    clean_duration = max(1, int(duration_minutes or 1))
+    return max(6, min(10, int(math.ceil(clean_duration / 5.0))))
+
+
+def _auto_create_estimated_credits(duration_minutes: int, *, character_count: int = 2) -> int:
+    scene_count = _auto_create_scene_count(duration_minutes)
+    character_generation_cost = max(0, int(character_count)) * CREDITS_COST_IMAGE_GENERATE
+    return (
+        CREDITS_COST_SCRIPT_GENERATE
+        + character_generation_cost
+        + CREDITS_COST_VIDEO_RENDER
+        + (scene_count * (CREDITS_COST_IMAGE_GENERATE + CREDITS_COST_VOICE_GENERATE))
+    )
+
+
+def _max_affordable_auto_create_duration(credits_balance: int, *, character_count: int = 2) -> int:
+    for duration in range(120, 0, -1):
+        if _auto_create_estimated_credits(duration, character_count=character_count) <= credits_balance:
+            return duration
+    return 0
+
+
+def auto_create_project(
+    *,
+    session: Session,
+    current_user: User,
+    title: str,
+    duration_minutes: int,
+    genre: str | None = None,
+    short_description: str | None = None,
+    custom_characters: list[dict[str, Any]] | None = None,
+    start_credits: str | None = None,
+    end_credits: str | None = None,
+    allow_factory_mode_genre: bool = False,
+) -> WorkflowAutoCreateResponse:
+    clean_title = title.strip()
+    if not clean_title:
+        raise ValueError("Title is required")
+    clean_genre = (genre or "").strip() or None
+    clean_short_description = (short_description or "").strip() or None
+    clean_start_credits = (start_credits or "").strip() or None
+    clean_end_credits = (end_credits or "").strip() or None
+    normalized_custom_characters = _auto_create_custom_character_specs(custom_characters or [])
+    if len((custom_characters or [])) > 10:
+        raise ValueError("Auto-create supports up to 10 custom characters")
+    owner_mode_active = bool(session is not None and current_user is not None and has_owner_mode_access(session, current_user))
+    if clean_genre == FACTORY_MODE_SERIES_GENRE and not allow_factory_mode_genre and not owner_mode_active:
+        raise ValueError("Series Video Maker is available in Factory Mode only")
+    if clean_genre == REAL_EVENTS_GENRE and normalized_custom_characters:
+        raise ValueError("Real Events does not use character generation")
+    requested_duration = max(1, min(120, int(duration_minutes or 3)))
+
+    subscription = get_or_create_subscription(session, current_user)
+    if has_owner_mode_access(session, current_user):
+        applied_duration = requested_duration
+        max_affordable_duration = requested_duration
+    else:
+        max_affordable_duration = _max_affordable_auto_create_duration(
+            subscription.credits_balance,
+            character_count=0 if normalized_custom_characters else 2,
+        )
+        if max_affordable_duration <= 0:
+            raise ValueError("Not enough credits to auto-create a full video")
+        applied_duration = min(requested_duration, max_affordable_duration)
+    estimated_credits = _auto_create_estimated_credits(
+        applied_duration,
+        character_count=0 if normalized_custom_characters else 2,
+    )
+
+    created_project = create_project(
+        session=session,
+        title=clean_title,
+        idea_prompt=clean_short_description,
+        short_description=clean_short_description,
+        genre=clean_genre,
+        target_duration_minutes=applied_duration,
+        start_credits=clean_start_credits,
+        end_credits=clean_end_credits,
+    )
+    project = get_project_or_404(session, created_project.project_id)
+
+    generate_project_script(
+        session=session,
+        project=project,
+        current_user=current_user,
+        title=clean_title,
+        idea_prompt=clean_short_description,
+        genre=clean_genre,
+        target_duration_minutes=applied_duration,
+        tone="cinematic",
+    )
+    approve_script(session=session, project=project)
+
+    if clean_genre == REAL_EVENTS_GENRE:
+        _store_project_selected_character_ids(project, [])
+        project.character_package_approved = True
+        project.character_package_approved_at = utc_now()
+        _set_project_state(project, "production_ready")
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+    else:
+        created_character_ids: list[str] = []
+        if normalized_custom_characters:
+            character_specs = normalized_custom_characters
+        else:
+            character_specs = _auto_create_character_specs(clean_title)
+        for spec in character_specs:
+            try:
+                if normalized_custom_characters:
+                    profile = create_character_profile(
+                        session=session,
+                        current_user=current_user,
+                        name=spec["name"],
+                        role_type=spec["role_type"],
+                        description=spec["description"],
+                        personality_traits=["custom-auto-create"],
+                        voice_profile=spec["voice_profile"],
+                        reference_image_url=None,
+                        reference_image_urls=None,
+                        canonical_image_url=None,
+                        visual_prompt_base=None,
+                        negative_prompt_base=None,
+                        lock_identity=True,
+                    )
+                else:
+                    profile = generate_character_profile(
+                        session=session,
+                        current_user=current_user,
+                        name=spec["name"],
+                        role_type=spec["role_type"],
+                        description=spec["description"],
+                        personality_traits=["cinematic", "auto-created"],
+                        voice_profile=spec["voice_profile"],
+                        style="cinematic",
+                        lock_identity=True,
+                        skip_character_slot_check=owner_mode_active,
+                    )
+            except ValueError as exc:
+                if "Character library is full" in str(exc) and created_character_ids:
+                    break
+                raise
+            created_character_ids.append(profile.character_id)
+
+        if not created_character_ids:
+            raise ValueError("Auto-create could not generate any characters")
+
+        select_characters(
+            session=session,
+            project=project,
+            selected_character_ids=created_character_ids,
+        )
+        approve_character_package(
+            session=session,
+            project=project,
+            current_user=current_user,
+            selected_character_ids=created_character_ids,
+        )
+    project = get_project_or_404(session, project.project_id)
+    start_production(
+        session=session,
+        project=project,
+        current_user=current_user,
+    )
+    job = _get_project_production_job(session, project)
+    if not job:
+        raise ValueError("Production job not found")
+    video_path = execute_workflow_production_job(session=session, job=job)
+    job.status = "complete"
+    job.last_error = None
+    job.updated_at = utc_now()
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    project = get_project_or_404(session, project.project_id)
+    return WorkflowAutoCreateResponse(
+        project=project_to_response(project),
+        status=production_status(session, project),
+        video_path=video_path,
+        requested_duration_minutes=requested_duration,
+        applied_duration_minutes=applied_duration,
+        max_affordable_duration_minutes=max_affordable_duration,
+        estimated_credits=estimated_credits,
+    )
+
+
+def _clean_factory_mode_titles(raw_titles: Any) -> list[str]:
+    titles: list[str] = []
+    if isinstance(raw_titles, list):
+        source_items = raw_titles
+    elif isinstance(raw_titles, str):
+        source_items = raw_titles.splitlines()
+    else:
+        source_items = []
+    for item in source_items:
+        title = str(item).strip()
+        if title:
+            titles.append(title)
+    seen: set[str] = set()
+    unique_titles: list[str] = []
+    for title in titles:
+        normalized = title.lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_titles.append(title)
+    return unique_titles[:25]
+
+
+def execute_factory_mode_job(
+    *,
+    session: Session,
+    job: OrchestrationJob,
+) -> dict[str, Any]:
+    payload = _loads_json(job.payload) if job.payload else {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    user_id = int(payload.get("user_id") or 0)
+    current_user = session.get(User, user_id) if user_id else None
+    if not current_user:
+        raise ValueError("Factory Mode user could not be resolved")
+    if not FACTORY_MODE_ENABLED and not has_owner_mode_access(session, current_user):
+        raise ValueError("Factory Mode is not enabled for this deployment")
+
+    subscription = get_or_create_subscription(session, current_user)
+    if not has_factory_mode_access(subscription, session=session, user=current_user):
+        raise ValueError("Factory Mode access is required")
+
+    titles = _clean_factory_mode_titles(payload.get("titles") or [])
+    if not titles:
+        raise ValueError("At least one title is required for Factory Mode")
+
+    genre = str(payload.get("genre") or "").strip() or None
+    short_description = str(payload.get("short_description") or "").strip() or None
+    start_credits = str(payload.get("start_credits") or "").strip() or None
+    end_credits = str(payload.get("end_credits") or "").strip() or None
+    publish_message = str(payload.get("publish_message") or "").strip() or None
+    duration_minutes = max(1, min(120, int(payload.get("duration_minutes") or 10)))
+
+    processed: list[dict[str, Any]] = []
+    for index, title in enumerate(titles, start=1):
+        subscription = get_or_create_subscription(session, current_user)
+        if not has_owner_mode_access(session, current_user) and subscription.credits_balance <= 0:
+            break
+        try:
+            auto_result = auto_create_project(
+                session=session,
+                current_user=current_user,
+                title=title,
+                duration_minutes=duration_minutes,
+                genre=genre,
+                short_description=short_description,
+                custom_characters=[],
+                start_credits=start_credits,
+                end_credits=end_credits,
+                allow_factory_mode_genre=True,
+            )
+        except ValueError as exc:
+            if "Not enough credits" in str(exc):
+                break
+            raise
+
+        published_jobs: list[str] = []
+        publish_error: str | None = None
+        try:
+            published = publish_to_all_connections(
+                session=session,
+                current_user=current_user,
+                project_id=auto_result.project.project_id,
+                message=publish_message,
+                title=title,
+            )
+            published_jobs = [job.job_id for job in published]
+        except HTTPException as exc:
+            if "No connected social accounts found" in str(exc.detail):
+                publish_error = str(exc.detail)
+            else:
+                raise
+
+        processed.append(
+            {
+                "index": index,
+                "title": title,
+                "project_id": auto_result.project.project_id,
+                "video_path": auto_result.video_path,
+                "published_jobs": published_jobs,
+                "publish_error": publish_error,
+            }
+        )
+
+    return {
+        "processed_titles": len(processed),
+        "titles": processed,
+        "stopped_reason": "credits_exhausted" if len(processed) < len(titles) else None,
+    }
 
 
 def retry_production(

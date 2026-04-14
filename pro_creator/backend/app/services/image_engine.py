@@ -6,19 +6,19 @@ import time
 import requests
 
 from app.config import (
-    OPENAI_API_KEY,
-    OPENAI_BASE_URL,
-    OPENAI_IMAGE_MODEL,
-    OPENAI_IMAGE_QUALITY,
-    OPENAI_IMAGE_SIZE,
+    ENVIRONMENT,
     PROVIDER_RETRY_ATTEMPTS,
     PROVIDER_RETRY_BACKOFF_SECONDS,
+    XAI_API_KEY,
+    XAI_BASE_URL,
+    XAI_IMAGE_MODEL,
 )
 from app.services.provider_routing import resolve_image_provider
 from app.storage import project_key, storage_client
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+ALLOW_LOCAL_PLACEHOLDERS = ENVIRONMENT != "production"
 
 
 def _quality_image_prompt(prompt: str, style: str) -> str:
@@ -53,54 +53,42 @@ def _extract_image_bytes(payload: dict[str, Any]) -> bytes | None:
     return None
 
 
-def _generate_openai_image(prompt: str, style: str) -> bytes:
-    api_key = OPENAI_API_KEY.strip()
+def _generate_xai_image(prompt: str, style: str, scene_id: int = 1) -> bytes:
+    api_key = XAI_API_KEY.strip()
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is required when IMAGE_PROVIDER=openai")
+        if ALLOW_LOCAL_PLACEHOLDERS:
+            return _generate_local_placeholder(prompt, scene_id)
+        raise RuntimeError("XAI_API_KEY is required for image generation in production")
 
-    request_url = f"{OPENAI_BASE_URL}/images/generations"
+    request_url = f"{XAI_BASE_URL}/images/generations"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    base_payload = {
-        "model": OPENAI_IMAGE_MODEL,
+    payload = {
+        "model": XAI_IMAGE_MODEL,
         "prompt": _quality_image_prompt(prompt, style),
-        "size": OPENAI_IMAGE_SIZE,
+        "response_format": "b64_json",
     }
-
-    attempts = [
-        {**base_payload, "quality": OPENAI_IMAGE_QUALITY, "response_format": "b64_json"},
-        {**base_payload, "quality": "hd", "response_format": "b64_json"},
-        {**base_payload, "response_format": "b64_json"},
-        base_payload,
-    ]
-
     last_error: str | None = None
-    attempts_count = max(1, PROVIDER_RETRY_ATTEMPTS)
-    for payload in attempts:
-        for attempt in range(1, attempts_count + 1):
-            try:
-                response = requests.post(request_url, headers=headers, json=payload, timeout=90)
-                if response.status_code >= 400:
-                    # Some models reject unsupported keys like quality/response_format; try fallback payloads.
-                    if response.status_code in {400, 404, 422}:
-                        last_error = response.text
-                        break
-                    response.raise_for_status()
-                body = response.json()
-                image_bytes = _extract_image_bytes(body)
-                if image_bytes:
-                    return image_bytes
-                last_error = f"No image payload returned: {body}"
-                break
-            except Exception as exc:
-                last_error = str(exc)
-                if attempt >= attempts_count:
-                    break
-                time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
-
-    raise RuntimeError(f"OpenAI image generation failed: {last_error or 'unknown error'}")
+    attempts = max(1, PROVIDER_RETRY_ATTEMPTS)
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.post(request_url, headers=headers, json=payload, timeout=90)
+            response.raise_for_status()
+            body = response.json()
+            image_bytes = _extract_image_bytes(body)
+            if image_bytes:
+                return image_bytes
+            last_error = f"No image payload returned: {body}"
+        except Exception as exc:
+            last_error = str(exc)
+        if attempt < attempts:
+            time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
+    if ALLOW_LOCAL_PLACEHOLDERS:
+        logger.warning("xAI image generation failed, falling back to local placeholder: %s", last_error)
+        return _generate_local_placeholder(prompt, scene_id)
+    raise RuntimeError(f"xAI image generation failed: {last_error}")
 
 
 def _generate_local_placeholder(prompt: str, scene_id: int) -> bytes:
@@ -149,9 +137,11 @@ def generate_image_bytes(
     provider: str | None = None,
 ) -> tuple[bytes, str]:
     selected_provider = (provider or resolve_image_provider()).strip().lower()
-    if selected_provider == "openai":
-        image_bytes = _generate_openai_image(prompt, style)
+    if selected_provider in {"xai", "grok"}:
+        image_bytes = _generate_xai_image(prompt, style, scene_id=scene_id)
     else:
+        if not ALLOW_LOCAL_PLACEHOLDERS:
+            raise RuntimeError(f"Unsupported image provider in production: {selected_provider}")
         image_bytes = _generate_local_placeholder(prompt, scene_id)
     return image_bytes, selected_provider
 

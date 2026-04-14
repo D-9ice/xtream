@@ -6,14 +6,26 @@ from jose import jwt
 
 from app.config import JWT_ALGORITHM, JWT_SECRET
 from app.main import app
+from app.routers import video as video_router
+from app.storage import project_key, storage_client
+from app.services import image_engine
 
 
 def _auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_auth_project_pipeline_and_export_flow() -> None:
+def test_auth_project_pipeline_and_export_flow(monkeypatch) -> None:
     client = TestClient(app)
+    monkeypatch.setattr(video_router, "XAI_API_KEY", "")
+    monkeypatch.setattr(image_engine, "XAI_API_KEY", "")
+
+    def _fake_render_video(project_id: str) -> dict[str, str]:
+        key = project_key(project_id, "video/final.mp4")
+        storage_client.write_bytes(key, b"fake-video-bytes", content_type="video/mp4")
+        return {"video_path": storage_client.public_url(key)}
+
+    monkeypatch.setattr(video_router, "render_video", _fake_render_video)
     email = f"test-{uuid4().hex[:10]}@example.com"
     password = "TestPass123!"
 

@@ -8,7 +8,7 @@ from app.services.lipsync_engine import generate_lipsync
 from app.services.voice_engine import generate_voice_bytes, generate_voice_for_scene
 from app.services.image_engine import generate_image_for_scene
 from app.services.video_engine import render_video
-from app.services.workflow_service import execute_workflow_production_job
+from app.services.workflow_service import execute_factory_mode_job, execute_workflow_production_job
 from app.utils.file_manager import ensure_project_dirs, write_scene_metadata, write_script
 from app.utils.file_manager import read_scene_metadata
 from app.utils.file_manager import read_character_voice_profiles
@@ -24,8 +24,14 @@ from pathlib import Path
 
 
 @celery_app.task(name="pro_creator.generate_script")
-def generate_script_task(project_id: str, topic: str, duration_minutes: float, tone: str) -> dict:
-    result = generate_script(topic, duration_minutes, tone)
+def generate_script_task(
+    project_id: str,
+    topic: str,
+    duration_minutes: float,
+    tone: str,
+    genre: str | None = None,
+) -> dict:
+    result = generate_script(topic, duration_minutes, tone, genre=genre)
     project_path = ensure_project_dirs(project_id)
     write_script(project_path, result["full_script"])
     write_scene_metadata(project_path, result["scenes"])
@@ -68,6 +74,16 @@ def workflow_production_task(job_id: int) -> dict:
         return {"video_path": video_path}
 
 
+@celery_app.task(name="pro_creator.factory_mode")
+def factory_mode_task(job_id: int) -> dict:
+    with Session(engine) as session:
+        job = session.get(OrchestrationJob, job_id)
+        if not job:
+            raise ValueError(f"Factory mode job {job_id} not found")
+        result = execute_factory_mode_job(session=session, job=job)
+        return result
+
+
 @celery_app.task(name="pro_creator.full_pipeline")
 def full_pipeline_task(
     project_id: str,
@@ -78,7 +94,7 @@ def full_pipeline_task(
     voice_text: str | None = None,
     image_prompt: str | None = None,
 ) -> dict:
-    script_result = generate_script(topic, duration_minutes, tone)
+    script_result = generate_script(topic, duration_minutes, tone, genre=None)
     project_path = ensure_project_dirs(project_id)
     write_script(project_path, script_result["full_script"])
     write_scene_metadata(project_path, script_result["scenes"])
@@ -124,7 +140,7 @@ def full_pipeline_task(
                     project_id=project_id,
                     text=text_line,
                     voice_profile=mapped.get("voice_profile") or "default",
-                    provider=mapped.get("tts_provider"),
+                    provider=None,
                     override_voice_id=mapped.get("voice_id"),
                 )
                 seg_path = temp_path / f"seg_{idx}.{ext}"

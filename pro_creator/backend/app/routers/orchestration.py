@@ -14,9 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
 from app.auth import get_current_user
-from app.config import ENABLE_CELERY
+from app.config import ENABLE_CELERY, FACTORY_MODE_ENABLED
 from app.database import engine, get_session
-from app.models import OrchestrationJob, OrchestrationSchedule, Scene
+from app.models import OrchestrationJob, OrchestrationSchedule, Scene, User
 from app.schemas import (
     ExportPresetRequest,
     ExportPresetResponse,
@@ -38,7 +38,8 @@ from app.services.image_engine import generate_image_for_scene
 from app.services.script_engine import generate_script
 from app.services.video_engine import render_video
 from app.services.voice_engine import generate_voice_bytes, generate_voice_for_scene
-from app.services.workflow_service import execute_workflow_production_job
+from app.services.workflow_service import execute_factory_mode_job, execute_workflow_production_job
+from app.services.credits import has_owner_mode_access
 from app.celery_app import celery_app
 from app import tasks as celery_tasks
 from app.utils.file_manager import (
@@ -110,9 +111,20 @@ def _parse_payload(job: OrchestrationJob) -> dict:
         return {}
 
 
+def _factory_mode_available_for_user(session: Session, user) -> bool:
+    if FACTORY_MODE_ENABLED:
+        return True
+    return bool(user and has_owner_mode_access(session, user))
+
+
 def _run_script(payload: OrchestrationQueueRequest, session: Session) -> None:
     tenant_id = current_tenant_id()
-    result = generate_script(payload.topic or "Untitled", payload.duration_minutes, payload.tone)
+    result = generate_script(
+        payload.topic or "Untitled",
+        payload.duration_minutes,
+        payload.tone,
+        genre=payload.genre,
+    )
     project_path = ensure_project_dirs(payload.project_id)
     write_script(project_path, result["full_script"])
     write_scene_metadata(project_path, result["scenes"])
@@ -174,7 +186,7 @@ def _render_dialogue_scene(
                 project_id=project_id,
                 text=text,
                 voice_profile=mapped.get("voice_profile") or "default",
-                provider=mapped.get("tts_provider"),
+                provider=None,
                 override_voice_id=mapped.get("voice_id"),
             )
             seg_path = temp_path / f"seg_{idx}.{ext}"
@@ -325,6 +337,12 @@ def _execute_job(job: OrchestrationJob, session: Session) -> None:
         _run_export(request)
     elif job.kind == "workflow_production":
         execute_workflow_production_job(session=session, job=job)
+    elif job.kind == "factory_mode":
+        user_id = int(payload.get("user_id") or 0)
+        current_user = session.get(User, user_id) if user_id else None
+        if not _factory_mode_available_for_user(session, current_user):
+            raise ValueError("Factory Mode is not enabled for this deployment")
+        execute_factory_mode_job(session=session, job=job)
     else:
         raise ValueError(f"Unknown job kind: {job.kind}")
 
@@ -368,6 +386,8 @@ def _dispatch_job(job: OrchestrationJob) -> str:
         )
     elif job.kind == "workflow_production":
         result = celery_tasks.workflow_production_task.delay(job.id or 0)
+    elif job.kind == "factory_mode":
+        result = celery_tasks.factory_mode_task.delay(job.id or 0)
     else:
         raise ValueError(f"Unknown job kind: {job.kind}")
     return result.id
@@ -458,9 +478,13 @@ async def _runner_loop(interval_seconds: int) -> None:
 
 @router.post("/queue", response_model=OrchestrationQueueItem)
 def enqueue_job(
-    payload: OrchestrationQueueRequest, session: Session = Depends(get_session)
+    payload: OrchestrationQueueRequest,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user),
 ) -> OrchestrationQueueItem:
     tenant_id = current_tenant_id()
+    if payload.kind == "factory_mode" and not _factory_mode_available_for_user(session, current_user):
+        raise HTTPException(status_code=400, detail="Factory Mode is not enabled for this deployment")
     job = OrchestrationJob(
         tenant_id=tenant_id,
         project_id=payload.project_id,
@@ -470,12 +494,19 @@ def enqueue_job(
         max_attempts=3,
         payload=json.dumps(
             {
+                "user_id": current_user.id if getattr(current_user, "id", None) is not None else None,
                 "topic": payload.topic,
                 "duration_minutes": payload.duration_minutes,
                 "tone": payload.tone,
                 "voice_text": payload.voice_text,
                 "image_prompt": payload.image_prompt,
                 "export_preset": payload.export_preset,
+                "genre": payload.genre,
+                "titles": payload.titles,
+                "short_description": payload.short_description,
+                "start_credits": payload.start_credits,
+                "end_credits": payload.end_credits,
+                "publish_message": payload.publish_message,
             }
         ),
     )
@@ -488,11 +519,15 @@ def enqueue_job(
 
 @router.post("/queue/batch", response_model=OrchestrationQueueResponse)
 def enqueue_batch(
-    payload: OrchestrationQueueBatchRequest, session: Session = Depends(get_session)
+    payload: OrchestrationQueueBatchRequest,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user),
 ) -> OrchestrationQueueResponse:
     tenant_id = current_tenant_id()
     items: list[OrchestrationQueueItem] = []
     for entry in payload.items:
+        if entry.kind == "factory_mode" and not _factory_mode_available_for_user(session, current_user):
+            raise HTTPException(status_code=400, detail="Factory Mode is not enabled for this deployment")
         job = OrchestrationJob(
             tenant_id=tenant_id,
             project_id=entry.project_id,
@@ -502,12 +537,19 @@ def enqueue_batch(
             max_attempts=3,
             payload=json.dumps(
                 {
+                    "user_id": current_user.id if getattr(current_user, "id", None) is not None else None,
                     "topic": entry.topic,
                     "duration_minutes": entry.duration_minutes,
                     "tone": entry.tone,
                     "voice_text": entry.voice_text,
                     "image_prompt": entry.image_prompt,
                     "export_preset": entry.export_preset,
+                    "genre": entry.genre,
+                    "titles": entry.titles,
+                    "short_description": entry.short_description,
+                    "start_credits": entry.start_credits,
+                    "end_credits": entry.end_credits,
+                    "publish_message": entry.publish_message,
                 }
             ),
         )

@@ -17,8 +17,9 @@ from app.config import (
     CREDITS_COST_THUMBNAIL_GENERATE,
     CREDITS_COST_VIDEO_EXPORT,
     CREDITS_COST_VIDEO_RENDER,
-    OPENAI_API_KEY,
     PROJECTS_DIR,
+    XAI_API_KEY,
+    XAI_VIDEO_MODEL,
 )
 from app.database import get_session
 from app.models import User
@@ -182,7 +183,7 @@ def _generate_ai_thumbnail_base(
     variant_count: int = 1,
 ) -> tuple[Image.Image, str]:
     prompt = _build_ai_thumbnail_prompt(payload, variant_id=variant_id, variant_count=variant_count)
-    preferred_provider = "openai" if OPENAI_API_KEY.strip() else "local"
+    preferred_provider = "xai" if XAI_API_KEY.strip() else "local"
     image_bytes, provider_used = generate_image_bytes(
         prompt=prompt,
         style=payload.style,
@@ -271,15 +272,9 @@ def render_video_endpoint(
     current_user: User = Depends(get_current_user),
 ) -> VideoResponse:
     try:
-        result = render_video(payload.project_id, render_provider=payload.render_provider)
+        result = render_video(payload.project_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    provider_label = (payload.render_provider or "ffmpeg").strip().lower()
-    model_label = "ffmpeg"
-    if provider_label == "runway_gen4_turbo":
-        model_label = "gen4_turbo"
-    elif provider_label == "runway_gen4_5":
-        model_label = "gen4.5"
     consume_credits(
         session=session,
         user=current_user,
@@ -287,14 +282,14 @@ def render_video_endpoint(
         reason="video render",
         action="video.render",
         reference_id=payload.project_id,
-        provider="runway" if provider_label.startswith("runway_") else "local",
-        model=model_label,
+        provider="xai",
+        model=XAI_VIDEO_MODEL,
     )
     logger.info(
         "Rendered video for project %s provider=%s model=%s",
         payload.project_id,
-        provider_label,
-        model_label,
+        "grok_imagine",
+        XAI_VIDEO_MODEL,
     )
     return VideoResponse(**result)
 

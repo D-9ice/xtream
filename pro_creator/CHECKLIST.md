@@ -155,3 +155,7 @@ This checklist tracks the remaining work required to finish the guided workflow 
 - [x] 4. Strengthen resolver + Character DNA injection.
 - [x] 5. Run live integration verification and fix discovered bugs.
 - [x] 6. Finish UX/library/projects polish.
+
+## Billing QA
+
+- [x] Browser QA for `Factory Mode` and `Credits & Plans`.

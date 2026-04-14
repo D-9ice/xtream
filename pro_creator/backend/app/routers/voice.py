@@ -24,7 +24,6 @@ from app.schemas import (
 )
 from app.services.credits import consume_credits, record_usage_event
 from app.services.lipsync_engine import generate_lipsync
-from app.services.provider_routing import resolve_voice_provider
 from app.services.voice_engine import clone_voice_profile, generate_voice_bytes, generate_voice_for_scene
 from app.tenant import current_tenant_id
 from app.utils.file_manager import (
@@ -54,7 +53,7 @@ def _normalize_character_payload(payload: CharacterVoiceProfile) -> dict:
         "character_id": payload.character_id.strip(),
         "display_name": payload.display_name.strip() or payload.character_id.strip(),
         "voice_profile": payload.voice_profile.strip() or "default",
-        "tts_provider": payload.tts_provider.strip().lower() if payload.tts_provider else None,
+        "provider": "xai",
         "voice_id": payload.voice_id.strip() if payload.voice_id else None,
     }
 
@@ -82,7 +81,6 @@ def _render_scene_dialogue_audio(
     project_id: str,
     scene_id: int,
     lines: list,
-    default_tts_provider: str,
     character_map: dict[str, dict],
 ) -> str:
     ffmpeg_path = shutil.which("ffmpeg")
@@ -99,18 +97,13 @@ def _render_scene_dialogue_audio(
             if not speaker_id or not line_text:
                 continue
             mapped = character_map.get(speaker_id, {})
-            provider = (
-                line.tts_provider
-                or mapped.get("tts_provider")
-                or default_tts_provider
-            )
             voice_profile = line.voice_profile or mapped.get("voice_profile") or "default"
             voice_id = line.voice_id or mapped.get("voice_id")
             audio_bytes, ext, _content_type = generate_voice_bytes(
                 project_id=project_id,
                 text=line_text,
                 voice_profile=voice_profile,
-                provider=provider,
+                provider=None,
                 override_voice_id=voice_id,
             )
             segment_path = temp_path / f"line_{item_index}.{ext}"
@@ -177,7 +170,6 @@ def generate_voice_endpoint(
     current_user: User = Depends(get_current_user),
 ) -> VoiceResponse:
     tenant_id = current_tenant_id()
-    provider = resolve_voice_provider(payload.tts_provider)
     scenes = session.exec(
         select(Scene).where(
             Scene.project_id == payload.project_id,
@@ -189,7 +181,7 @@ def generate_voice_endpoint(
         1,
         payload.text,
         payload.voice_profile,
-        provider,
+        None,
     )
     if scenes:
         for scene in scenes:
@@ -198,7 +190,7 @@ def generate_voice_endpoint(
                 scene.id or 1,
                 scene.text or payload.text,
                 payload.voice_profile,
-                provider,
+                None,
             )
             scene.audio_path = scene_result["audio_path"]
             session.add(scene)
@@ -214,7 +206,7 @@ def generate_voice_endpoint(
         reason="voice generation",
         action="voice.generate",
         reference_id=payload.project_id,
-        provider=provider,
+        provider="xai",
         model=payload.voice_profile,
         metadata={"scene_count": len(scenes) if scenes else 1},
     )
@@ -226,7 +218,6 @@ def generate_voice_endpoint(
 async def clone_voice_endpoint(
     project_id: str = Form(...),
     profile_name: str = Form("default"),
-    tts_provider: str | None = Form(None),
     sample: UploadFile = File(...),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -234,7 +225,7 @@ async def clone_voice_endpoint(
     ensure_project_dirs(project_id)
     content = await sample.read()
     profile_path = save_voice_profile(project_id, profile_name, content)
-    clone_result = clone_voice_profile(profile_name, content, tts_provider)
+    clone_result = clone_voice_profile(profile_name, content, None)
     update_voice_profile_metadata(
         project_id,
         profile_name,
@@ -250,7 +241,7 @@ async def clone_voice_endpoint(
         action="voice.clone",
         reason="voice profile clone",
         reference_id=project_id,
-        provider=resolve_voice_provider(tts_provider),
+        provider="xai",
         model=profile_name,
     )
     logger.info("Uploaded voice profile %s for project %s", profile_name, project_id)
@@ -313,7 +304,6 @@ def render_dialogue(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> DialogueRenderResponse:
-    default_provider = resolve_voice_provider(payload.default_tts_provider)
     character_map = {
         str(item.get("character_id", "")).strip(): item
         for item in read_character_voice_profiles(payload.project_id)
@@ -325,7 +315,6 @@ def render_dialogue(
             project_id=payload.project_id,
             scene_id=scene.scene_id,
             lines=scene.lines,
-            default_tts_provider=default_provider,
             character_map=character_map,
         )
         if payload.write_scene_audio_paths:
@@ -344,7 +333,7 @@ def render_dialogue(
         reason="multi-character dialogue render",
         action="voice.dialogue.render",
         reference_id=payload.project_id,
-        provider=default_provider,
+        provider="xai",
         model="multi-character",
         metadata={"scene_count": len(scene_results)},
     )

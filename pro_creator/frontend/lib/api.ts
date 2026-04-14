@@ -27,7 +27,6 @@ export type CharacterVoiceProfile = {
   character_id: string;
   display_name: string;
   voice_profile: string;
-  tts_provider?: string | null;
   voice_id?: string | null;
 };
 
@@ -36,7 +35,6 @@ export type DialogueLine = {
   text: string;
   pause_ms?: number;
   voice_profile?: string;
-  tts_provider?: string;
   voice_id?: string;
 };
 
@@ -79,14 +77,35 @@ export type ThumbnailResponse = {
 };
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 
 type FetchInput = Parameters<typeof globalThis.fetch>[0];
 type FetchInit = Parameters<typeof globalThis.fetch>[1];
 type FetchHeaders = Record<string, string> | [string, string][] | Headers;
 
+const migrateAdminTokenToSessionStorage = (): string | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const sessionToken = window.sessionStorage.getItem("pc_admin_access_token");
+  if (sessionToken) {
+    return sessionToken;
+  }
+  const legacyToken = window.localStorage.getItem("pc_admin_access_token");
+  if (legacyToken) {
+    window.sessionStorage.setItem("pc_admin_access_token", legacyToken);
+    window.localStorage.removeItem("pc_admin_access_token");
+    return legacyToken;
+  }
+  return null;
+};
+
 const getAuthToken = (): string | null => {
   if (typeof window !== "undefined") {
+    const adminAccessToken = migrateAdminTokenToSessionStorage();
+    if (adminAccessToken) {
+      return adminAccessToken;
+    }
     return window.localStorage.getItem("pc_token");
   }
   return process.env.NEXT_PUBLIC_API_TOKEN ?? null;
@@ -94,7 +113,7 @@ const getAuthToken = (): string | null => {
 
 const getAdminAccessToken = (): string | null => {
   if (typeof window !== "undefined") {
-    return window.sessionStorage.getItem("pc_admin_access_token");
+    return migrateAdminTokenToSessionStorage();
   }
   return null;
 };
@@ -122,6 +141,62 @@ const withAuthHeaders = (headers?: FetchHeaders): FetchHeaders => {
     ...normalized,
     Authorization: `Bearer ${token}`,
   };
+};
+
+export type VisitAnalyticsTopPath = {
+  path: string;
+  visits: number;
+  human_visits: number;
+  bot_visits: number;
+};
+
+export type VisitAnalyticsBreakdown = {
+  label: string;
+  visits: number;
+  human_visits: number;
+  bot_visits: number;
+};
+
+export type VisitAnalyticsDailyPoint = {
+  day: string;
+  visits: number;
+  human_visits: number;
+  bot_visits: number;
+};
+
+export type VisitEvent = {
+  visit_id: string;
+  path: string;
+  referrer?: string | null;
+  device_type?: string | null;
+  country_code?: string | null;
+  page_title?: string | null;
+  session_id?: string | null;
+  event_type: string;
+  is_bot: boolean;
+  bot_reason?: string | null;
+  created_at: string;
+};
+
+export type VisitAnalyticsSummary = {
+  total_visits: number;
+  human_visits: number;
+  bot_visits: number;
+  unique_sessions: number;
+  unique_paths: number;
+  visits_last_24h: number;
+  visits_last_7d: number;
+  top_paths: VisitAnalyticsTopPath[];
+  top_devices: VisitAnalyticsBreakdown[];
+  top_countries: VisitAnalyticsBreakdown[];
+  recent_visits: VisitEvent[];
+  daily_visits: VisitAnalyticsDailyPoint[];
+};
+
+export type AutoCreateCharacterInput = {
+  name: string;
+  role_type: string;
+  description?: string;
 };
 
 const withOwnerDashboardHeaders = (headers?: FetchHeaders): FetchHeaders => {
@@ -306,6 +381,11 @@ export async function enqueueOrchestrationJob(payload: {
   voice_text?: string;
   image_prompt?: string;
   export_preset?: string;
+  titles?: string[];
+  short_description?: string;
+  start_credits?: string;
+  end_credits?: string;
+  publish_message?: string;
 }): Promise<OrchestrationQueueItem> {
   const response = await fetch(`${API_BASE}/orchestration/queue`, {
     method: "POST",
@@ -328,6 +408,11 @@ export async function enqueueOrchestrationBatch(payload: {
     voice_text?: string;
     image_prompt?: string;
     export_preset?: string;
+    titles?: string[];
+    short_description?: string;
+    start_credits?: string;
+    end_credits?: string;
+    publish_message?: string;
   }[];
 }): Promise<{ items: OrchestrationQueueItem[] }> {
   const response = await fetch(`${API_BASE}/orchestration/queue/batch`, {
@@ -497,6 +582,7 @@ export async function generateScript(payload: {
   topic: string;
   duration_minutes: number;
   tone: string;
+  genre?: string;
 }): Promise<ScriptResponse> {
   const response = await fetch(`${API_BASE}/script/generate`, {
     method: "POST",
@@ -563,7 +649,6 @@ export async function generateVoice(payload: {
   project_id: string;
   text: string;
   voice_profile: string;
-  tts_provider?: string;
 }): Promise<VoiceResponse> {
   const response = await fetch(`${API_BASE}/voice/generate`, {
     method: "POST",
@@ -630,7 +715,6 @@ export async function deleteCharacterVoiceProfile(
 export async function renderDialogue(payload: {
   project_id: string;
   scenes: DialogueSceneRequest[];
-  default_tts_provider?: string;
   write_scene_audio_paths?: boolean;
 }): Promise<DialogueRenderResponse> {
   const response = await fetch(`${API_BASE}/voice/dialogue/render`, {
@@ -662,7 +746,6 @@ export async function generateImage(payload: {
 
 export async function renderVideo(payload: {
   project_id: string;
-  render_provider?: "ffmpeg" | "runway_gen4_turbo" | "runway_gen4_5";
 }): Promise<VideoResponse> {
   const response = await fetch(`${API_BASE}/video/render`, {
     method: "POST",
@@ -828,6 +911,153 @@ export async function fetchExportStatus(payload: {
   return response.json();
 }
 
+export type SocialAccountConnection = {
+  connection_id: string;
+  platform: "youtube" | "instagram" | "facebook" | "x" | "tiktok" | string;
+  account_label: string;
+  account_identifier?: string | null;
+  scopes?: string[];
+  metadata?: Record<string, string>;
+  enabled: boolean;
+  token_expires_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SocialPublishJob = {
+  job_id: string;
+  project_id: string;
+  connection_id: string;
+  platform: string;
+  status: string;
+  remote_post_id?: string | null;
+  published_url?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+  published_at?: string | null;
+};
+
+export async function fetchSocialConnections(): Promise<{ items: SocialAccountConnection[] }> {
+  const response = await fetch(`${API_BASE}/social/connections`, { cache: "no-store" });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load social connections");
+  }
+  return response.json();
+}
+
+export async function fetchAdminSocialConnections(): Promise<{ items: SocialAccountConnection[] }> {
+  const response = await fetch(`${API_BASE}/social/admin/connections`, {
+    cache: "no-store",
+    headers: withOwnerDashboardHeaders(undefined),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load admin social connections");
+  }
+  return response.json();
+}
+
+export async function saveSocialConnection(payload: {
+  connection_id?: string | null;
+  platform: SocialAccountConnection["platform"];
+  account_label: string;
+  account_identifier?: string | null;
+  access_token?: string | null;
+  access_token_secret?: string | null;
+  refresh_token?: string | null;
+  client_key?: string | null;
+  client_secret?: string | null;
+  token_expires_at?: string | null;
+  scopes?: string[];
+  metadata?: Record<string, string>;
+  enabled?: boolean;
+}): Promise<SocialAccountConnection> {
+  const response = await fetch(`${API_BASE}/social/connections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to save social connection");
+  }
+  return response.json();
+}
+
+export async function saveAdminSocialConnection(payload: {
+  connection_id?: string | null;
+  platform: SocialAccountConnection["platform"];
+  account_label: string;
+  account_identifier?: string | null;
+  access_token?: string | null;
+  access_token_secret?: string | null;
+  refresh_token?: string | null;
+  client_key?: string | null;
+  client_secret?: string | null;
+  token_expires_at?: string | null;
+  scopes?: string[];
+  metadata?: Record<string, string>;
+  enabled?: boolean;
+}): Promise<SocialAccountConnection> {
+  const response = await fetch(`${API_BASE}/social/admin/connections`, {
+    method: "POST",
+    headers: withOwnerDashboardHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to save admin social connection");
+  }
+  return response.json();
+}
+
+export async function deleteSocialConnection(connectionId: string): Promise<{ deleted: boolean }> {
+  const response = await fetch(`${API_BASE}/social/connections/${encodeURIComponent(connectionId)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to delete social connection");
+  }
+  return response.json();
+}
+
+export async function deleteAdminSocialConnection(connectionId: string): Promise<{ deleted: boolean }> {
+  const response = await fetch(`${API_BASE}/social/admin/connections/${encodeURIComponent(connectionId)}`, {
+    method: "DELETE",
+    headers: withOwnerDashboardHeaders(undefined),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to delete admin social connection");
+  }
+  return response.json();
+}
+
+export async function fetchSocialPublishJobs(payload?: {
+  project_id?: string | null;
+}): Promise<{ items: SocialPublishJob[] }> {
+  const params = payload?.project_id ? `?project_id=${encodeURIComponent(payload.project_id)}` : "";
+  const response = await fetch(`${API_BASE}/social/publish/jobs${params}`, { cache: "no-store" });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load publish jobs");
+  }
+  return response.json();
+}
+
+export async function publishSocialVideos(payload: {
+  project_id: string;
+  connection_ids?: string[];
+  message?: string | null;
+  title?: string | null;
+}): Promise<{ items: SocialPublishJob[] }> {
+  const response = await fetch(`${API_BASE}/social/publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to publish to social accounts");
+  }
+  return response.json();
+}
+
 export async function editByText(payload: {
   project_id: string;
   remove_ranges: number[][];
@@ -847,15 +1077,11 @@ export async function uploadVoiceProfile(payload: {
   project_id: string;
   profile_name: string;
   file: File;
-  tts_provider?: string;
 }): Promise<{ profile_path: string }> {
   const formData = new FormData();
   formData.append("project_id", payload.project_id);
   formData.append("profile_name", payload.profile_name);
   formData.append("sample", payload.file);
-  if (payload.tts_provider) {
-    formData.append("tts_provider", payload.tts_provider);
-  }
 
   const response = await fetch(`${API_BASE}/voice/clone`, {
     method: "POST",
@@ -997,22 +1223,66 @@ export type CreditBalance = {
   credits_used_total: number;
   renewal_date?: string | null;
   extra_character_slots?: number;
+  owner_mode_enabled?: boolean;
+  factory_mode_status?: string;
+  factory_mode_access?: string;
+  factory_mode_renewal_date?: string | null;
+  factory_mode_purchased_at?: string | null;
   character_slots: CharacterSlotSummary;
 };
 
 export type CreditPlan = {
   id: string;
   name: string;
+  kind?: "credits" | "factory_access" | string;
   credits: number;
   price_usd: number;
   base_character_slots: number;
   popular?: boolean;
   stripe_price_id?: string | null;
+  checkout_providers?: Array<"stripe" | "paystack">;
   checkout_enabled?: boolean;
+  access_mode?: "one_time" | "subscription" | string | null;
+  access_days?: number | null;
+  description?: string | null;
+};
+
+export type BillingReceipt = {
+  receipt_id: number;
+  created_at: string;
+  kind: string;
+  action?: string | null;
+  amount: number;
+  reason?: string | null;
+  reference_id?: string | null;
+  provider?: string | null;
+  balance_after: number;
+  reserved_after: number;
+  plan_id?: string | null;
+  plan_kind?: string | null;
+  access_mode?: string | null;
+  purchase_label?: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type BillingTransactionRecord = {
+  record_id: number;
+  created_at: string;
+  kind: string;
+  action?: string | null;
+  amount: number;
+  reason?: string | null;
+  reference_id?: string | null;
+  provider?: string | null;
+  balance_after: number;
+  reserved_after: number;
+  metadata: Record<string, unknown>;
 };
 
 export type BillingPricingSettings = {
   plans: CreditPlan[];
+  owner_mode_enabled: boolean;
+  receipts_live_mode: boolean;
   free_base_character_slots: number;
   character_slot_addon_size: number;
   character_slot_addon_cost_credits: number;
@@ -1034,9 +1304,62 @@ export async function fetchCreditPlans(): Promise<{ plans: CreditPlan[] }> {
   return response.json();
 }
 
+export async function fetchBillingReceipts(limit = 10): Promise<{ items: BillingReceipt[] }> {
+  const response = await fetch(`${API_BASE}/billing/receipts?limit=${encodeURIComponent(limit)}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to load billing receipts");
+  }
+  return response.json();
+}
+
+export async function fetchBillingTransactionRecords(limit = 50): Promise<{ items: BillingTransactionRecord[] }> {
+  const response = await fetch(`${API_BASE}/billing/records?limit=${encodeURIComponent(limit)}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to load billing transaction records");
+  }
+  return response.json();
+}
+
+export async function clearBillingTransactionRecords(): Promise<{
+  deleted: boolean;
+  deleted_count: number;
+  deleted_ids: number[];
+}> {
+  const response = await fetch(`${API_BASE}/billing/records`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? "Failed to clear transaction records");
+  }
+  return response.json();
+}
+
+export async function deleteBillingReceipt(receiptId: number): Promise<{
+  deleted: boolean;
+  receipt_id: number;
+  deleted_permanently: boolean;
+}> {
+  const response = await fetch(`${API_BASE}/billing/receipts/${encodeURIComponent(receiptId)}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? "Failed to delete receipt");
+  }
+  return response.json();
+}
+
 export async function createStripeCheckoutSession(payload: {
   plan_id: string;
-}): Promise<{ session_id: string; checkout_url: string }> {
+  provider?: "stripe" | "paystack";
+}): Promise<{ provider: string; session_id: string; checkout_url: string }> {
   const response = await fetch(`${API_BASE}/billing/purchase/checkout`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1044,7 +1367,29 @@ export async function createStripeCheckoutSession(payload: {
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
-    throw new Error(detail?.detail ?? "Failed to start Stripe checkout");
+    throw new Error(detail?.detail ?? "Failed to start checkout");
+  }
+  return response.json();
+}
+
+export async function recordAnalyticsVisit(payload: {
+  path: string;
+  referrer?: string | null;
+  user_agent?: string | null;
+  device_hint?: string | null;
+  country_hint?: string | null;
+  page_title?: string | null;
+  session_id?: string | null;
+  event_type?: string;
+  bot_hint?: boolean;
+}): Promise<VisitEvent> {
+  const response = await fetch(`${API_BASE}/analytics/visits`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to record visit");
   }
   return response.json();
 }
@@ -1085,6 +1430,8 @@ export async function updateAdminSubscription(
     credits_delta?: number;
     credits_balance?: number;
     renewal_date?: string | null;
+    factory_mode_access?: "none" | "one_time" | "subscription" | string | null;
+    factory_mode_renewal_date?: string | null;
   }
 ): Promise<CreditBalance> {
   const response = await fetch(`${API_BASE}/billing/admin/users/${encodeURIComponent(email)}/update`, {
@@ -1102,6 +1449,31 @@ export async function updateAdminSubscription(
   return response.json();
 }
 
+export async function deleteAdminUser(email: string): Promise<{ deleted: boolean; email: string }> {
+  const response = await fetch(`${API_BASE}/billing/admin/users/${encodeURIComponent(email)}`, {
+    method: "DELETE",
+    headers: withOwnerDashboardHeaders(undefined),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to delete user");
+  }
+  return response.json();
+}
+
+export async function clearAdminTestPurchases(): Promise<{
+  deleted_count: number;
+  deleted_emails: string[];
+}> {
+  const response = await fetch(`${API_BASE}/billing/admin/users/actions/purge-test-purchases`, {
+    method: "DELETE",
+    headers: withOwnerDashboardHeaders(undefined),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to clear test purchases");
+  }
+  return response.json();
+}
+
 export async function fetchAdminBillingPricing(): Promise<BillingPricingSettings> {
   const response = await fetch(`${API_BASE}/billing/admin/pricing`, {
     cache: "no-store",
@@ -1110,6 +1482,17 @@ export async function fetchAdminBillingPricing(): Promise<BillingPricingSettings
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
     throw new Error(detail?.detail ?? "Failed to load billing pricing");
+  }
+  return response.json();
+}
+
+export async function fetchAdminVisitAnalyticsSummary(days = 30): Promise<VisitAnalyticsSummary> {
+  const response = await fetch(`${API_BASE}/analytics/summary?days=${encodeURIComponent(days)}`, {
+    cache: "no-store",
+    headers: withOwnerDashboardHeaders(undefined),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load visit analytics");
   }
   return response.json();
 }
@@ -1127,6 +1510,12 @@ export async function updateAdminBillingPricing(payload: {
   studio_price_usd: number;
   studio_base_character_slots: number;
   studio_stripe_price_id?: string | null;
+  factory_one_time_price_usd: number;
+  factory_one_time_stripe_price_id?: string | null;
+  factory_subscription_price_usd: number;
+  factory_subscription_stripe_price_id?: string | null;
+  owner_mode_enabled: boolean;
+  receipts_live_mode: boolean;
   free_base_character_slots: number;
   character_slot_addon_size: number;
   character_slot_addon_cost_credits: number;
@@ -1213,8 +1602,11 @@ export type WorkflowProject = {
   topic: string;
   status: string;
   idea_prompt?: string | null;
+  short_description?: string | null;
   genre?: string | null;
   target_duration_minutes?: number | null;
+  start_credits?: string | null;
+  end_credits?: string | null;
   workflow_state: WorkflowState;
   script_draft?: string | null;
   script_approved?: string | null;
@@ -1286,12 +1678,102 @@ export type WorkflowLibrary = {
   videos: WorkflowProject[];
 };
 
+export type CommunityPost = {
+  post_id: string;
+  subject: string;
+  message: string;
+  author_label: string;
+  author_email: string;
+  applause_count: number;
+  created_at: string;
+};
+
+export type CommunityPostListResponse = {
+  items: CommunityPost[];
+};
+
+export type WorkflowFeedbackResponse = {
+  feedback_id: string;
+  subject: string;
+  page?: string | null;
+  project_id?: string | null;
+  email_sent: boolean;
+  created_at: string;
+};
+
+export type CommunityPostResponse = CommunityPost;
+
+export async function fetchCommunityPosts(): Promise<CommunityPostListResponse> {
+  const response = await fetch(`${API_BASE}/community/posts`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to load community posts");
+  }
+  return response.json();
+}
+
+export async function createCommunityPost(payload: {
+  subject: string;
+  message: string;
+}): Promise<CommunityPostResponse> {
+  const response = await fetch(`${API_BASE}/community/posts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to create community post");
+  }
+  return response.json();
+}
+
+export async function applaudCommunityPost(postId: string): Promise<CommunityPostResponse> {
+  const response = await fetch(`${API_BASE}/community/posts/${postId}/applaud`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to applaud community post");
+  }
+  return response.json();
+}
+
+export async function submitWorkflowFeedback(payload: {
+  subject: string;
+  message: string;
+  page?: string | null;
+  project_id?: string | null;
+}): Promise<WorkflowFeedbackResponse> {
+  const response = await fetch(`${API_BASE}/workflow/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to submit workflow feedback");
+  }
+  return response.json();
+}
+
 export async function fetchWorkflowProjects(): Promise<WorkflowProject[]> {
   const response = await fetch(`${API_BASE}/workflow/projects`, {
     cache: "no-store",
   });
   if (!response.ok) {
     await throwApiError(response, "Failed to load workflow projects");
+  }
+  return response.json();
+}
+
+export async function deleteWorkflowProjects(): Promise<{
+  deleted_count: number;
+  deleted_ids: string[];
+}> {
+  const response = await fetch(`${API_BASE}/workflow/projects`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to delete workflow projects");
   }
   return response.json();
 }
@@ -1309,6 +1791,34 @@ export async function createWorkflowProject(payload: {
   });
   if (!response.ok) {
     await throwApiError(response, "Failed to create workflow project");
+  }
+  return response.json();
+}
+
+export async function autoCreateWorkflowProject(payload: {
+  title: string;
+  duration_minutes?: number;
+  genre?: string;
+  short_description?: string;
+  start_credits?: string;
+  end_credits?: string;
+  custom_characters?: AutoCreateCharacterInput[];
+}): Promise<{
+  project: WorkflowProject;
+  status: WorkflowProductionStatus;
+  video_path?: string | null;
+  requested_duration_minutes: number;
+  applied_duration_minutes: number;
+  max_affordable_duration_minutes: number;
+  estimated_credits: number;
+}> {
+  const response = await fetch(`${API_BASE}/workflow/auto-create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to auto-create workflow project");
   }
   return response.json();
 }
@@ -1573,6 +2083,82 @@ export async function uploadWorkflowCharacter(
   });
   if (!response.ok) {
     await throwApiError(response, "Failed to upload character reference");
+  }
+  return response.json();
+}
+
+export async function createLibraryCharacter(
+  payload: {
+    name: string;
+    role_type?: string;
+    description: string;
+    visual_prompt_base?: string;
+    negative_prompt_base?: string;
+    personality_traits?: string[];
+    voice_profile?: string;
+    reference_image_url?: string;
+    reference_image_urls?: string[];
+    canonical_image_url?: string;
+    lock_identity?: boolean;
+  }
+): Promise<WorkflowLibrary> {
+  const response = await fetch(`${API_BASE}/workflow/characters/create`, {
+    method: "POST",
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to save character profile");
+  }
+  return response.json();
+}
+
+export async function generateLibraryCharacter(
+  payload: {
+    name: string;
+    role_type?: string;
+    description: string;
+    personality_traits?: string[];
+    voice_profile?: string;
+    style?: string;
+    lock_identity?: boolean;
+  }
+): Promise<WorkflowLibrary> {
+  const response = await fetch(`${API_BASE}/workflow/characters/generate`, {
+    method: "POST",
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to generate character");
+  }
+  return response.json();
+}
+
+export async function uploadLibraryCharacter(
+  payload: {
+    file: File;
+    name: string;
+    role_type?: string;
+    description?: string;
+    voice_profile?: string;
+    lock_identity?: boolean;
+  }
+): Promise<WorkflowLibrary> {
+  const formData = new FormData();
+  formData.append("reference", payload.file);
+  formData.append("name", payload.name);
+  formData.append("role_type", payload.role_type ?? "supporting");
+  formData.append("description", payload.description ?? "");
+  formData.append("voice_profile", payload.voice_profile ?? "");
+  formData.append("lock_identity", String(payload.lock_identity ?? true));
+  const response = await fetch(`${API_BASE}/workflow/characters/upload`, {
+    method: "POST",
+    headers: withAuthHeaders(),
+    body: formData,
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to upload character profile");
   }
   return response.json();
 }
