@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "X'tream",
-  "short_name": "X'tream",
-  "description": "AI-powered content creation platform",
+  "name": "Pro Creator Pro",
+  "short_name": "ProCreator Pro",
+  "description": "AI-powered professional content creation platform",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
