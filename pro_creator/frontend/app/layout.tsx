@@ -7,8 +7,8 @@ import PwaInstallPrompt from "./PwaInstallPrompt";
 import PwaRegister from "./PwaRegister";
 
 export const metadata: Metadata = {
-  title: "X'tream",
-  description: "AI-powered content creation platform",
+  title: "Pro Creator Pro",
+  description: "AI-powered professional content creation platform",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/favicon.ico",
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "X'tream",
+    title: "Pro Creator Pro",
     statusBarStyle: "black-translucent",
   },
 };
