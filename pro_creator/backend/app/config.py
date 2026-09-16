@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 PROJECTS_DIR = BASE_DIR / "projects"
 DB_PATH = BASE_DIR / "backend" / "pro_creator.db"
 
-API_TITLE = "Pro Creator API"
+API_TITLE = "Pro Creator Pro API"
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 AWS_SECRETS_ENABLED = os.getenv("AWS_SECRETS_ENABLED", "false").lower() == "true"
@@ -169,7 +169,7 @@ PAYSTACK_CALLBACK_URL = os.getenv(
 PAYSTACK_CURRENCY = os.getenv("PAYSTACK_CURRENCY", "GHS").strip().upper() or "GHS"
 
 # Email receipts / notifications
-EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Pro Creator").strip() or "Pro Creator"
+EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Pro Creator Pro").strip() or "Pro Creator Pro"
 EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", ADMIN_EMAIL).strip() or ADMIN_EMAIL
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "").strip()
 EMAIL_SMTP_HOST = os.getenv("EMAIL_SMTP_HOST", "").strip()
