@@ -33,7 +33,7 @@ def upgrade() -> None:
             sa.Column("page", sa.Text(), nullable=True),
             sa.Column("project_id", sa.Text(), nullable=True),
             sa.Column("developer_email", sa.Text(), nullable=False, server_default=""),
-            sa.Column("email_sent", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+            sa.Column("email_sent", sa.Boolean(), nullable=False, server_default=sa.false()),
             sa.Column("created_at", sa.DateTime(), nullable=False),
         )
         op.create_index("ix_userfeedback_tenant_id", "userfeedback", ["tenant_id"])
