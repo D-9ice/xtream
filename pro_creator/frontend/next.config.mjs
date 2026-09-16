@@ -39,7 +39,7 @@ const nextConfig = {
               `img-src ${imageSources.join(" ")}`,
               "font-src 'self' data:",
               "style-src 'self' 'unsafe-inline'",
-              `script-src 'self'${isDevelopment ? " 'unsafe-eval' 'unsafe-inline'" : ""}`,
+              `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
               `connect-src ${connectSources.join(" ")}`,
               `media-src ${mediaSources.join(" ")}`,
             ].join("; "),
