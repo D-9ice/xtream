@@ -33,7 +33,7 @@ def upgrade() -> None:
                 "owner_mode_enabled",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("0"),
+                server_default=sa.false(),
             ),
         )
     if "billing_receipts_live_mode" not in settings_columns:
@@ -43,7 +43,7 @@ def upgrade() -> None:
                 "billing_receipts_live_mode",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("0"),
+                server_default=sa.false(),
             ),
         )
 
