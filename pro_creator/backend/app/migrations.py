@@ -112,8 +112,11 @@ def upgrade_head(engine: Engine) -> None:
                 "0015_factory_mode_pricing": 15,
                 "0016_receipt_mode": 16,
                 "0017_visit_analytics": 17,
+                "0018_visit_analytics_breakdowns": 18,
             }
-            if revision_order.get(inferred_revision, 0) > revision_order.get(str(current_revision), 0):
+            inferred_rank = revision_order.get(inferred_revision)
+            current_rank = revision_order.get(str(current_revision))
+            if inferred_rank is not None and current_rank is not None and inferred_rank > current_rank:
                 command.stamp(cfg, inferred_revision)
 
     command.upgrade(cfg, "head")
