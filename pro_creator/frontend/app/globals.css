@@ -120,13 +120,62 @@ body :where(button[aria-pressed="true"], [role="tab"][aria-selected="true"], [ro
     0 0 48px rgba(59, 130, 246, 0.18);
 }
 
-/* Keep the Pro Creator Pro brand mark contained within the sidebar header. */
-body img[src="/xtream-logo.png"],
-body img[src="/procreator-pro-logo.png"] {
-  width: auto !important;
-  max-width: 11.5rem !important;
-  height: auto !important;
-  max-height: 5.5rem !important;
-  object-fit: contain !important;
+/* Pro Creator Pro sidebar brand treatment.
+   The source logo is square and contains the old upper PC/play graphic.
+   Crop to the lower wordmark area and restore the selector stack to its normal flow. */
+body aside[class*="w-[15rem]"] > div:first-child > img[src="/xtream-logo.png"],
+body aside[class*="w-[15rem]"] > div:first-child > img[src="/procreator-pro-logo.png"] {
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 74px !important;
+  max-height: 74px !important;
+  margin: 0 0 8px !important;
+  object-fit: cover !important;
+  object-position: center 100% !important;
   transform: none !important;
+}
+
+body aside[class*="w-[15rem]"] > div:first-child > p {
+  display: none !important;
+}
+
+body aside[class*="w-[15rem]"] > div:first-child > div {
+  transform: none !important;
+}
+
+body aside[class*="w-[15rem]"] nav[aria-label="Primary"] {
+  margin-top: 0 !important;
+}
+
+/* Keep the two footer selectors immediately below the main selector stack. */
+body aside[class*="w-[15rem]"] nav[aria-label="Primary"] + div {
+  margin-top: 3px !important;
+}
+
+/* Apply the same branding correction to the mobile drawer. */
+body aside[class*="w-[min(88vw,17rem)]"] img[src="/xtream-logo.png"],
+body aside[class*="w-[min(88vw,17rem)]"] img[src="/procreator-pro-logo.png"] {
+  display: block !important;
+  width: 100% !important;
+  max-width: 13rem !important;
+  height: 72px !important;
+  max-height: 72px !important;
+  margin: 0 0 8px !important;
+  object-fit: cover !important;
+  object-position: center 100% !important;
+  transform: none !important;
+}
+
+body aside[class*="w-[min(88vw,17rem)]"] img[src="/xtream-logo.png"] + p,
+body aside[class*="w-[min(88vw,17rem)]"] img[src="/procreator-pro-logo.png"] + p {
+  display: none !important;
+}
+
+body aside[class*="w-[min(88vw,17rem)]"] nav[aria-label="Primary mobile drawer"] {
+  margin-top: 0 !important;
+}
+
+body aside[class*="w-[min(88vw,17rem)]"] nav[aria-label="Primary mobile drawer"] {
+  transform: translateY(50px) !important;
 }
