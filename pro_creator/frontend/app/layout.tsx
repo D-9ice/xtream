@@ -6,10 +6,18 @@ import AnalyticsTracker from "./AnalyticsTracker";
 import PwaInstallPrompt from "./PwaInstallPrompt";
 import PwaRegister from "./PwaRegister";
 
+const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+const vercelProductionUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+const canonicalSiteUrl = configuredSiteUrl || (vercelProductionUrl ? `https://${vercelProductionUrl}` : undefined);
+
 export const metadata: Metadata = {
+  ...(canonicalSiteUrl ? { metadataBase: new URL(canonicalSiteUrl) } : {}),
   title: "Pro Creator Pro",
   description: "AI-powered professional content creation platform",
   manifest: "/manifest.webmanifest",
+  alternates: {
+    canonical: "/",
+  },
   icons: {
     icon: "/favicon.ico",
     shortcut: "/favicon.ico",
