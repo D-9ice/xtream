@@ -1,0 +1,117 @@
+name: Pro Creator Pro frontend branding cleanup
+
+on:
+  push:
+    branches:
+      - deploy/procreator-pro-production
+    paths:
+      - .github/workflows/procreator-brand-cleanup.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out production branch
+        uses: actions/checkout@v4
+        with:
+          ref: deploy/procreator-pro-production
+          fetch-depth: 0
+
+      - name: Replace legacy frontend branding safely
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          root = Path('pro_creator/frontend')
+          text_exts = {'.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.md', '.html', '.css', '.webmanifest'}
+
+          replacements = [
+              ("X'treamers", "Pro Creators"),
+              ("X’treamers", "Pro Creators"),
+              ("X&apos;treamers", "Pro Creators"),
+              ("X'treamer", "Pro Creator"),
+              ("X’treamer", "Pro Creator"),
+              ("X&apos;treamer", "Pro Creator"),
+              ("XTREAM_LOGO_SRC", "PROCREATOR_PRO_LOGO_SRC"),
+              ("/xtream-logo.png", "/procreator-pro-logo.png"),
+              ("/xtream.png", "/procreator-pro-logo.png"),
+              ("xtream-logo.png", "procreator-pro-logo.png"),
+              ("xtream.png", "procreator-pro-logo.png"),
+              ("alt=\"X'tream\"", "alt=\"Pro Creator Pro\""),
+              ("alt=\"X’tream\"", "alt=\"Pro Creator Pro\""),
+              ("X'tream-era", "legacy-brand"),
+              ("X’tream-era", "legacy-brand"),
+          ]
+
+          changed = []
+          for path in root.rglob('*'):
+              if not path.is_file() or path.suffix.lower() not in text_exts:
+                  continue
+              if any(part in {'node_modules', '.next'} for part in path.parts):
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              original = text
+              for old, new in replacements:
+                  text = text.replace(old, new)
+              if text != original:
+                  path.write_text(text, encoding='utf-8')
+                  changed.append(str(path))
+
+          sw = root / 'public' / 'sw.js'
+          if sw.exists():
+              text = sw.read_text(encoding='utf-8')
+              text = text.replace('procreator-pro-v4', 'procreator-pro-v5')
+              if '"/procreator-pro-logo.png"' not in text and '"/app-icon.png"' in text:
+                  text = text.replace('"/app-icon.png",', '"/app-icon.png", "/procreator-pro-logo.png",')
+              sw.write_text(text, encoding='utf-8')
+
+          # Remove legacy image assets only after textual references have been rewritten.
+          for legacy in [root / 'public' / 'xtream-logo.png', root / 'public' / 'xtream.png']:
+              if legacy.exists():
+                  legacy.unlink()
+
+          print('Changed branding files:')
+          for item in changed:
+              print(' -', item)
+
+          # Report any remaining human-facing legacy branding in frontend source.
+          needles = ["X'tream", 'X’tream', 'X&apos;tream', 'xtream-logo.png', '/xtream.png']
+          remaining = []
+          for path in root.rglob('*'):
+              if not path.is_file() or path.suffix.lower() not in text_exts:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              for needle in needles:
+                  if needle in text:
+                      remaining.append((str(path), needle))
+          if remaining:
+              print('Remaining legacy frontend references requiring review:')
+              for path, needle in remaining:
+                  print(f' - {path}: {needle}')
+          PY
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/procreator-brand-cleanup.yml
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No cleanup changes were necessary."
+            exit 0
+          fi
+          git commit -m "Complete Pro Creator Pro frontend rebrand cleanup"
+          git push origin HEAD:deploy/procreator-pro-production
