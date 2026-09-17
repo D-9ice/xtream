@@ -1,5 +1,6 @@
 // Keep this conservative: caching dev bundles (/_next/*) will break Next.js development.
-const CACHE_NAME = "pro-creator-v3";
+// Bump this whenever core PWA branding assets change so installed clients drop stale X'tream-era assets.
+const CACHE_NAME = "procreator-pro-v4";
 const PRECACHE_URLS = ["/", "/manifest.webmanifest", "/app-icon.png", "/favicon.ico"];
 
 self.addEventListener("install", (event) => {
