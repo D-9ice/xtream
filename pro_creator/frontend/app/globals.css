@@ -119,3 +119,14 @@ body :where(button[aria-pressed="true"], [role="tab"][aria-selected="true"], [ro
     0 0 28px rgba(125, 211, 252, 0.22),
     0 0 48px rgba(59, 130, 246, 0.18);
 }
+
+/* Keep the Pro Creator Pro brand mark contained within the sidebar header. */
+body img[src="/xtream-logo.png"],
+body img[src="/procreator-pro-logo.png"] {
+  width: auto !important;
+  max-width: 11.5rem !important;
+  height: auto !important;
+  max-height: 5.5rem !important;
+  object-fit: contain !important;
+  transform: none !important;
+}
