@@ -1,0 +1,124 @@
+/* Final Pro Creator Pro sidebar composition.
+   Imported after globals.css so these rules override earlier temporary branding fixes. */
+
+/* Desktop console sidebar: keep branding at the top and navigation independently anchored at the bottom. */
+@media (min-width: 1024px) {
+  body aside[class*="w-[15rem]"] > div:first-child {
+    display: flex !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    padding: 4px 0 22px !important;
+  }
+
+  body aside[class*="w-[15rem]"] > div:first-child::before {
+    content: "";
+    display: block;
+    flex: 0 0 70px;
+    width: 100%;
+    height: 70px;
+    margin: 0 auto !important;
+    background: url("/procreator-sidebar-logo.webp") center center / contain no-repeat !important;
+  }
+
+  body aside[class*="w-[15rem]"] > div:first-child > img {
+    display: none !important;
+  }
+
+  body aside[class*="w-[15rem]"] > div:first-child > p {
+    position: static !important;
+    top: auto !important;
+    display: block !important;
+    width: 100% !important;
+    margin: auto 0 0 !important;
+    transform: none !important;
+    font-size: 0 !important;
+    line-height: 1 !important;
+    text-align: center !important;
+  }
+
+  body aside[class*="w-[15rem]"] > div:first-child > p::after {
+    content: "PRODUCTION CONTROLS" !important;
+    display: block !important;
+    width: 100% !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    line-height: 14px !important;
+    letter-spacing: 0.22em !important;
+    color: #fff !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+  }
+
+  body aside[class*="w-[15rem]"] > div:first-child > div {
+    margin-top: 10px !important;
+    transform: none !important;
+  }
+
+  body aside[class*="w-[15rem]"] nav[aria-label="Primary"] {
+    margin-top: 0 !important;
+    transform: none !important;
+  }
+
+  body aside[class*="w-[15rem]"] nav[aria-label="Primary"] + div {
+    margin-top: 3px !important;
+    padding-top: 0 !important;
+  }
+}
+
+/* Mobile drawer uses the same authoritative uploaded logo and centered controls label. */
+body aside[class*="w-[min(88vw,17rem)]"] > div:first-child > div:first-child {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  text-align: center !important;
+}
+
+body aside[class*="w-[min(88vw,17rem)]"] > div:first-child > div:first-child::before {
+  content: "";
+  display: block;
+  width: min(100%, 14rem);
+  height: 72px;
+  margin: 0 auto !important;
+  background: url("/procreator-sidebar-logo.webp") center center / contain no-repeat !important;
+}
+
+body aside[class*="w-[min(88vw,17rem)]"] img {
+  display: none !important;
+}
+
+body aside[class*="w-[min(88vw,17rem)]"] > div:first-child > div:first-child > p {
+  position: static !important;
+  top: auto !important;
+  display: block !important;
+  width: 100% !important;
+  margin: 7px 0 0 !important;
+  transform: none !important;
+  font-size: 0 !important;
+  line-height: 1 !important;
+  text-align: center !important;
+}
+
+body aside[class*="w-[min(88vw,17rem)]"] > div:first-child > div:first-child > p::after {
+  content: "PRODUCTION CONTROLS" !important;
+  display: block !important;
+  width: 100% !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  line-height: 14px !important;
+  letter-spacing: 0.22em !important;
+  color: #fff !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+}
+
+body aside[class*="w-[min(88vw,17rem)]"] > div:nth-child(2) {
+  margin-top: 10px !important;
+  transform: none !important;
+}
+
+body aside[class*="w-[min(88vw,17rem)]"] nav[aria-label="Primary mobile drawer"] {
+  margin-top: 0 !important;
+  transform: none !important;
+}
