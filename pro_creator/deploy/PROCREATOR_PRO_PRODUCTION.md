@@ -55,8 +55,9 @@ STRICT_PROVIDER_VALIDATION=true
 JWT_SECRET=<strong-random-secret>
 ADMIN_EMAIL=<owner-admin-email>
 ADMIN_PASSWORD=<strong-password>
-ADMIN_DASHBOARD_PASSWORD=<strong-password>
-OWNER_EMAIL_ALLOWLIST=<authorized-owner-email-list>
+ADMIN_BOOTSTRAP_SYNC=false
+ADMIN_DASHBOARD_PASSWORD=<different-strong-password>
+OWNER_EMAIL_ALLOWLIST=<owner-admin-email>
 ALLOWED_ORIGINS=https://<vercel-production-domain>
 RATE_LIMIT_ENABLED=true
 DATABASE_URL=<production-postgres-url>
@@ -103,3 +104,32 @@ Do not mark production complete until all of the following pass:
 Human-facing product name: `Pro Creator Pro`
 
 Vercel/project slug: `procreator-pro`
+
+
+## Owner credential bootstrap / recovery
+
+The owner identity is intentionally configured only on the persistent backend host. Do not place owner passwords in GitHub, Vercel frontend variables, client-side code, or screenshots.
+
+Required owner values:
+
+```text
+ADMIN_EMAIL=<private owner email>
+OWNER_EMAIL_ALLOWLIST=<same owner email>
+ADMIN_PASSWORD=<strong primary owner login password>
+ADMIN_DASHBOARD_PASSWORD=<different strong second-gate password>
+ADMIN_BOOTSTRAP_SYNC=true
+```
+
+For a first bootstrap or credential recovery:
+
+1. Set the five values above on the backend host.
+2. Restart the backend once. Startup will create the owner if missing, or reset the matching owner's password/role if it already exists. It also enables persisted owner mode.
+3. Use the hidden admin keyboard trigger in the frontend.
+4. Authenticate first with `ADMIN_EMAIL` + `ADMIN_PASSWORD`.
+5. Unlock the second gate with `ADMIN_DASHBOARD_PASSWORD` (and TOTP when enabled).
+6. Immediately set `ADMIN_BOOTSTRAP_SYNC=false` on the backend host and restart again.
+7. Confirm owner login still works.
+
+`ADMIN_BOOTSTRAP_SYNC=false` is the steady-state configuration. Leaving it true would cause the environment-defined owner password to be re-applied on every backend restart.
+
+Production validation also requires `ADMIN_EMAIL` to be included in `OWNER_EMAIL_ALLOWLIST`.

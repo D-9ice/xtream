@@ -80,6 +80,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@procreator.local")
 JWT_SECRET = _env_file_or_aws("JWT_SECRET", "dev-secret-change-me")
 ADMIN_PASSWORD = _env_file_or_aws("ADMIN_PASSWORD", "ChangeMe123!")
+ADMIN_BOOTSTRAP_SYNC = os.getenv("ADMIN_BOOTSTRAP_SYNC", "false").lower() == "true"
 ADMIN_DASHBOARD_PASSWORD = _env_file_or_aws("ADMIN_DASHBOARD_PASSWORD", ADMIN_PASSWORD)
 ADMIN_2FA_ENABLED = os.getenv("ADMIN_2FA_ENABLED", "false").lower() == "true"
 ADMIN_2FA_TOTP_SECRET = _env_file_or_aws("ADMIN_2FA_TOTP_SECRET", "").strip()
@@ -230,6 +231,8 @@ def validate_external_service_config() -> None:
 
     if not OWNER_EMAIL_ALLOWLIST:
         errors.append("OWNER_EMAIL_ALLOWLIST must be set in production.")
+    elif ADMIN_EMAIL.strip().lower() not in OWNER_EMAIL_ALLOWLIST:
+        errors.append("ADMIN_EMAIL must be included in OWNER_EMAIL_ALLOWLIST in production.")
 
     normalized_origins = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
     if not normalized_origins:
