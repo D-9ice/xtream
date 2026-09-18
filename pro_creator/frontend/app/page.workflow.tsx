@@ -5218,14 +5218,10 @@ export default function WorkflowHomePage() {
                     aria-label="Credit usage summary"
                     aria-live="polite"
                   >
-                    {isAuthenticated ? (
-                      <>
-                        Credits: {creditBalance ?? "—"} left{creditTotal !== null ? ` • used ${creditUsedTotal ?? "—"} / ${creditTotal}` : ""}
-                        {characterSlotSummary
-                          ? ` • Characters ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots}`
-                          : ""}
-                      </>
-                    ) : "Explore Mode"}
+                    Credits: {creditBalance ?? "—"} left{creditTotal !== null ? ` • used ${creditUsedTotal ?? "—"} / ${creditTotal}` : ""}
+                    {characterSlotSummary
+                      ? ` • Characters ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots}`
+                      : ""}
                   </div>
                 </div>
               </div>
