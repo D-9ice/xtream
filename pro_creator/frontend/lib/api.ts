@@ -212,14 +212,23 @@ const withOwnerDashboardHeaders = (headers?: FetchHeaders): FetchHeaders => {
 
 const baseFetch = globalThis.fetch.bind(globalThis);
 type FetchType = typeof globalThis.fetch;
-const fetchWithAuth = (
+const fetchWithAuth = async (
   input: FetchInput,
   init: FetchInit = {}
-): ReturnType<FetchType> =>
-  baseFetch(input, {
+): Promise<Response> => {
+  const response = await baseFetch(input, {
     ...init,
     headers: withAuthHeaders(init?.headers),
   });
+  if (
+    response.status === 401 &&
+    typeof window !== "undefined" &&
+    !window.localStorage.getItem("pc_token")
+  ) {
+    window.dispatchEvent(new CustomEvent("procreator:subscription-required"));
+  }
+  return response;
+};
 
 const fetch: FetchType = fetchWithAuth as FetchType;
 
@@ -228,6 +237,13 @@ const throwApiError = async (
   fallback: string
 ): Promise<never> => {
   const detail = await response.json().catch(() => null);
+  if (
+    response.status === 401 &&
+    typeof window !== "undefined" &&
+    !window.localStorage.getItem("pc_token")
+  ) {
+    throw new Error("Subscribe or sign in to use this feature.");
+  }
   const message =
     detail?.detail ??
     (Array.isArray(detail) ? detail?.[0]?.msg : null) ??

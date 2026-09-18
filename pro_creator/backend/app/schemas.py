@@ -313,6 +313,11 @@ class UserCreateRequest(BaseModel):
     role: str = "admin"
 
 
+class PublicRegistrationRequest(BaseModel):
+    email: str
+    password: str
+
+
 class UserResponse(BaseModel):
     email: str
     role: str

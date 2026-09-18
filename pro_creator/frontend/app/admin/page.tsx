@@ -24,6 +24,8 @@ import {
   verifyAdminAccess,
 } from "../../lib/api";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
+
 const SOCIAL_PLATFORM_OPTIONS = [
   { key: "youtube", label: "YouTube" },
   { key: "instagram", label: "Instagram" },
@@ -158,6 +160,10 @@ export default function AdminPage() {
   const [hasMounted, setHasMounted] = useState(false);
   const [gateLoading, setGateLoading] = useState(true);
   const [gateError, setGateError] = useState<string | null>(null);
+  const [ownerAuthenticated, setOwnerAuthenticated] = useState(false);
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [showOwnerPassword, setShowOwnerPassword] = useState(false);
   const [dashboardPassword, setDashboardPassword] = useState("");
   const [showDashboardPassword, setShowDashboardPassword] = useState(false);
   const [otpCode, setOtpCode] = useState("");
@@ -224,13 +230,59 @@ export default function AdminPage() {
       return;
     }
     let active = true;
+    const token = window.localStorage.getItem("pc_token");
+    if (!token) {
+      setOwnerAuthenticated(false);
+      setHasAdminAccess(false);
+      setGateLoading(false);
+      return;
+    }
+
+    setGateLoading(true);
+    globalThis.fetch(`${API_BASE}/auth/me`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Owner authentication required");
+        }
+        const user = await response.json();
+        if (user.role !== "admin") {
+          throw new Error("This account is not authorized for owner administration");
+        }
+        if (!active) return;
+        setOwnerAuthenticated(true);
+        const adminToken =
+          window.sessionStorage.getItem("pc_admin_access_token") ??
+          window.localStorage.getItem("pc_admin_access_token");
+        setHasAdminAccess(Boolean(adminToken));
+      })
+      .catch((err) => {
+        if (!active) return;
+        setOwnerAuthenticated(false);
+        setHasAdminAccess(false);
+        setGateError(err instanceof Error ? err.message : "Owner authentication required");
+      })
+      .finally(() => {
+        if (active) setGateLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [hasMounted]);
+
+  useEffect(() => {
+    if (!ownerAuthenticated) {
+      return;
+    }
+    let active = true;
     setGateLoading(true);
     setGateError(null);
     fetchAdmin2FAStatus()
       .then((statusResponse) => {
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         setTwoFaEnabled(Boolean(statusResponse.enabled));
         setTwoFaDetail(statusResponse.detail ?? null);
       })
@@ -240,19 +292,12 @@ export default function AdminPage() {
         }
       })
       .finally(() => {
-        if (active) {
-          setGateLoading(false);
-        }
+        if (active) setGateLoading(false);
       });
-
-    const token = window.sessionStorage.getItem("pc_admin_access_token");
-    const persistedToken = token ?? window.localStorage.getItem("pc_admin_access_token");
-    setHasAdminAccess(Boolean(persistedToken));
-
     return () => {
       active = false;
     };
-  }, [hasMounted]);
+  }, [ownerAuthenticated]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -346,6 +391,47 @@ export default function AdminPage() {
         : ""
     );
   }, [selectedSubscription]);
+
+  const handleOwnerLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setGateError(null);
+    if (!ownerEmail.trim() || !ownerPassword) {
+      setGateError("Enter the owner email and password.");
+      return;
+    }
+    setGateLoading(true);
+    try {
+      const response = await globalThis.fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ username: ownerEmail.trim(), password: ownerPassword }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Invalid owner credentials");
+      }
+      const data = await response.json();
+      window.localStorage.setItem("pc_token", data.access_token);
+
+      const meResponse = await globalThis.fetch(`${API_BASE}/auth/me`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      const me = await meResponse.json().catch(() => null);
+      if (!meResponse.ok || me?.role !== "admin") {
+        window.localStorage.removeItem("pc_token");
+        throw new Error("This account is not authorized for owner administration");
+      }
+
+      setOwnerAuthenticated(true);
+      setOwnerPassword("");
+      setHasAdminAccess(false);
+    } catch (err) {
+      setGateError(err instanceof Error ? err.message : "Owner authentication failed");
+    } finally {
+      setGateLoading(false);
+    }
+  };
 
   const handleUnlock = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -686,10 +772,70 @@ export default function AdminPage() {
         <main className="mx-auto max-w-6xl px-6 py-6">
           <p className="text-xs text-slate-400">Loading...</p>
         </main>
+      ) : !ownerAuthenticated ? (
+        <main className="mx-auto max-w-3xl px-6 py-10">
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+            <h2 className="text-2xl font-bold text-white">Owner Access</h2>
+            <p className="mt-2 text-sm text-slate-300">
+              Authenticate with the private owner account before the administrative security gate is shown.
+            </p>
+            <form className="mt-6 space-y-3" onSubmit={handleOwnerLogin}>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-slate-400" htmlFor="owner-email">
+                  Owner email
+                </label>
+                <input
+                  id="owner-email"
+                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                  type="email"
+                  value={ownerEmail}
+                  onChange={(event) => setOwnerEmail(event.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-slate-400" htmlFor="owner-password">
+                  Owner password
+                </label>
+                <div className="relative mt-2">
+                  <input
+                    id="owner-password"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 pr-20 text-sm text-white"
+                    type={showOwnerPassword ? "text" : "password"}
+                    value={ownerPassword}
+                    onChange={(event) => setOwnerPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-3 text-xs text-slate-400"
+                    onClick={() => setShowOwnerPassword((value) => !value)}
+                  >
+                    {showOwnerPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+              {gateError ? (
+                <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                  {gateError}
+                </p>
+              ) : null}
+              <button
+                className="w-full rounded-lg border border-aurora/40 bg-aurora/10 px-3 py-2 text-sm font-semibold text-aurora"
+                type="submit"
+                disabled={gateLoading}
+              >
+                {gateLoading ? "Authenticating..." : "Continue to owner security gate"}
+              </button>
+            </form>
+          </section>
+        </main>
       ) : !hasAdminAccess ? (
         <main className="mx-auto max-w-3xl px-6 py-10">
           <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-            <h2 className="text-2xl font-bold text-white">Admin Access</h2>
+            <h2 className="text-2xl font-bold text-white">Admin Security Gate</h2>
             <p className="mt-2 text-sm text-slate-300">{subtitle}</p>
             <form className="mt-6 space-y-3" onSubmit={handleUnlock}>
               <div>

@@ -723,7 +723,7 @@ def delete_my_receipt(
     )
 
 
-@router.get("/plans", response_model=CreditPlanListResponse, dependencies=[Depends(get_current_user)])
+@router.get("/plans", response_model=CreditPlanListResponse)
 def list_credit_plans(session: Session = Depends(get_session)) -> CreditPlanListResponse:
     return CreditPlanListResponse(plans=_plan_catalog(session))
 

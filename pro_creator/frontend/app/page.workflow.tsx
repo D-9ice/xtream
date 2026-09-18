@@ -1010,6 +1010,7 @@ export default function WorkflowHomePage() {
   const [publishCaption, setPublishCaption] = useState("");
   const [publishSendMode, setPublishSendMode] = useState<"single" | "bulk">("single");
   const [showCreditPanel, setShowCreditPanel] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [creditPlans, setCreditPlans] = useState<CreditPlan[]>([]);
   const [creditPlansLoading, setCreditPlansLoading] = useState(false);
   const [creditPlansError, setCreditPlansError] = useState<string | null>(null);
@@ -1384,8 +1385,36 @@ export default function WorkflowHomePage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const syncAuthState = () => setIsAuthenticated(Boolean(window.localStorage.getItem("pc_token")));
+    syncAuthState();
+    window.addEventListener("storage", syncAuthState);
+    return () => window.removeEventListener("storage", syncAuthState);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const openSubscription = () => {
+      setShowCreditPanel(true);
+      setCreditPlansError(null);
+      setPurchaseStatus(null);
+    };
+    window.addEventListener("procreator:subscription-required", openSubscription);
+    return () => window.removeEventListener("procreator:subscription-required", openSubscription);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     const load = async () => {
+      if (!isAuthenticated) {
+        setError(null);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
@@ -1404,10 +1433,10 @@ export default function WorkflowHomePage() {
     return () => {
       active = false;
     };
-  }, [refreshProjects]);
+  }, [isAuthenticated, refreshProjects]);
 
   useEffect(() => {
-    if (!selectedProjectId) {
+    if (!isAuthenticated || !selectedProjectId) {
       return;
     }
     let active = true;
@@ -1424,7 +1453,7 @@ export default function WorkflowHomePage() {
     return () => {
       active = false;
     };
-  }, [refreshProject, selectedProjectId]);
+  }, [isAuthenticated, refreshProject, selectedProjectId]);
 
   useEffect(() => {
     setProductionConfirmed(false);
@@ -1440,18 +1469,18 @@ export default function WorkflowHomePage() {
   }, [selectedProject?.project_id, selectedProject?.workflow_state]);
 
   useEffect(() => {
-    if (activeNav !== "publish" || !publishProject?.project_id) {
+    if (!isAuthenticated || activeNav !== "publish" || !publishProject?.project_id) {
       return;
     }
     void refreshSocialState(publishProject.project_id);
-  }, [activeNav, publishProject?.project_id, refreshSocialState]);
+  }, [activeNav, isAuthenticated, publishProject?.project_id, refreshSocialState]);
 
   useEffect(() => {
-    if (activeNav !== "community") {
+    if (!isAuthenticated || activeNav !== "community") {
       return;
     }
     void refreshCommunityPosts();
-  }, [activeNav, refreshCommunityPosts]);
+  }, [activeNav, isAuthenticated, refreshCommunityPosts]);
 
   useEffect(() => {
     if (!publishProject?.project_id || publishCaption.trim()) {
@@ -1551,7 +1580,10 @@ export default function WorkflowHomePage() {
   }, [creditPlans.length, showCreditPanel]);
 
   useEffect(() => {
-    if (!showCreditPanel) {
+    if (!showCreditPanel || !isAuthenticated) {
+      setBillingReceipts([]);
+      setBillingReceiptsError(null);
+      setBillingReceiptsLoading(false);
       return;
     }
     let active = true;
@@ -1577,10 +1609,10 @@ export default function WorkflowHomePage() {
     return () => {
       active = false;
     };
-  }, [showCreditPanel]);
+  }, [isAuthenticated, showCreditPanel]);
 
   useEffect(() => {
-    if (activeNav !== "transaction-records") {
+    if (!isAuthenticated || activeNav !== "transaction-records") {
       return;
     }
     let active = true;
@@ -1607,7 +1639,7 @@ export default function WorkflowHomePage() {
     return () => {
       active = false;
     };
-  }, [activeNav]);
+  }, [activeNav, isAuthenticated]);
 
   const handleDeleteReceipt = useCallback(async (receiptId: number) => {
     setBillingReceiptDeleteId(receiptId);
@@ -2186,6 +2218,10 @@ export default function WorkflowHomePage() {
   }
 
   async function handlePurchasePlan(planId: string) {
+    if (!isAuthenticated) {
+      router.push("/login?mode=register&next=%2F%3Fcredits%3D1");
+      return;
+    }
     setPurchaseLoadingPlan(planId);
     setPurchaseStatus(null);
     try {
@@ -5175,17 +5211,21 @@ export default function WorkflowHomePage() {
                     aria-haspopup="dialog"
                     aria-expanded={showCreditPanel}
                   >
-                    Credits & Plans
+                    SUBSCRIBE
                   </button>
                   <div
                     className="rounded-full border border-aurora/35 bg-aurora/10 px-4 py-2 text-sm font-semibold text-aurora shadow-[inset_0_0_0_1px_rgba(34,211,238,0.10)]"
                     aria-label="Credit usage summary"
                     aria-live="polite"
                   >
-                    Credits: {creditBalance ?? "—"} left{creditTotal !== null ? ` • used ${creditUsedTotal ?? "—"} / ${creditTotal}` : ""}
-                    {characterSlotSummary
-                      ? ` • Characters ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots}`
-                      : ""}
+                    {isAuthenticated ? (
+                      <>
+                        Credits: {creditBalance ?? "—"} left{creditTotal !== null ? ` • used ${creditUsedTotal ?? "—"} / ${creditTotal}` : ""}
+                        {characterSlotSummary
+                          ? ` • Characters ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots}`
+                          : ""}
+                      </>
+                    ) : "Explore Mode"}
                   </div>
                 </div>
               </div>
@@ -5286,12 +5326,36 @@ export default function WorkflowHomePage() {
                   Close
                 </button>
               </div>
-              <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
-                {creditBalance ?? "—"} credits available
-                {characterSlotSummary
-                  ? ` • ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots} character slots used`
-                  : ""}
-              </div>
+              {isAuthenticated ? (
+                <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
+                  {creditBalance ?? "—"} credits available
+                  {characterSlotSummary
+                    ? ` • ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots} character slots used`
+                    : ""}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-xl border border-aurora/30 bg-aurora/10 p-4">
+                  <p className="text-sm text-slate-200">
+                    Explore all plans and pricing. Create an account or sign in only when you are ready to start producing.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      className="rounded-lg bg-aurora px-4 py-2 text-sm font-semibold text-slate-950"
+                      type="button"
+                      onClick={() => router.push("/login?mode=register&next=%2F%3Fcredits%3D1")}
+                    >
+                      Create account
+                    </button>
+                    <button
+                      className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200"
+                      type="button"
+                      onClick={() => router.push("/login?next=%2F%3Fcredits%3D1")}
+                    >
+                      Sign in
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="mt-4 flex-1 overflow-y-auto pr-1">
               {factoryAccessPlans.length > 0 ? (
@@ -5510,6 +5574,7 @@ export default function WorkflowHomePage() {
                 </p>
               )}
             </div>
+            {isAuthenticated ? (
             <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">Recent receipts</h3>
@@ -5586,6 +5651,7 @@ export default function WorkflowHomePage() {
                 </>
               )}
             </div>
+            ) : null}
             </div>
             {purchaseStatus ? (
               <p className="mt-3 text-xs text-emerald-300">{purchaseStatus}</p>
