@@ -154,7 +154,7 @@ class SubscriptionAccount(SQLModel, table=True):
     user_id: int = Field(foreign_key="user.id", index=True)
     plan_name: str = Field(default="free")
     status: str = Field(default="active")
-    credits_balance: int = Field(default=1000)
+    credits_balance: int = Field(default=0)
     credits_reserved: int = Field(default=0)
     credits_used_total: int = Field(default=0)
     extra_character_slots: int = Field(default=0)

@@ -26,7 +26,9 @@ def get_or_create_subscription(session: Session, user: User) -> SubscriptionAcco
         user_id=user.id or 0,
         plan_name="free",
         status="active",
-        credits_balance=1000,
+        # New public accounts start with zero production credits. Owner access is
+        # handled separately by has_owner_mode_access() and does not consume credits.
+        credits_balance=0,
         credits_reserved=0,
         credits_used_total=0,
         factory_mode_status="inactive",
