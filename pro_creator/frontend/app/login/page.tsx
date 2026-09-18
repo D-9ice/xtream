@@ -2,14 +2,13 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -36,7 +35,7 @@ export default function LoginPage() {
       const data = await response.json();
       window.localStorage.setItem("pc_token", data.access_token);
 
-      const requestedNext = searchParams.get("next");
+      const requestedNext = new URLSearchParams(window.location.search).get("next");
       const safeNext =
         requestedNext &&
         requestedNext.startsWith("/") &&
