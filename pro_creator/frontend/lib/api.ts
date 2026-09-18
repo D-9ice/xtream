@@ -102,10 +102,9 @@ const migrateAdminTokenToSessionStorage = (): string | null => {
 
 const getAuthToken = (): string | null => {
   if (typeof window !== "undefined") {
-    const adminAccessToken = migrateAdminTokenToSessionStorage();
-    if (adminAccessToken) {
-      return adminAccessToken;
-    }
+    // The normal API bearer token and the privileged admin-dashboard token are
+    // intentionally separate credentials. Never send pc_admin_access_token as
+    // Authorization: Bearer for user/workflow APIs.
     return window.localStorage.getItem("pc_token");
   }
   return process.env.NEXT_PUBLIC_API_TOKEN ?? null;

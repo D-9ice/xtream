@@ -2,13 +2,14 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -29,11 +30,21 @@ export default function LoginPage() {
         }),
       });
       if (!response.ok) {
-        throw new Error("Invalid credentials");
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Invalid credentials");
       }
       const data = await response.json();
       window.localStorage.setItem("pc_token", data.access_token);
-      router.push("/");
+
+      const requestedNext = searchParams.get("next");
+      const safeNext =
+        requestedNext &&
+        requestedNext.startsWith("/") &&
+        !requestedNext.startsWith("//") &&
+        !requestedNext.startsWith("/login")
+          ? requestedNext
+          : "/";
+      router.replace(safeNext);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
