@@ -16,11 +16,14 @@
   body aside[class*="w-[15rem]"] > div:first-child::before {
     content: "";
     display: block;
-    flex: 0 0 70px;
+    flex: 0 0 82px;
     width: 100%;
-    height: 70px;
+    height: 82px;
     margin: 0 auto !important;
-    background: url("/procreator-sidebar-logo.webp") center center / contain no-repeat !important;
+    background-image: url("/procreator-sidebar-logo.webp") !important;
+    background-repeat: no-repeat !important;
+    background-size: 228px 228px !important;
+    background-position: center calc(50% - 9px) !important;
   }
 
   body aside[class*="w-[15rem]"] > div:first-child > img {
@@ -79,9 +82,12 @@ body aside[class*="w-[min(88vw,17rem)]"] > div:first-child > div:first-child::be
   content: "";
   display: block;
   width: min(100%, 14rem);
-  height: 72px;
+  height: 78px;
   margin: 0 auto !important;
-  background: url("/procreator-sidebar-logo.webp") center center / contain no-repeat !important;
+  background-image: url("/procreator-sidebar-logo.webp") !important;
+  background-repeat: no-repeat !important;
+  background-size: 220px 220px !important;
+  background-position: center calc(50% - 9px) !important;
 }
 
 body aside[class*="w-[min(88vw,17rem)]"] img {
