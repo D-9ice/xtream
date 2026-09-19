@@ -941,6 +941,19 @@ export type SocialAccountConnection = {
   updated_at: string;
 };
 
+export type SocialOAuthStartResponse = {
+  authorization_url: string;
+  state: string;
+};
+
+export type SocialOAuthCompletePayload = {
+  platform: SocialAccountConnection["platform"];
+  state: string;
+  code?: string | null;
+  oauth_token?: string | null;
+  oauth_verifier?: string | null;
+};
+
 export type SocialPublishJob = {
   job_id: string;
   project_id: string;
@@ -954,6 +967,32 @@ export type SocialPublishJob = {
   updated_at: string;
   published_at?: string | null;
 };
+
+export async function beginSocialOAuth(
+  platform: SocialAccountConnection["platform"]
+): Promise<SocialOAuthStartResponse> {
+  const response = await fetch(`${API_BASE}/social/oauth/${encodeURIComponent(platform)}/start`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to start social account authorization");
+  }
+  return response.json();
+}
+
+export async function completeSocialOAuth(
+  payload: SocialOAuthCompletePayload
+): Promise<SocialAccountConnection> {
+  const response = await fetch(`${API_BASE}/social/oauth/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to complete social account authorization");
+  }
+  return response.json();
+}
 
 export async function fetchSocialConnections(): Promise<{ items: SocialAccountConnection[] }> {
   const response = await fetch(`${API_BASE}/social/connections`, { cache: "no-store" });
