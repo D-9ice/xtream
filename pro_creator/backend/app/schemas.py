@@ -264,6 +264,19 @@ class SocialAccountConnectionListResponse(BaseModel):
     items: List[SocialAccountConnectionResponse]
 
 
+class SocialOAuthStartResponse(BaseModel):
+    authorization_url: str
+    state: str
+
+
+class SocialOAuthCompleteRequest(BaseModel):
+    platform: str
+    state: str
+    code: Optional[str] = None
+    oauth_token: Optional[str] = None
+    oauth_verifier: Optional[str] = None
+
+
 class SocialPublishRequest(BaseModel):
     project_id: str
     connection_ids: List[str] = Field(default_factory=list)
