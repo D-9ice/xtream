@@ -193,10 +193,10 @@ export default function InternalAdminPage() {
         <header className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-2xl shadow-black/20">
           <div className="flex flex-wrap items-start justify-between gap-5">
             <div className="flex min-w-0 items-center gap-4">
-              <img
-                alt="Pro Creator Pro"
-                className="h-24 w-56 shrink-0 object-contain"
-                src="/procreator-sidebar-logo.webp"
+              <div
+                aria-label="Pro Creator Pro"
+                className="h-[82px] w-[240px] shrink-0 bg-[url('/procreator-sidebar-logo.webp')] bg-[length:228px_228px] bg-[position:center_calc(50%-9px)] bg-no-repeat"
+                role="img"
               />
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
