@@ -169,8 +169,7 @@ PAYSTACK_CALLBACK_URL = os.getenv(
 )
 PAYSTACK_CURRENCY = os.getenv("PAYSTACK_CURRENCY", "GHS").strip().upper() or "GHS"
 
-# social oauth placeholder
- Social publishing OAuth
+# Social publishing OAuth
 SOCIAL_OAUTH_FRONTEND_ORIGIN = os.getenv(
     "SOCIAL_OAUTH_FRONTEND_ORIGIN",
     "http://localhost:3000",
