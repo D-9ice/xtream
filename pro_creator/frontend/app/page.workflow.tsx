@@ -1298,66 +1298,6 @@ export default function WorkflowHomePage() {
   }, [router, searchParams]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-    const platform = searchParams?.get?.("social_oauth") as SocialAccountConnection["platform"] | null;
-    if (!platform || !SOCIAL_PLATFORM_OPTIONS.some((item) => item.key === platform)) {
-      return;
-    }
-
-    const state = searchParams?.get?.("state") ?? "";
-    const code = searchParams?.get?.("code");
-    const oauthToken = searchParams?.get?.("oauth_token");
-    const oauthVerifier = searchParams?.get?.("oauth_verifier");
-    const oauthError = searchParams?.get?.("error") ?? searchParams?.get?.("error_description");
-    const callbackKey = [platform, state, code, oauthToken, oauthVerifier, oauthError].join(":");
-
-    if (socialOAuthHandledRef.current === callbackKey) {
-      return;
-    }
-    socialOAuthHandledRef.current = callbackKey;
-
-    if (oauthError) {
-      setSocialError(`Authorization failed: ${oauthError}`);
-      router.replace("/?nav=publish");
-      return;
-    }
-
-    if (!state || (!code && platform !== "x") || (platform === "x" && (!oauthToken || !oauthVerifier))) {
-      setSocialError("The social authorization callback was incomplete. Please connect the account again.");
-      router.replace("/?nav=publish");
-      return;
-    }
-
-    setSocialLoading(true);
-    setSocialError(null);
-    setSocialStatus(null);
-
-    void completeSocialOAuth({
-      platform,
-      state,
-      code,
-      oauth_token: oauthToken,
-      oauth_verifier: oauthVerifier,
-    })
-      .then(async (connection) => {
-        await refreshSocialState(publishProject?.project_id);
-        setSocialConnectionId(connection.connection_id);
-        setSocialPlatform(connection.platform);
-        setSocialSettingsOpenPlatform(null);
-        setSocialStatus(`${socialPlatformLabel(connection.platform)} account connected successfully.`);
-      })
-      .catch((err) => {
-        setSocialError(err instanceof Error ? err.message : "Failed to connect social account");
-      })
-      .finally(() => {
-        setSocialLoading(false);
-        router.replace("/?nav=publish");
-      });
-  }, [isAuthenticated, publishProject?.project_id, refreshSocialState, router, searchParams]);
-
-  useEffect(() => {
     if (activeNav !== "create" || !selectedProject) {
       return;
     }
@@ -1433,6 +1373,66 @@ export default function WorkflowHomePage() {
       setSocialLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    const platform = searchParams?.get?.("social_oauth") as SocialAccountConnection["platform"] | null;
+    if (!platform || !SOCIAL_PLATFORM_OPTIONS.some((item) => item.key === platform)) {
+      return;
+    }
+
+    const state = searchParams?.get?.("state") ?? "";
+    const code = searchParams?.get?.("code");
+    const oauthToken = searchParams?.get?.("oauth_token");
+    const oauthVerifier = searchParams?.get?.("oauth_verifier");
+    const oauthError = searchParams?.get?.("error") ?? searchParams?.get?.("error_description");
+    const callbackKey = [platform, state, code, oauthToken, oauthVerifier, oauthError].join(":");
+
+    if (socialOAuthHandledRef.current === callbackKey) {
+      return;
+    }
+    socialOAuthHandledRef.current = callbackKey;
+
+    if (oauthError) {
+      setSocialError(`Authorization failed: ${oauthError}`);
+      router.replace("/?nav=publish");
+      return;
+    }
+
+    if (!state || (!code && platform !== "x") || (platform === "x" && (!oauthToken || !oauthVerifier))) {
+      setSocialError("The social authorization callback was incomplete. Please connect the account again.");
+      router.replace("/?nav=publish");
+      return;
+    }
+
+    setSocialLoading(true);
+    setSocialError(null);
+    setSocialStatus(null);
+
+    void completeSocialOAuth({
+      platform,
+      state,
+      code,
+      oauth_token: oauthToken,
+      oauth_verifier: oauthVerifier,
+    })
+      .then(async (connection) => {
+        await refreshSocialState(publishProject?.project_id);
+        setSocialConnectionId(connection.connection_id);
+        setSocialPlatform(connection.platform);
+        setSocialSettingsOpenPlatform(null);
+        setSocialStatus(`${socialPlatformLabel(connection.platform)} account connected successfully.`);
+      })
+      .catch((err) => {
+        setSocialError(err instanceof Error ? err.message : "Failed to connect social account");
+      })
+      .finally(() => {
+        setSocialLoading(false);
+        router.replace("/?nav=publish");
+      });
+  }, [isAuthenticated, publishProject?.project_id, refreshSocialState, router, searchParams]);
 
   const refreshCommunityPosts = useCallback(async () => {
     setCommunityLoading(true);
