@@ -5413,7 +5413,7 @@ export default function WorkflowHomePage() {
                   <div>
                     <h3 className="text-lg font-semibold text-white">Factory Mode Access</h3>
                     <p className="mt-1 text-sm text-slate-400">
-                      Choose one-time access or a renewable subscription.
+                      Choose Extended Access or a renewable subscription.
                     </p>
                   </div>
                 </div>
