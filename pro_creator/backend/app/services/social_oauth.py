@@ -44,7 +44,7 @@ def _now() -> datetime:
 
 
 def _frontend_callback(platform: str) -> str:
-    return f"{SOCIAL_OAUTH_FRONTEND_ORIGIN}/?nav=publish&social_oauth={quote(platform)}"
+    return f"{SOCIAL_OAUTH_FRONTEND_ORIGIN}/social/oauth/callback/{quote(platform)}"
 
 
 def _encode_state(user: User, platform: str, *, nonce: str | None = None) -> str:
