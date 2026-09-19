@@ -803,3 +803,73 @@ def test_transaction_records_include_full_ledger_history() -> None:
     kinds = {item["kind"] for item in records}
     assert "grant" in kinds or "consume" in kinds
     assert any(item["action"] == "manual_consume" for item in records)
+
+
+
+def test_receipts_and_transaction_records_are_user_scoped(monkeypatch) -> None:
+    from app import auth as auth_module
+
+    client = TestClient(app)
+    monkeypatch.setattr(auth_module, "AUTH_REQUIRED", True)
+
+    tenant_id = f"billing-user-scope-{uuid4().hex[:8]}"
+    user_a = f"receipt-a-{uuid4().hex[:8]}@example.com"
+    user_b = f"receipt-b-{uuid4().hex[:8]}@example.com"
+    password = "Password123!"
+
+    register_a = client.post(
+        "/auth/register",
+        json={"email": user_a, "password": password},
+        headers={"X-Tenant-ID": tenant_id},
+    )
+    register_b = client.post(
+        "/auth/register",
+        json={"email": user_b, "password": password},
+        headers={"X-Tenant-ID": tenant_id},
+    )
+    assert register_a.status_code == 200
+    assert register_b.status_code == 200
+
+    headers_a = {
+        "X-Tenant-ID": tenant_id,
+        "Authorization": f"Bearer {register_a.json()['access_token']}",
+    }
+    headers_b = {
+        "X-Tenant-ID": tenant_id,
+        "Authorization": f"Bearer {register_b.json()['access_token']}",
+    }
+
+    purchase_a = client.post(
+        "/billing/purchase/mock",
+        json={"plan_id": "pro"},
+        headers=headers_a,
+    )
+    purchase_b = client.post(
+        "/billing/purchase/mock",
+        json={"plan_id": "studio"},
+        headers=headers_b,
+    )
+    assert purchase_a.status_code == 200
+    assert purchase_b.status_code == 200
+
+    receipts_a = client.get("/billing/receipts", headers=headers_a)
+    receipts_b = client.get("/billing/receipts", headers=headers_b)
+    assert receipts_a.status_code == 200
+    assert receipts_b.status_code == 200
+    assert {item["plan_id"] for item in receipts_a.json()["items"]} == {"pro"}
+    assert {item["plan_id"] for item in receipts_b.json()["items"]} == {"studio"}
+
+    records_a = client.get("/billing/records", headers=headers_a)
+    records_b = client.get("/billing/records", headers=headers_b)
+    assert records_a.status_code == 200
+    assert records_b.status_code == 200
+    assert {
+        item["metadata"].get("plan_id")
+        for item in records_a.json()["items"]
+        if item["metadata"].get("plan_id")
+    } == {"pro"}
+    assert {
+        item["metadata"].get("plan_id")
+        for item in records_b.json()["items"]
+        if item["metadata"].get("plan_id")
+    } == {"studio"}
