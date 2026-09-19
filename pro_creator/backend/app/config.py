@@ -169,6 +169,30 @@ PAYSTACK_CALLBACK_URL = os.getenv(
 )
 PAYSTACK_CURRENCY = os.getenv("PAYSTACK_CURRENCY", "GHS").strip().upper() or "GHS"
 
+# social oauth placeholder
+ Social publishing OAuth
+SOCIAL_OAUTH_FRONTEND_ORIGIN = os.getenv(
+    "SOCIAL_OAUTH_FRONTEND_ORIGIN",
+    "http://localhost:3000",
+).strip().rstrip("/")
+SOCIAL_OAUTH_BACKEND_ORIGIN = os.getenv(
+    "SOCIAL_OAUTH_BACKEND_ORIGIN",
+    "http://localhost:8000",
+).strip().rstrip("/")
+
+SOCIAL_YOUTUBE_CLIENT_ID = _env_file_or_aws("SOCIAL_YOUTUBE_CLIENT_ID", "")
+SOCIAL_YOUTUBE_CLIENT_SECRET = _env_file_or_aws("SOCIAL_YOUTUBE_CLIENT_SECRET", "")
+
+SOCIAL_META_APP_ID = _env_file_or_aws("SOCIAL_META_APP_ID", "")
+SOCIAL_META_APP_SECRET = _env_file_or_aws("SOCIAL_META_APP_SECRET", "")
+SOCIAL_META_GRAPH_VERSION = os.getenv("SOCIAL_META_GRAPH_VERSION", "v21.0").strip() or "v21.0"
+
+SOCIAL_X_API_KEY = _env_file_or_aws("SOCIAL_X_API_KEY", "")
+SOCIAL_X_API_SECRET = _env_file_or_aws("SOCIAL_X_API_SECRET", "")
+
+SOCIAL_TIKTOK_CLIENT_KEY = _env_file_or_aws("SOCIAL_TIKTOK_CLIENT_KEY", "")
+SOCIAL_TIKTOK_CLIENT_SECRET = _env_file_or_aws("SOCIAL_TIKTOK_CLIENT_SECRET", "")
+
 # Email receipts / notifications
 EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Pro Creator Pro").strip() or "Pro Creator Pro"
 EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", ADMIN_EMAIL).strip() or ADMIN_EMAIL
