@@ -102,10 +102,9 @@ const migrateAdminTokenToSessionStorage = (): string | null => {
 
 const getAuthToken = (): string | null => {
   if (typeof window !== "undefined") {
-    const adminAccessToken = migrateAdminTokenToSessionStorage();
-    if (adminAccessToken) {
-      return adminAccessToken;
-    }
+    // The normal API bearer token and the privileged admin-dashboard token are
+    // intentionally separate credentials. Never send pc_admin_access_token as
+    // Authorization: Bearer for user/workflow APIs.
     return window.localStorage.getItem("pc_token");
   }
   return process.env.NEXT_PUBLIC_API_TOKEN ?? null;
@@ -213,14 +212,23 @@ const withOwnerDashboardHeaders = (headers?: FetchHeaders): FetchHeaders => {
 
 const baseFetch = globalThis.fetch.bind(globalThis);
 type FetchType = typeof globalThis.fetch;
-const fetchWithAuth = (
+const fetchWithAuth = async (
   input: FetchInput,
   init: FetchInit = {}
-): ReturnType<FetchType> =>
-  baseFetch(input, {
+): Promise<Response> => {
+  const response = await baseFetch(input, {
     ...init,
     headers: withAuthHeaders(init?.headers),
   });
+  if (
+    response.status === 401 &&
+    typeof window !== "undefined" &&
+    !window.localStorage.getItem("pc_token")
+  ) {
+    window.dispatchEvent(new CustomEvent("procreator:subscription-required"));
+  }
+  return response;
+};
 
 const fetch: FetchType = fetchWithAuth as FetchType;
 
@@ -229,6 +237,13 @@ const throwApiError = async (
   fallback: string
 ): Promise<never> => {
   const detail = await response.json().catch(() => null);
+  if (
+    response.status === 401 &&
+    typeof window !== "undefined" &&
+    !window.localStorage.getItem("pc_token")
+  ) {
+    throw new Error("Subscribe or sign in to use this feature.");
+  }
   const message =
     detail?.detail ??
     (Array.isArray(detail) ? detail?.[0]?.msg : null) ??
@@ -926,6 +941,19 @@ export type SocialAccountConnection = {
   updated_at: string;
 };
 
+export type SocialOAuthStartResponse = {
+  authorization_url: string;
+  state: string;
+};
+
+export type SocialOAuthCompletePayload = {
+  platform: SocialAccountConnection["platform"];
+  state: string;
+  code?: string | null;
+  oauth_token?: string | null;
+  oauth_verifier?: string | null;
+};
+
 export type SocialPublishJob = {
   job_id: string;
   project_id: string;
@@ -939,6 +967,32 @@ export type SocialPublishJob = {
   updated_at: string;
   published_at?: string | null;
 };
+
+export async function beginSocialOAuth(
+  platform: SocialAccountConnection["platform"]
+): Promise<SocialOAuthStartResponse> {
+  const response = await fetch(`${API_BASE}/social/oauth/${encodeURIComponent(platform)}/start`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to start social account authorization");
+  }
+  return response.json();
+}
+
+export async function completeSocialOAuth(
+  payload: SocialOAuthCompletePayload
+): Promise<SocialAccountConnection> {
+  const response = await fetch(`${API_BASE}/social/oauth/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to complete social account authorization");
+  }
+  return response.json();
+}
 
 export async function fetchSocialConnections(): Promise<{ items: SocialAccountConnection[] }> {
   const response = await fetch(`${API_BASE}/social/connections`, { cache: "no-store" });
@@ -1499,6 +1553,20 @@ export async function fetchAdminVisitAnalyticsSummary(days = 30): Promise<VisitA
   return response.json();
 }
 
+export async function resetAdminVisitAnalytics(): Promise<{
+  deleted: boolean;
+  deleted_count: number;
+}> {
+  const response = await fetch(`${API_BASE}/analytics/visits`, {
+    method: "DELETE",
+    headers: withOwnerDashboardHeaders(undefined),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to reset visitor analytics");
+  }
+  return response.json();
+}
+
 export async function updateAdminBillingPricing(payload: {
   moderate_credits: number;
   moderate_price_usd: number;
@@ -1512,8 +1580,10 @@ export async function updateAdminBillingPricing(payload: {
   studio_price_usd: number;
   studio_base_character_slots: number;
   studio_stripe_price_id?: string | null;
+  factory_one_time_credits: number;
   factory_one_time_price_usd: number;
   factory_one_time_stripe_price_id?: string | null;
+  factory_subscription_credits: number;
   factory_subscription_price_usd: number;
   factory_subscription_stripe_price_id?: string | null;
   owner_mode_enabled: boolean;

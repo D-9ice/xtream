@@ -6,7 +6,7 @@ import hmac
 import json
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 from urllib.parse import parse_qsl, quote, urlparse
 
@@ -14,7 +14,15 @@ import requests
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.config import CREDITS_COST_VIDEO_EXPORT, JWT_SECRET, OWNER_EMAIL_ALLOWLIST
+from app.config import (
+    CREDITS_COST_VIDEO_EXPORT,
+    JWT_SECRET,
+    OWNER_EMAIL_ALLOWLIST,
+    SOCIAL_TIKTOK_CLIENT_KEY,
+    SOCIAL_TIKTOK_CLIENT_SECRET,
+    SOCIAL_YOUTUBE_CLIENT_ID,
+    SOCIAL_YOUTUBE_CLIENT_SECRET,
+)
 from app.models import Project, SocialAccountConnection, SocialPublishJob, User, utc_now
 from app.services.credits import consume_credits
 from app.storage import project_key, storage_client
@@ -239,6 +247,82 @@ def list_connections(session: Session, current_user: User) -> list[SocialAccount
 
 def list_admin_connections(session: Session, current_user: User) -> list[SocialAccountConnection]:
     return list_connections(session, current_user)
+
+
+def _refresh_connection_access_token_if_needed(
+    session: Session,
+    connection: SocialAccountConnection,
+) -> SocialAccountConnection:
+    expires_at = connection.token_expires_at
+    if not expires_at:
+        return connection
+    if expires_at > (_utc_now() + timedelta(minutes=2)):
+        return connection
+
+    refresh_token = _decrypt_secret(connection.refresh_token_encrypted)
+    if not refresh_token:
+        raise HTTPException(
+            status_code=401,
+            detail=f"{connection.platform.title()} authorization expired; reconnect this account",
+        )
+
+    if connection.platform == "youtube":
+        if not SOCIAL_YOUTUBE_CLIENT_ID or not SOCIAL_YOUTUBE_CLIENT_SECRET:
+            raise HTTPException(status_code=503, detail="YouTube OAuth refresh credentials are not configured")
+        response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": SOCIAL_YOUTUBE_CLIENT_ID,
+                "client_secret": SOCIAL_YOUTUBE_CLIENT_SECRET,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        access_token = _clean_optional_text(payload.get("access_token"))
+        if not access_token:
+            raise HTTPException(status_code=502, detail="YouTube token refresh returned no access token")
+        connection.access_token_encrypted = _encrypt_secret(access_token) or ""
+        connection.token_expires_at = _utc_now() + timedelta(seconds=max(60, int(payload.get("expires_in") or 3600)))
+        if payload.get("refresh_token"):
+            connection.refresh_token_encrypted = _encrypt_secret(str(payload["refresh_token"]))
+
+    elif connection.platform == "tiktok":
+        if not SOCIAL_TIKTOK_CLIENT_KEY or not SOCIAL_TIKTOK_CLIENT_SECRET:
+            raise HTTPException(status_code=503, detail="TikTok OAuth refresh credentials are not configured")
+        response = requests.post(
+            "https://open.tiktokapis.com/v2/oauth/token/",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "client_key": SOCIAL_TIKTOK_CLIENT_KEY,
+                "client_secret": SOCIAL_TIKTOK_CLIENT_SECRET,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        access_token = _clean_optional_text(payload.get("access_token"))
+        if not access_token:
+            raise HTTPException(status_code=502, detail="TikTok token refresh returned no access token")
+        connection.access_token_encrypted = _encrypt_secret(access_token) or ""
+        connection.token_expires_at = _utc_now() + timedelta(seconds=max(60, int(payload.get("expires_in") or 86400)))
+        if payload.get("refresh_token"):
+            connection.refresh_token_encrypted = _encrypt_secret(str(payload["refresh_token"]))
+    else:
+        raise HTTPException(
+            status_code=401,
+            detail=f"{connection.platform.title()} authorization expired; reconnect this account",
+        )
+
+    connection.updated_at = _utc_now()
+    session.add(connection)
+    session.commit()
+    session.refresh(connection)
+    return connection
 
 
 def _connection_has_publish_credentials(connection: SocialAccountConnection) -> bool:
@@ -933,6 +1017,7 @@ def _publish_connection(
     message: str,
 ) -> SocialPublishJob:
     publish_connection = _resolve_publish_connection(session, current_user, connection)
+    publish_connection = _refresh_connection_access_token_if_needed(session, publish_connection)
     payload = {
         "message": message,
         "platform": publish_connection.platform,

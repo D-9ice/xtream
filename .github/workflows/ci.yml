@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ["main", "master", "codex/push-current-work", "deploy/**"]
   pull_request:
 
 jobs:
@@ -51,4 +51,8 @@ jobs:
         run: npm run lint
       - name: Tests
         run: npm test
-
+      - name: Production build
+        env:
+          PRO_CREATOR_BACKEND_ORIGIN: https://api.example.com
+          NEXT_PUBLIC_API_BASE: https://api.example.com
+        run: npm run build

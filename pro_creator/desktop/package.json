@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "main": "main.js",
-  "description": "Desktop shell for Pro Creator",
+  "description": "Desktop shell for Pro Creator Pro",
   "author": "",
   "scripts": {
     "dev": "electron .",
@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "com.procreator.desktop",
-    "productName": "Pro Creator",
+    "productName": "Pro Creator Pro",
     "icon": "assets/icon.png",
     "files": [
       "main.js",

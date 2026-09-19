@@ -39,7 +39,7 @@ def upgrade() -> None:
             sa.Column("token_expires_at", sa.DateTime(), nullable=True),
             sa.Column("scopes_json", sa.Text(), nullable=False, server_default="[]"),
             sa.Column("metadata_json", sa.Text(), nullable=False, server_default="{}"),
-            sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+            sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
             sa.Column("created_at", sa.DateTime(), nullable=False),
             sa.Column("updated_at", sa.DateTime(), nullable=False),
         )

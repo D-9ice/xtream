@@ -264,6 +264,19 @@ class SocialAccountConnectionListResponse(BaseModel):
     items: List[SocialAccountConnectionResponse]
 
 
+class SocialOAuthStartResponse(BaseModel):
+    authorization_url: str
+    state: str
+
+
+class SocialOAuthCompleteRequest(BaseModel):
+    platform: str
+    state: str
+    code: Optional[str] = None
+    oauth_token: Optional[str] = None
+    oauth_verifier: Optional[str] = None
+
+
 class SocialPublishRequest(BaseModel):
     project_id: str
     connection_ids: List[str] = Field(default_factory=list)
@@ -311,6 +324,11 @@ class UserCreateRequest(BaseModel):
     email: str
     password: str
     role: str = "admin"
+
+
+class PublicRegistrationRequest(BaseModel):
+    email: str
+    password: str
 
 
 class UserResponse(BaseModel):
@@ -615,8 +633,10 @@ class AdminBillingSettingsUpdateRequest(BaseModel):
     studio_price_usd: int
     studio_base_character_slots: int
     studio_stripe_price_id: Optional[str] = None
+    factory_one_time_credits: int
     factory_one_time_price_usd: int
     factory_one_time_stripe_price_id: Optional[str] = None
+    factory_subscription_credits: int
     factory_subscription_price_usd: int
     factory_subscription_stripe_price_id: Optional[str] = None
     owner_mode_enabled: bool

@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 PROJECTS_DIR = BASE_DIR / "projects"
 DB_PATH = BASE_DIR / "backend" / "pro_creator.db"
 
-API_TITLE = "Pro Creator API"
+API_TITLE = "Pro Creator Pro API"
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 AWS_SECRETS_ENABLED = os.getenv("AWS_SECRETS_ENABLED", "false").lower() == "true"
@@ -80,6 +80,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@procreator.local")
 JWT_SECRET = _env_file_or_aws("JWT_SECRET", "dev-secret-change-me")
 ADMIN_PASSWORD = _env_file_or_aws("ADMIN_PASSWORD", "ChangeMe123!")
+ADMIN_BOOTSTRAP_SYNC = os.getenv("ADMIN_BOOTSTRAP_SYNC", "false").lower() == "true"
 ADMIN_DASHBOARD_PASSWORD = _env_file_or_aws("ADMIN_DASHBOARD_PASSWORD", ADMIN_PASSWORD)
 ADMIN_2FA_ENABLED = os.getenv("ADMIN_2FA_ENABLED", "false").lower() == "true"
 ADMIN_2FA_TOTP_SECRET = _env_file_or_aws("ADMIN_2FA_TOTP_SECRET", "").strip()
@@ -168,8 +169,31 @@ PAYSTACK_CALLBACK_URL = os.getenv(
 )
 PAYSTACK_CURRENCY = os.getenv("PAYSTACK_CURRENCY", "GHS").strip().upper() or "GHS"
 
+# Social publishing OAuth
+SOCIAL_OAUTH_FRONTEND_ORIGIN = os.getenv(
+    "SOCIAL_OAUTH_FRONTEND_ORIGIN",
+    "http://localhost:3000",
+).strip().rstrip("/")
+SOCIAL_OAUTH_BACKEND_ORIGIN = os.getenv(
+    "SOCIAL_OAUTH_BACKEND_ORIGIN",
+    "http://localhost:8000",
+).strip().rstrip("/")
+
+SOCIAL_YOUTUBE_CLIENT_ID = _env_file_or_aws("SOCIAL_YOUTUBE_CLIENT_ID", "")
+SOCIAL_YOUTUBE_CLIENT_SECRET = _env_file_or_aws("SOCIAL_YOUTUBE_CLIENT_SECRET", "")
+
+SOCIAL_META_APP_ID = _env_file_or_aws("SOCIAL_META_APP_ID", "")
+SOCIAL_META_APP_SECRET = _env_file_or_aws("SOCIAL_META_APP_SECRET", "")
+SOCIAL_META_GRAPH_VERSION = os.getenv("SOCIAL_META_GRAPH_VERSION", "v21.0").strip() or "v21.0"
+
+SOCIAL_X_API_KEY = _env_file_or_aws("SOCIAL_X_API_KEY", "")
+SOCIAL_X_API_SECRET = _env_file_or_aws("SOCIAL_X_API_SECRET", "")
+
+SOCIAL_TIKTOK_CLIENT_KEY = _env_file_or_aws("SOCIAL_TIKTOK_CLIENT_KEY", "")
+SOCIAL_TIKTOK_CLIENT_SECRET = _env_file_or_aws("SOCIAL_TIKTOK_CLIENT_SECRET", "")
+
 # Email receipts / notifications
-EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Pro Creator").strip() or "Pro Creator"
+EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Pro Creator Pro").strip() or "Pro Creator Pro"
 EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", ADMIN_EMAIL).strip() or ADMIN_EMAIL
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "").strip()
 EMAIL_SMTP_HOST = os.getenv("EMAIL_SMTP_HOST", "").strip()
@@ -230,6 +254,8 @@ def validate_external_service_config() -> None:
 
     if not OWNER_EMAIL_ALLOWLIST:
         errors.append("OWNER_EMAIL_ALLOWLIST must be set in production.")
+    elif ADMIN_EMAIL.strip().lower() not in OWNER_EMAIL_ALLOWLIST:
+        errors.append("ADMIN_EMAIL must be included in OWNER_EMAIL_ALLOWLIST in production.")
 
     normalized_origins = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
     if not normalized_origins:

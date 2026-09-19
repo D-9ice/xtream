@@ -169,7 +169,7 @@ async def rate_limit_middleware(request: Request, call_next):
 
 @app.get("/")
 def root():
-    return {"message": "Pro Creator Backend Running"}
+    return {"message": "Pro Creator Pro Backend Running"}
 
 
 app.include_router(project.router)

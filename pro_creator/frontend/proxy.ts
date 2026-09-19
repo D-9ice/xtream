@@ -81,7 +81,7 @@ function detectCountryHint(request: NextRequest): string | null {
   return localeMatch?.groups?.country?.toUpperCase() ?? null;
 }
 
-export async function middleware(request: NextRequest, event: NextFetchEvent) {
+export async function proxy(request: NextRequest, event: NextFetchEvent) {
   const response = NextResponse.next();
   if (!shouldTrack(request)) {
     return response;

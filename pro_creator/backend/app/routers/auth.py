@@ -19,6 +19,7 @@ from app.schemas import (
     AuthGateUpdateRequest,
     PasswordChangeRequest,
     PasswordChangeResponse,
+    PublicRegistrationRequest,
     TokenResponse,
     UserCreateRequest,
     UserResponse,
@@ -56,6 +57,31 @@ def login(
     user = authenticate_user(session, form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_access_token(user.email, user.role)
+    return TokenResponse(access_token=token, token_type="bearer")
+
+
+@router.post("/register", response_model=TokenResponse)
+def register(
+    payload: PublicRegistrationRequest,
+    session: Session = Depends(get_session),
+) -> TokenResponse:
+    email = payload.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Enter a valid email address")
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    existing = session.exec(select(User).where(User.email == email)).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+    user = User(
+        email=email,
+        hashed_password=get_password_hash(payload.password),
+        role="user",
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
     token = create_access_token(user.email, user.role)
     return TokenResponse(access_token=token, token_type="bearer")
 

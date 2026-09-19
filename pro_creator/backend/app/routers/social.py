@@ -12,10 +12,13 @@ from app.schemas import (
     SocialAccountConnectionRequest,
     SocialAccountConnectionResponse,
     SocialDeleteResponse,
+    SocialOAuthCompleteRequest,
+    SocialOAuthStartResponse,
     SocialPublishJobListResponse,
     SocialPublishJobResponse,
     SocialPublishRequest,
 )
+from app.services.social_oauth import begin_social_oauth, complete_social_oauth
 from app.services.social_publish import (
     connection_to_response,
     delete_connection,
@@ -32,6 +35,35 @@ router = APIRouter(
     tags=["Social"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+
+
+
+@router.get("/oauth/{platform}/start", response_model=SocialOAuthStartResponse)
+def start_social_oauth(
+    platform: str,
+    current_user: User = Depends(get_current_user),
+) -> SocialOAuthStartResponse:
+    return SocialOAuthStartResponse(**begin_social_oauth(platform, current_user))
+
+
+@router.post("/oauth/complete", response_model=SocialAccountConnectionResponse)
+def finish_social_oauth(
+    payload: SocialOAuthCompleteRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> SocialAccountConnectionResponse:
+    connection = complete_social_oauth(
+        session,
+        current_user,
+        platform=payload.platform,
+        state=payload.state,
+        code=payload.code,
+        oauth_token=payload.oauth_token,
+        oauth_verifier=payload.oauth_verifier,
+    )
+    return SocialAccountConnectionResponse(**connection_to_response(connection))
 
 
 @router.get("/connections", response_model=SocialAccountConnectionListResponse)

@@ -1,41 +1,66 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
+
+function safeReturnPath(): string {
+  const requestedNext = new URLSearchParams(window.location.search).get("next");
+  if (
+    requestedNext &&
+    requestedNext.startsWith("/") &&
+    !requestedNext.startsWith("//") &&
+    !requestedNext.startsWith("/login")
+  ) {
+    return requestedNext;
+  }
+  return "/";
+}
 
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<"signin" | "register">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    const requestedMode = new URLSearchParams(window.location.search).get("mode");
+    if (requestedMode === "register") {
+      setMode("register");
+    }
+  }, []);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          username: email,
-          password,
-        }),
-      });
+      const response =
+        mode === "register"
+          ? await fetch(`${API_BASE}/auth/register`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email, password }),
+            })
+          : await fetch(`${API_BASE}/auth/login`, {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({ username: email, password }),
+            });
       if (!response.ok) {
-        throw new Error("Invalid credentials");
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? (mode === "register" ? "Unable to create account" : "Invalid credentials"));
       }
       const data = await response.json();
       window.localStorage.setItem("pc_token", data.access_token);
-      router.push("/");
+      router.replace(safeReturnPath());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -45,16 +70,35 @@ export default function LoginPage() {
     <div className="min-h-screen bg-midnight text-slate-100">
       <main className="mx-auto flex max-w-md flex-col items-center px-6 py-20">
         <div className="w-full rounded-2xl border border-slate-800 bg-slate-950/70 p-6">
-          <h1 className="text-2xl font-semibold text-white">Sign in</h1>
+          <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-800 bg-slate-900/50 p-1">
+            <button
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${mode === "signin" ? "bg-aurora text-slate-950" : "text-slate-300"}`}
+              type="button"
+              onClick={() => { setMode("signin"); setError(null); }}
+            >
+              Sign in
+            </button>
+            <button
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${mode === "register" ? "bg-aurora text-slate-950" : "text-slate-300"}`}
+              type="button"
+              onClick={() => { setMode("register"); setError(null); }}
+            >
+              Create account
+            </button>
+          </div>
+
+          <h1 className="mt-6 text-2xl font-semibold text-white">
+            {mode === "register" ? "Create your Pro Creator account" : "Welcome back"}
+          </h1>
           <p className="mt-2 text-sm text-slate-400">
-            Use your admin credentials to access the dashboard.
+            {mode === "register"
+              ? "Create an account to subscribe, receive credits, and start producing."
+              : "Sign in to access your projects, credits, and subscription."}
           </p>
-          <form className="mt-6 space-y-4" onSubmit={handleLogin}>
+
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <div>
-              <label
-                className="text-xs uppercase tracking-wide text-slate-400"
-                htmlFor="login-email"
-              >
+              <label className="text-xs uppercase tracking-wide text-slate-400" htmlFor="login-email">
                 Email
               </label>
               <input
@@ -64,14 +108,12 @@ export default function LoginPage() {
                 aria-label="Email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
                 required
               />
             </div>
             <div>
-              <label
-                className="text-xs uppercase tracking-wide text-slate-400"
-                htmlFor="login-password"
-              >
+              <label className="text-xs uppercase tracking-wide text-slate-400" htmlFor="login-password">
                 Password
               </label>
               <div className="relative mt-2">
@@ -82,6 +124,8 @@ export default function LoginPage() {
                   aria-label="Password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
+                  autoComplete={mode === "register" ? "new-password" : "current-password"}
+                  minLength={mode === "register" ? 8 : undefined}
                   required
                 />
                 <button
@@ -90,74 +134,34 @@ export default function LoginPage() {
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   onClick={() => setShowPassword((value) => !value)}
                 >
-                  {showPassword ? (
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 24 24"
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M3 3l18 18"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M10.584 10.584a2 2 0 002.832 2.832"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M7.5 7.5C5.018 9.086 3.56 11.2 3 12c1.35 1.95 4.838 6 9 6 1.545 0 2.96-.474 4.125-1.178"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M14.12 14.12A3 3 0 009.88 9.88"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M9.35 5.85A8.497 8.497 0 0112 5c4.162 0 7.65 4.05 9 6-.51.737-1.528 2.097-2.975 3.357"
-                      />
-                    </svg>
-                  ) : (
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 24 24"
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M2.458 12C3.732 9.057 7.2 5.5 12 5.5c4.8 0 8.268 3.557 9.542 6-1.274 2.943-4.742 6.5-9.542 6.5-4.8 0-8.268-3.557-9.542-6z"
-                      />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  )}
+                  {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
             </div>
             <button
-              className="w-full rounded-xl bg-aurora px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-aurora/90"
+              className="w-full rounded-xl bg-aurora px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-aurora/90 disabled:opacity-60"
               type="submit"
               disabled={loading}
             >
-              {loading ? "Signing in..." : "Sign in"}
+              {loading
+                ? mode === "register" ? "Creating account..." : "Signing in..."
+                : mode === "register" ? "Create account & continue" : "Sign in"}
             </button>
           </form>
+
           {error ? (
             <p className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
               {error}
             </p>
           ) : null}
+
+          <button
+            className="mt-5 w-full text-center text-xs text-slate-400 hover:text-slate-200"
+            type="button"
+            onClick={() => router.replace("/")}
+          >
+            Continue exploring Pro Creator Pro
+          </button>
         </div>
       </main>
     </div>

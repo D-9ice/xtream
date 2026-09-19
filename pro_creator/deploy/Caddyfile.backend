@@ -1,0 +1,18 @@
+{
+  email {$LETSENCRYPT_EMAIL}
+}
+
+{$DOMAIN_NAME} {
+  encode zstd gzip
+
+  @metrics path /metrics
+  respond @metrics 403
+
+  handle_path /storage/* {
+    reverse_proxy minio:9000
+  }
+
+  handle {
+    reverse_proxy backend:8000
+  }
+}

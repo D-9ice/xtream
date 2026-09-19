@@ -64,7 +64,7 @@ def upgrade() -> None:
         sa.Column("page_title", sa.String(), nullable=True),
         sa.Column("session_id", sa.String(), nullable=True),
         sa.Column("event_type", sa.String(), nullable=False, server_default="page_view"),
-        sa.Column("is_bot", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("is_bot", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("bot_reason", sa.String(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
     )

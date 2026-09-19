@@ -1,13 +1,8 @@
-"use client";
-
-import { Suspense } from "react";
+import { connection } from "next/server";
 
 import WorkflowHomePage from "./page.workflow";
 
-export default function HomePage() {
-  return (
-    <Suspense fallback={<div className="p-6 text-slate-400">Loading...</div>}>
-      <WorkflowHomePage />
-    </Suspense>
-  );
+export default async function HomePage() {
+  await connection();
+  return <WorkflowHomePage />;
 }

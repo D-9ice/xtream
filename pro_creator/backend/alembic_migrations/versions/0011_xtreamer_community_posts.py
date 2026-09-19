@@ -26,8 +26,8 @@ def upgrade() -> None:
     op.create_table(
         "communitypost",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-        sa.Column("tenant_id", sa.Text(), nullable=False, index=True),
-        sa.Column("user_id", sa.Integer(), nullable=False, index=True),
+        sa.Column("tenant_id", sa.Text(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("post_id", sa.Text(), nullable=False, unique=True),
         sa.Column("subject", sa.Text(), nullable=False),
         sa.Column("message", sa.Text(), nullable=False),

@@ -21,11 +21,13 @@ import {
   WorkflowState,
   approveWorkflowCharacters,
   approveWorkflowScript,
+  beginSocialOAuth,
   archiveWorkflowProject,
   autoCreateWorkflowProject,
   applaudCommunityPost,
   createWorkflowCharacter,
   createWorkflowProject,
+  completeSocialOAuth,
   createLibraryCharacter,
   createStripeCheckoutSession,
   duplicateWorkflowProject,
@@ -297,7 +299,7 @@ function factoryAccessPlanLabel(plan: CreditPlan): string {
     const durationDays = plan.access_days ?? 30;
     return `${durationDays}-day access`;
   }
-  return "Lifetime access";
+  return "Extended access";
 }
 
 function selectedBillingPlanSummary(plan: CreditPlan): string {
@@ -305,7 +307,7 @@ function selectedBillingPlanSummary(plan: CreditPlan): string {
     return `${plan.credits.toLocaleString()} credits for $${plan.price_usd}. Choose your payment route, then continue.`;
   }
   const accessMode = plan.access_mode === "subscription" ? "subscription" : "one-time";
-  const accessLabel = accessMode === "subscription" ? `${plan.access_days ?? 30}-day` : "lifetime";
+  const accessLabel = accessMode === "subscription" ? `${plan.access_days ?? 30}-day` : "extended";
   return `Factory Mode ${accessLabel} access for $${plan.price_usd}. Choose your payment route, then continue.`;
 }
 
@@ -1007,9 +1009,11 @@ export default function WorkflowHomePage() {
   const [socialAccountIdentifier, setSocialAccountIdentifier] = useState("");
   const [socialSaving, setSocialSaving] = useState(false);
   const [socialPublishingId, setSocialPublishingId] = useState<string | null>(null);
+  const socialOAuthHandledRef = useRef<string | null>(null);
   const [publishCaption, setPublishCaption] = useState("");
   const [publishSendMode, setPublishSendMode] = useState<"single" | "bulk">("single");
   const [showCreditPanel, setShowCreditPanel] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [creditPlans, setCreditPlans] = useState<CreditPlan[]>([]);
   const [creditPlansLoading, setCreditPlansLoading] = useState(false);
   const [creditPlansError, setCreditPlansError] = useState<string | null>(null);
@@ -1370,6 +1374,66 @@ export default function WorkflowHomePage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    const platform = searchParams?.get?.("social_oauth") as SocialAccountConnection["platform"] | null;
+    if (!platform || !SOCIAL_PLATFORM_OPTIONS.some((item) => item.key === platform)) {
+      return;
+    }
+
+    const state = searchParams?.get?.("state") ?? "";
+    const code = searchParams?.get?.("code");
+    const oauthToken = searchParams?.get?.("oauth_token");
+    const oauthVerifier = searchParams?.get?.("oauth_verifier");
+    const oauthError = searchParams?.get?.("error") ?? searchParams?.get?.("error_description");
+    const callbackKey = [platform, state, code, oauthToken, oauthVerifier, oauthError].join(":");
+
+    if (socialOAuthHandledRef.current === callbackKey) {
+      return;
+    }
+    socialOAuthHandledRef.current = callbackKey;
+
+    if (oauthError) {
+      setSocialError(`Authorization failed: ${oauthError}`);
+      router.replace("/?nav=publish");
+      return;
+    }
+
+    if (!state || (!code && platform !== "x") || (platform === "x" && (!oauthToken || !oauthVerifier))) {
+      setSocialError("The social authorization callback was incomplete. Please connect the account again.");
+      router.replace("/?nav=publish");
+      return;
+    }
+
+    setSocialLoading(true);
+    setSocialError(null);
+    setSocialStatus(null);
+
+    void completeSocialOAuth({
+      platform,
+      state,
+      code,
+      oauth_token: oauthToken,
+      oauth_verifier: oauthVerifier,
+    })
+      .then(async (connection) => {
+        await refreshSocialState(publishProject?.project_id);
+        setSocialConnectionId(connection.connection_id);
+        setSocialPlatform(connection.platform);
+        setSocialSettingsOpenPlatform(null);
+        setSocialStatus(`${socialPlatformLabel(connection.platform)} account connected successfully.`);
+      })
+      .catch((err) => {
+        setSocialError(err instanceof Error ? err.message : "Failed to connect social account");
+      })
+      .finally(() => {
+        setSocialLoading(false);
+        router.replace("/?nav=publish");
+      });
+  }, [isAuthenticated, publishProject?.project_id, refreshSocialState, router, searchParams]);
+
   const refreshCommunityPosts = useCallback(async () => {
     setCommunityLoading(true);
     setCommunityError(null);
@@ -1384,8 +1448,36 @@ export default function WorkflowHomePage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const syncAuthState = () => setIsAuthenticated(Boolean(window.localStorage.getItem("pc_token")));
+    syncAuthState();
+    window.addEventListener("storage", syncAuthState);
+    return () => window.removeEventListener("storage", syncAuthState);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const openSubscription = () => {
+      setShowCreditPanel(true);
+      setCreditPlansError(null);
+      setPurchaseStatus(null);
+    };
+    window.addEventListener("procreator:subscription-required", openSubscription);
+    return () => window.removeEventListener("procreator:subscription-required", openSubscription);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     const load = async () => {
+      if (!isAuthenticated) {
+        setError(null);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
@@ -1404,10 +1496,10 @@ export default function WorkflowHomePage() {
     return () => {
       active = false;
     };
-  }, [refreshProjects]);
+  }, [isAuthenticated, refreshProjects]);
 
   useEffect(() => {
-    if (!selectedProjectId) {
+    if (!isAuthenticated || !selectedProjectId) {
       return;
     }
     let active = true;
@@ -1424,7 +1516,7 @@ export default function WorkflowHomePage() {
     return () => {
       active = false;
     };
-  }, [refreshProject, selectedProjectId]);
+  }, [isAuthenticated, refreshProject, selectedProjectId]);
 
   useEffect(() => {
     setProductionConfirmed(false);
@@ -1440,18 +1532,18 @@ export default function WorkflowHomePage() {
   }, [selectedProject?.project_id, selectedProject?.workflow_state]);
 
   useEffect(() => {
-    if (activeNav !== "publish" || !publishProject?.project_id) {
+    if (!isAuthenticated || activeNav !== "publish" || !publishProject?.project_id) {
       return;
     }
     void refreshSocialState(publishProject.project_id);
-  }, [activeNav, publishProject?.project_id, refreshSocialState]);
+  }, [activeNav, isAuthenticated, publishProject?.project_id, refreshSocialState]);
 
   useEffect(() => {
-    if (activeNav !== "community") {
+    if (!isAuthenticated || activeNav !== "community") {
       return;
     }
     void refreshCommunityPosts();
-  }, [activeNav, refreshCommunityPosts]);
+  }, [activeNav, isAuthenticated, refreshCommunityPosts]);
 
   useEffect(() => {
     if (!publishProject?.project_id || publishCaption.trim()) {
@@ -1551,7 +1643,10 @@ export default function WorkflowHomePage() {
   }, [creditPlans.length, showCreditPanel]);
 
   useEffect(() => {
-    if (!showCreditPanel) {
+    if (!showCreditPanel || !isAuthenticated) {
+      setBillingReceipts([]);
+      setBillingReceiptsError(null);
+      setBillingReceiptsLoading(false);
       return;
     }
     let active = true;
@@ -1577,10 +1672,10 @@ export default function WorkflowHomePage() {
     return () => {
       active = false;
     };
-  }, [showCreditPanel]);
+  }, [isAuthenticated, showCreditPanel]);
 
   useEffect(() => {
-    if (activeNav !== "transaction-records") {
+    if (!isAuthenticated || activeNav !== "transaction-records") {
       return;
     }
     let active = true;
@@ -1607,7 +1702,7 @@ export default function WorkflowHomePage() {
     return () => {
       active = false;
     };
-  }, [activeNav]);
+  }, [activeNav, isAuthenticated]);
 
   const handleDeleteReceipt = useCallback(async (receiptId: number) => {
     setBillingReceiptDeleteId(receiptId);
@@ -2186,6 +2281,10 @@ export default function WorkflowHomePage() {
   }
 
   async function handlePurchasePlan(planId: string) {
+    if (!isAuthenticated) {
+      router.push("/login?mode=register&next=%2F%3Fcredits%3D1");
+      return;
+    }
     setPurchaseLoadingPlan(planId);
     setPurchaseStatus(null);
     try {
@@ -2320,6 +2419,19 @@ export default function WorkflowHomePage() {
       setError(err instanceof Error ? err.message : "Failed to retry production");
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function handleConnectSocial(platform: SocialAccountConnection["platform"]) {
+    setSocialLoading(true);
+    setSocialError(null);
+    setSocialStatus(null);
+    try {
+      const response = await beginSocialOAuth(platform);
+      window.location.assign(response.authorization_url);
+    } catch (err) {
+      setSocialError(err instanceof Error ? err.message : "Failed to start social account authorization");
+      setSocialLoading(false);
     }
   }
 
@@ -4532,7 +4644,7 @@ export default function WorkflowHomePage() {
                   type="button"
                   onClick={() => setPublishSendMode("single")}
                 >
-                  Single send
+                  PUBLISH ONE
                 </button>
               </div>
               <div className="flex-1 min-w-0 max-w-[180px]">
@@ -4548,7 +4660,7 @@ export default function WorkflowHomePage() {
                   type="button"
                   onClick={() => setPublishSendMode("bulk")}
                 >
-                  Bulk send
+                  PUBLISH BULK
                 </button>
               </div>
             </div>
@@ -4560,51 +4672,24 @@ export default function WorkflowHomePage() {
                   : "max-h-0 border-transparent bg-transparent opacity-0 pointer-events-none"
               }`}
             >
-              <form className="space-y-4 p-6 pt-5" onSubmit={(event) => void handleSaveSocialConnection(event)}>
+              <div className="space-y-4 p-6 pt-5">
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                    {socialPlatformLabel(socialPlatform)}
+                    Connect {socialPlatformLabel(socialPlatform)}
                   </p>
-                  <div className="mt-[3px] grid gap-3 sm:grid-cols-2">
-                    <label className="grid gap-2 text-sm text-slate-200">
-                      <span
-                        className="flex min-h-[2.75rem] items-start text-xs uppercase leading-tight tracking-[0.2em] text-slate-500"
-                        style={{ transform: "translateY(-3px)" }}
-                      >
-                        Account label
-                      </span>
-                      <input
-                        className="h-14 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                        value={socialAccountLabel}
-                        onChange={(event) => setSocialAccountLabel(event.target.value)}
-                        placeholder="My Main Channel"
-                      />
-                    </label>
-                    <label className="grid gap-2 text-sm text-slate-200">
-                      <span
-                        className="flex min-h-[2.75rem] flex-col items-start justify-start leading-tight text-slate-500"
-                        style={{ transform: "translateY(-19px)" }}
-                      >
-                        <span className="text-xs uppercase tracking-[0.2em]">{socialPlatformLabel(socialPlatform)}</span>
-                        <span className="text-xs uppercase tracking-[0.2em]">Account ID</span>
-                      </span>
-                      <input
-                        className="h-14 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                        value={socialAccountIdentifier}
-                        onChange={(event) => setSocialAccountIdentifier(event.target.value)}
-                        placeholder="Account identifier"
-                      />
-                    </label>
-                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    Sign in to your {socialPlatformLabel(socialPlatform)} account and authorize Pro Creator Pro to publish finished media on your behalf. Your password is never entered into or stored by Pro Creator Pro.
+                  </p>
                 </div>
                 <button
                   className="w-full rounded-2xl border border-aurora/40 bg-aurora/10 px-4 py-3 text-sm font-semibold text-aurora disabled:cursor-not-allowed disabled:opacity-50"
-                  type="submit"
-                  disabled={socialSaving}
+                  type="button"
+                  disabled={socialLoading}
+                  onClick={() => void handleConnectSocial(socialPlatform)}
                 >
-                  {socialSaving ? "Saving..." : "Save account"}
+                  {socialLoading ? "Connecting..." : `Connect ${socialPlatformLabel(socialPlatform)}`}
                 </button>
-              </form>
+              </div>
             </div>
           </div>
 
@@ -5175,17 +5260,21 @@ export default function WorkflowHomePage() {
                     aria-haspopup="dialog"
                     aria-expanded={showCreditPanel}
                   >
-                    Credits & Plans
+                    SUBSCRIBE
                   </button>
                   <div
                     className="rounded-full border border-aurora/35 bg-aurora/10 px-4 py-2 text-sm font-semibold text-aurora shadow-[inset_0_0_0_1px_rgba(34,211,238,0.10)]"
                     aria-label="Credit usage summary"
                     aria-live="polite"
                   >
-                    Credits: {creditBalance ?? "—"} left{creditTotal !== null ? ` • used ${creditUsedTotal ?? "—"} / ${creditTotal}` : ""}
-                    {characterSlotSummary
-                      ? ` • Characters ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots}`
-                      : ""}
+                    {isAuthenticated ? (
+                      <>
+                        Credits: {creditBalance ?? "—"} left{creditTotal !== null ? ` • used ${creditUsedTotal ?? "—"} / ${creditTotal}` : ""}
+                        {characterSlotSummary
+                          ? ` • Characters ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots}`
+                          : ""}
+                      </>
+                    ) : "Explore Mode"}
                   </div>
                 </div>
               </div>
@@ -5286,12 +5375,36 @@ export default function WorkflowHomePage() {
                   Close
                 </button>
               </div>
-              <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
-                {creditBalance ?? "—"} credits available
-                {characterSlotSummary
-                  ? ` • ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots} character slots used`
-                  : ""}
-              </div>
+              {isAuthenticated ? (
+                <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
+                  {creditBalance ?? "—"} credits available
+                  {characterSlotSummary
+                    ? ` • ${characterSlotSummary.used_slots}/${characterSlotSummary.total_slots} character slots used`
+                    : ""}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-xl border border-aurora/30 bg-aurora/10 p-4">
+                  <p className="text-sm text-slate-200">
+                    Explore all plans and pricing. Create an account or sign in only when you are ready to start producing.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      className="rounded-lg bg-aurora px-4 py-2 text-sm font-semibold text-slate-950"
+                      type="button"
+                      onClick={() => router.push("/login?mode=register&next=%2F%3Fcredits%3D1")}
+                    >
+                      Create account
+                    </button>
+                    <button
+                      className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200"
+                      type="button"
+                      onClick={() => router.push("/login?next=%2F%3Fcredits%3D1")}
+                    >
+                      Sign in
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="mt-4 flex-1 overflow-y-auto pr-1">
               {factoryAccessPlans.length > 0 ? (
@@ -5300,7 +5413,7 @@ export default function WorkflowHomePage() {
                   <div>
                     <h3 className="text-lg font-semibold text-white">Factory Mode Access</h3>
                     <p className="mt-1 text-sm text-slate-400">
-                      Choose one-time access or a renewable subscription.
+                      Choose Extended Access or a renewable subscription.
                     </p>
                   </div>
                 </div>
@@ -5510,6 +5623,7 @@ export default function WorkflowHomePage() {
                 </p>
               )}
             </div>
+            {isAuthenticated ? (
             <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-white">Recent receipts</h3>
@@ -5586,6 +5700,7 @@ export default function WorkflowHomePage() {
                 </>
               )}
             </div>
+            ) : null}
             </div>
             {purchaseStatus ? (
               <p className="mt-3 text-xs text-emerald-300">{purchaseStatus}</p>

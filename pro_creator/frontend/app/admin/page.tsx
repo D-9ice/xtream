@@ -15,6 +15,7 @@ import {
   fetchAdmin2FAStatus,
   fetchAdminBillingPricing,
   fetchAdminVisitAnalyticsSummary,
+  resetAdminVisitAnalytics,
   fetchAdminSocialConnections,
   fetchAdminSubscriptions,
   deleteAdminSocialConnection,
@@ -23,6 +24,8 @@ import {
   updateAdminSubscription,
   verifyAdminAccess,
 } from "../../lib/api";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 
 const SOCIAL_PLATFORM_OPTIONS = [
   { key: "youtube", label: "YouTube" },
@@ -66,8 +69,10 @@ type BillingPricingForm = {
   studio_price_usd: number;
   studio_base_character_slots: number;
   studio_stripe_price_id: string;
+  factory_one_time_credits: number;
   factory_one_time_price_usd: number;
   factory_one_time_stripe_price_id: string;
+  factory_subscription_credits: number;
   factory_subscription_price_usd: number;
   factory_subscription_stripe_price_id: string;
   owner_mode_enabled: boolean;
@@ -92,8 +97,10 @@ const DEFAULT_PRICING_FORM: BillingPricingForm = {
   studio_price_usd: 119,
   studio_base_character_slots: 15,
   studio_stripe_price_id: "",
+  factory_one_time_credits: 0,
   factory_one_time_price_usd: 149,
   factory_one_time_stripe_price_id: "",
+  factory_subscription_credits: 0,
   factory_subscription_price_usd: 39,
   factory_subscription_stripe_price_id: "",
   owner_mode_enabled: false,
@@ -124,9 +131,13 @@ function pricingFormFromSettings(settings: BillingPricingSettings): BillingPrici
     studio_base_character_slots:
       studio?.base_character_slots ?? DEFAULT_PRICING_FORM.studio_base_character_slots,
     studio_stripe_price_id: studio?.stripe_price_id ?? "",
+    factory_one_time_credits:
+      factoryOneTime?.credits ?? DEFAULT_PRICING_FORM.factory_one_time_credits,
     factory_one_time_price_usd:
       factoryOneTime?.price_usd ?? DEFAULT_PRICING_FORM.factory_one_time_price_usd,
     factory_one_time_stripe_price_id: factoryOneTime?.stripe_price_id ?? "",
+    factory_subscription_credits:
+      factorySubscription?.credits ?? DEFAULT_PRICING_FORM.factory_subscription_credits,
     factory_subscription_price_usd:
       factorySubscription?.price_usd ?? DEFAULT_PRICING_FORM.factory_subscription_price_usd,
     factory_subscription_stripe_price_id: factorySubscription?.stripe_price_id ?? "",
@@ -158,6 +169,10 @@ export default function AdminPage() {
   const [hasMounted, setHasMounted] = useState(false);
   const [gateLoading, setGateLoading] = useState(true);
   const [gateError, setGateError] = useState<string | null>(null);
+  const [ownerAuthenticated, setOwnerAuthenticated] = useState(false);
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [showOwnerPassword, setShowOwnerPassword] = useState(false);
   const [dashboardPassword, setDashboardPassword] = useState("");
   const [showDashboardPassword, setShowDashboardPassword] = useState(false);
   const [otpCode, setOtpCode] = useState("");
@@ -196,6 +211,7 @@ export default function AdminPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalyticsSummary | null>(null);
   const [visitAnalyticsLoading, setVisitAnalyticsLoading] = useState(false);
+  const [visitAnalyticsResetting, setVisitAnalyticsResetting] = useState(false);
   const [visitAnalyticsError, setVisitAnalyticsError] = useState<string | null>(null);
   const socialSelectedIdRef = useRef<string | null>(null);
 
@@ -224,13 +240,59 @@ export default function AdminPage() {
       return;
     }
     let active = true;
+    const token = window.localStorage.getItem("pc_token");
+    if (!token) {
+      setOwnerAuthenticated(false);
+      setHasAdminAccess(false);
+      setGateLoading(false);
+      return;
+    }
+
+    setGateLoading(true);
+    globalThis.fetch(`${API_BASE}/auth/me`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Owner authentication required");
+        }
+        const user = await response.json();
+        if (user.role !== "admin") {
+          throw new Error("This account is not authorized for owner administration");
+        }
+        if (!active) return;
+        setOwnerAuthenticated(true);
+        const adminToken =
+          window.sessionStorage.getItem("pc_admin_access_token") ??
+          window.localStorage.getItem("pc_admin_access_token");
+        setHasAdminAccess(Boolean(adminToken));
+      })
+      .catch((err) => {
+        if (!active) return;
+        setOwnerAuthenticated(false);
+        setHasAdminAccess(false);
+        setGateError(err instanceof Error ? err.message : "Owner authentication required");
+      })
+      .finally(() => {
+        if (active) setGateLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [hasMounted]);
+
+  useEffect(() => {
+    if (!ownerAuthenticated) {
+      return;
+    }
+    let active = true;
     setGateLoading(true);
     setGateError(null);
     fetchAdmin2FAStatus()
       .then((statusResponse) => {
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         setTwoFaEnabled(Boolean(statusResponse.enabled));
         setTwoFaDetail(statusResponse.detail ?? null);
       })
@@ -240,19 +302,12 @@ export default function AdminPage() {
         }
       })
       .finally(() => {
-        if (active) {
-          setGateLoading(false);
-        }
+        if (active) setGateLoading(false);
       });
-
-    const token = window.sessionStorage.getItem("pc_admin_access_token");
-    const persistedToken = token ?? window.localStorage.getItem("pc_admin_access_token");
-    setHasAdminAccess(Boolean(persistedToken));
-
     return () => {
       active = false;
     };
-  }, [hasMounted]);
+  }, [ownerAuthenticated]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -331,6 +386,23 @@ export default function AdminPage() {
     };
   }, [hasAdminAccess]);
 
+  const handleResetVisitAnalytics = async () => {
+    if (!window.confirm("Reset all visitor analytics to zero? This permanently deletes the current analytics history.")) {
+      return;
+    }
+    setVisitAnalyticsResetting(true);
+    setVisitAnalyticsError(null);
+    try {
+      await resetAdminVisitAnalytics();
+      const summary = await fetchAdminVisitAnalyticsSummary();
+      setVisitAnalytics(summary);
+    } catch (err) {
+      setVisitAnalyticsError(err instanceof Error ? err.message : "Failed to reset visitor analytics");
+    } finally {
+      setVisitAnalyticsResetting(false);
+    }
+  };
+
   useEffect(() => {
     if (!selectedSubscription) {
       return;
@@ -346,6 +418,47 @@ export default function AdminPage() {
         : ""
     );
   }, [selectedSubscription]);
+
+  const handleOwnerLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setGateError(null);
+    if (!ownerEmail.trim() || !ownerPassword) {
+      setGateError("Enter the owner email and password.");
+      return;
+    }
+    setGateLoading(true);
+    try {
+      const response = await globalThis.fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ username: ownerEmail.trim(), password: ownerPassword }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Invalid owner credentials");
+      }
+      const data = await response.json();
+      window.localStorage.setItem("pc_token", data.access_token);
+
+      const meResponse = await globalThis.fetch(`${API_BASE}/auth/me`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      const me = await meResponse.json().catch(() => null);
+      if (!meResponse.ok || me?.role !== "admin") {
+        window.localStorage.removeItem("pc_token");
+        throw new Error("This account is not authorized for owner administration");
+      }
+
+      setOwnerAuthenticated(true);
+      setOwnerPassword("");
+      setHasAdminAccess(false);
+    } catch (err) {
+      setGateError(err instanceof Error ? err.message : "Owner authentication failed");
+    } finally {
+      setGateLoading(false);
+    }
+  };
 
   const handleUnlock = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -686,10 +799,70 @@ export default function AdminPage() {
         <main className="mx-auto max-w-6xl px-6 py-6">
           <p className="text-xs text-slate-400">Loading...</p>
         </main>
+      ) : !ownerAuthenticated ? (
+        <main className="mx-auto max-w-3xl px-6 py-10">
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+            <h2 className="text-2xl font-bold text-white">Owner Access</h2>
+            <p className="mt-2 text-sm text-slate-300">
+              Authenticate with the private owner account before the administrative security gate is shown.
+            </p>
+            <form className="mt-6 space-y-3" onSubmit={handleOwnerLogin}>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-slate-400" htmlFor="owner-email">
+                  Owner email
+                </label>
+                <input
+                  id="owner-email"
+                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                  type="email"
+                  value={ownerEmail}
+                  onChange={(event) => setOwnerEmail(event.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-slate-400" htmlFor="owner-password">
+                  Owner password
+                </label>
+                <div className="relative mt-2">
+                  <input
+                    id="owner-password"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 pr-20 text-sm text-white"
+                    type={showOwnerPassword ? "text" : "password"}
+                    value={ownerPassword}
+                    onChange={(event) => setOwnerPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-3 text-xs text-slate-400"
+                    onClick={() => setShowOwnerPassword((value) => !value)}
+                  >
+                    {showOwnerPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+              {gateError ? (
+                <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                  {gateError}
+                </p>
+              ) : null}
+              <button
+                className="w-full rounded-lg border border-aurora/40 bg-aurora/10 px-3 py-2 text-sm font-semibold text-aurora"
+                type="submit"
+                disabled={gateLoading}
+              >
+                {gateLoading ? "Authenticating..." : "Continue to owner security gate"}
+              </button>
+            </form>
+          </section>
+        </main>
       ) : !hasAdminAccess ? (
         <main className="mx-auto max-w-3xl px-6 py-10">
           <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-            <h2 className="text-2xl font-bold text-white">Admin Access</h2>
+            <h2 className="text-2xl font-bold text-white">Admin Security Gate</h2>
             <p className="mt-2 text-sm text-slate-300">{subtitle}</p>
             <form className="mt-6 space-y-3" onSubmit={handleUnlock}>
               <div>
@@ -904,15 +1077,15 @@ export default function AdminPage() {
 
           <section className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-              <h2 className="text-lg font-semibold text-white">Internal Tools</h2>
+              <h2 className="text-lg font-semibold text-white">Operations Console</h2>
               <p className="mt-2 text-sm text-slate-400">
-                Legacy engine-oriented screens are kept off the main user path and only exposed here for internal admin work.
+                Owner-only controls for projects, orchestration, queues, schedules, and runtime diagnostics. This console is separate from the public Pro Creator Pro workflow.
               </p>
               <a
                 className="mt-4 inline-flex rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-xs font-semibold text-aurora"
                 href="/admin/internal"
               >
-                Open Internal Dashboard
+                Open Operations Console
               </a>
             </div>
 
@@ -924,9 +1097,19 @@ export default function AdminPage() {
                     Track humans, bots, top paths, recency, and daily traffic from the live app.
                   </p>
                 </div>
-                <span className="rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
-                  Live
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+                    Live
+                  </span>
+                  <button
+                    className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    disabled={visitAnalyticsResetting}
+                    onClick={() => void handleResetVisitAnalytics()}
+                  >
+                    {visitAnalyticsResetting ? "Resetting..." : "Reset Analytics"}
+                  </button>
+                </div>
               </div>
               {visitAnalyticsError ? (
                 <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -1325,13 +1508,13 @@ export default function AdminPage() {
                         ? "Locked"
                         : factoryModeAccess === "subscription"
                           ? "Subscription"
-                          : "One-Time"}
+                          : "Extended Access"}
                     </span>
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     {[
                       ["none", "Locked"],
-                      ["one_time", "One-Time"],
+                      ["one_time", "Extended Access"],
                       ["subscription", "Subscription"],
                     ].map(([value, label]) => {
                       const selected = factoryModeAccess === value;
@@ -1468,11 +1651,25 @@ export default function AdminPage() {
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
                   <p className="text-sm font-semibold text-white">Factory Mode Access</p>
                   <p className="mt-1 text-xs text-slate-400">
-                    Edit the one-time and subscription prices used for Factory Mode checkout.
+                    Edit the Extended Access and subscription credits, prices, and Stripe Price IDs used for Factory Mode checkout.
                   </p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <label className="text-xs uppercase tracking-wide text-slate-400">
-                      One-Time Price USD
+                      Extended Access Credits
+                      <input
+                        className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                        type="number"
+                        value={pricingForm.factory_one_time_credits}
+                        onChange={(event) =>
+                          setPricingForm((current) => ({
+                            ...current,
+                            factory_one_time_credits: Number(event.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="text-xs uppercase tracking-wide text-slate-400">
+                      Extended Access Price USD
                       <input
                         className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
                         type="number"
@@ -1486,7 +1683,7 @@ export default function AdminPage() {
                       />
                     </label>
                     <label className="text-xs uppercase tracking-wide text-slate-400">
-                      One-Time Stripe Price ID
+                      Extended Access Stripe Price ID
                       <input
                         className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
                         value={pricingForm.factory_one_time_stripe_price_id}
@@ -1494,6 +1691,20 @@ export default function AdminPage() {
                           setPricingForm((current) => ({
                             ...current,
                             factory_one_time_stripe_price_id: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="text-xs uppercase tracking-wide text-slate-400">
+                      Subscription Credits
+                      <input
+                        className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                        type="number"
+                        value={pricingForm.factory_subscription_credits}
+                        onChange={(event) =>
+                          setPricingForm((current) => ({
+                            ...current,
+                            factory_subscription_credits: Number(event.target.value),
                           }))
                         }
                       />
