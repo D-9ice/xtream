@@ -4568,7 +4568,7 @@ export default function WorkflowHomePage() {
                   type="button"
                   onClick={() => setPublishSendMode("single")}
                 >
-                  Single send
+                  PUBLISH ONE
                 </button>
               </div>
               <div className="flex-1 min-w-0 max-w-[180px]">
@@ -4584,7 +4584,7 @@ export default function WorkflowHomePage() {
                   type="button"
                   onClick={() => setPublishSendMode("bulk")}
                 >
-                  Bulk send
+                  PUBLISH BULK
                 </button>
               </div>
             </div>
