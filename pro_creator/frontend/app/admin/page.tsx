@@ -1050,15 +1050,15 @@ export default function AdminPage() {
 
           <section className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-              <h2 className="text-lg font-semibold text-white">Internal Tools</h2>
+              <h2 className="text-lg font-semibold text-white">Operations Console</h2>
               <p className="mt-2 text-sm text-slate-400">
-                Legacy engine-oriented screens are kept off the main user path and only exposed here for internal admin work.
+                Owner-only controls for projects, orchestration, queues, schedules, and runtime diagnostics. This console is separate from the public Pro Creator Pro workflow.
               </p>
               <a
                 className="mt-4 inline-flex rounded-full border border-aurora/40 bg-aurora/10 px-4 py-2 text-xs font-semibold text-aurora"
                 href="/admin/internal"
               >
-                Open Internal Dashboard
+                Open Operations Console
               </a>
             </div>
 
