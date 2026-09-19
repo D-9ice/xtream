@@ -69,8 +69,10 @@ type BillingPricingForm = {
   studio_price_usd: number;
   studio_base_character_slots: number;
   studio_stripe_price_id: string;
+  factory_one_time_credits: number;
   factory_one_time_price_usd: number;
   factory_one_time_stripe_price_id: string;
+  factory_subscription_credits: number;
   factory_subscription_price_usd: number;
   factory_subscription_stripe_price_id: string;
   owner_mode_enabled: boolean;
@@ -95,8 +97,10 @@ const DEFAULT_PRICING_FORM: BillingPricingForm = {
   studio_price_usd: 119,
   studio_base_character_slots: 15,
   studio_stripe_price_id: "",
+  factory_one_time_credits: 0,
   factory_one_time_price_usd: 149,
   factory_one_time_stripe_price_id: "",
+  factory_subscription_credits: 0,
   factory_subscription_price_usd: 39,
   factory_subscription_stripe_price_id: "",
   owner_mode_enabled: false,
@@ -127,9 +131,13 @@ function pricingFormFromSettings(settings: BillingPricingSettings): BillingPrici
     studio_base_character_slots:
       studio?.base_character_slots ?? DEFAULT_PRICING_FORM.studio_base_character_slots,
     studio_stripe_price_id: studio?.stripe_price_id ?? "",
+    factory_one_time_credits:
+      factoryOneTime?.credits ?? DEFAULT_PRICING_FORM.factory_one_time_credits,
     factory_one_time_price_usd:
       factoryOneTime?.price_usd ?? DEFAULT_PRICING_FORM.factory_one_time_price_usd,
     factory_one_time_stripe_price_id: factoryOneTime?.stripe_price_id ?? "",
+    factory_subscription_credits:
+      factorySubscription?.credits ?? DEFAULT_PRICING_FORM.factory_subscription_credits,
     factory_subscription_price_usd:
       factorySubscription?.price_usd ?? DEFAULT_PRICING_FORM.factory_subscription_price_usd,
     factory_subscription_stripe_price_id: factorySubscription?.stripe_price_id ?? "",
@@ -1500,13 +1508,13 @@ export default function AdminPage() {
                         ? "Locked"
                         : factoryModeAccess === "subscription"
                           ? "Subscription"
-                          : "One-Time"}
+                          : "Extended Access"}
                     </span>
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     {[
                       ["none", "Locked"],
-                      ["one_time", "One-Time"],
+                      ["one_time", "Extended Access"],
                       ["subscription", "Subscription"],
                     ].map(([value, label]) => {
                       const selected = factoryModeAccess === value;
@@ -1643,11 +1651,25 @@ export default function AdminPage() {
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
                   <p className="text-sm font-semibold text-white">Factory Mode Access</p>
                   <p className="mt-1 text-xs text-slate-400">
-                    Edit the one-time and subscription prices used for Factory Mode checkout.
+                    Edit the Extended Access and subscription credits, prices, and Stripe Price IDs used for Factory Mode checkout.
                   </p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <label className="text-xs uppercase tracking-wide text-slate-400">
-                      One-Time Price USD
+                      Extended Access Credits
+                      <input
+                        className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                        type="number"
+                        value={pricingForm.factory_one_time_credits}
+                        onChange={(event) =>
+                          setPricingForm((current) => ({
+                            ...current,
+                            factory_one_time_credits: Number(event.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="text-xs uppercase tracking-wide text-slate-400">
+                      Extended Access Price USD
                       <input
                         className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
                         type="number"
@@ -1661,7 +1683,7 @@ export default function AdminPage() {
                       />
                     </label>
                     <label className="text-xs uppercase tracking-wide text-slate-400">
-                      One-Time Stripe Price ID
+                      Extended Access Stripe Price ID
                       <input
                         className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
                         value={pricingForm.factory_one_time_stripe_price_id}
@@ -1669,6 +1691,20 @@ export default function AdminPage() {
                           setPricingForm((current) => ({
                             ...current,
                             factory_one_time_stripe_price_id: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="text-xs uppercase tracking-wide text-slate-400">
+                      Subscription Credits
+                      <input
+                        className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                        type="number"
+                        value={pricingForm.factory_subscription_credits}
+                        onChange={(event) =>
+                          setPricingForm((current) => ({
+                            ...current,
+                            factory_subscription_credits: Number(event.target.value),
                           }))
                         }
                       />

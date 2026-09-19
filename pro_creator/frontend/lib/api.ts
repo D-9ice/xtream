@@ -1580,8 +1580,10 @@ export async function updateAdminBillingPricing(payload: {
   studio_price_usd: number;
   studio_base_character_slots: number;
   studio_stripe_price_id?: string | null;
+  factory_one_time_credits: number;
   factory_one_time_price_usd: number;
   factory_one_time_stripe_price_id?: string | null;
+  factory_subscription_credits: number;
   factory_subscription_price_usd: number;
   factory_subscription_stripe_price_id?: string | null;
   owner_mode_enabled: boolean;

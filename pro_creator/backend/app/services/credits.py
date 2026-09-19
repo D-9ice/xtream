@@ -79,11 +79,13 @@ def grant_factory_mode_access(
     provider: str | None = None,
     metadata: dict[str, Any] | None = None,
     renewal_days: int | None = None,
+    credits_grant: int = 0,
 ) -> SubscriptionAccount:
     normalized_access_mode = (access_mode or "").strip().lower()
     if normalized_access_mode not in {"one_time", "subscription"}:
         raise HTTPException(status_code=400, detail="access_mode must be one_time or subscription")
     subscription = get_or_create_subscription(session, user)
+    credit_amount = max(0, int(credits_grant or 0))
     subscription.factory_mode_status = "active"
     subscription.factory_mode_access = normalized_access_mode
     subscription.factory_mode_purchased_at = utc_now()
@@ -92,6 +94,8 @@ def grant_factory_mode_access(
         if normalized_access_mode == "subscription"
         else None
     )
+    if credit_amount:
+        subscription.credits_balance += credit_amount
     subscription.updated_at = utc_now()
     session.add(subscription)
     _append_ledger_entry(
@@ -99,7 +103,7 @@ def grant_factory_mode_access(
         user=user,
         subscription=subscription,
         kind="grant",
-        amount=0,
+        amount=credit_amount,
         reason=reason,
         action=action,
         reference_id=reference_id,

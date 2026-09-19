@@ -299,7 +299,7 @@ function factoryAccessPlanLabel(plan: CreditPlan): string {
     const durationDays = plan.access_days ?? 30;
     return `${durationDays}-day access`;
   }
-  return "Lifetime access";
+  return "Extended access";
 }
 
 function selectedBillingPlanSummary(plan: CreditPlan): string {
@@ -307,7 +307,7 @@ function selectedBillingPlanSummary(plan: CreditPlan): string {
     return `${plan.credits.toLocaleString()} credits for $${plan.price_usd}. Choose your payment route, then continue.`;
   }
   const accessMode = plan.access_mode === "subscription" ? "subscription" : "one-time";
-  const accessLabel = accessMode === "subscription" ? `${plan.access_days ?? 30}-day` : "lifetime";
+  const accessLabel = accessMode === "subscription" ? `${plan.access_days ?? 30}-day` : "extended";
   return `Factory Mode ${accessLabel} access for $${plan.price_usd}. Choose your payment route, then continue.`;
 }
 

@@ -256,7 +256,7 @@ def _factory_access_item_description(plan: CreditPlan) -> str:
     if access_mode == "subscription":
         duration_days = _factory_access_period_days(plan)
         return f"Factory Mode subscription access for {duration_days} days"
-    return "Factory Mode one-time access"
+    return f"Factory Mode Extended Access with {plan.credits} configured credits"
 
 
 def _grant_factory_purchase(
@@ -286,6 +286,7 @@ def _grant_factory_purchase(
             "purchase_label": plan.name,
         },
         renewal_days=renewal_days or None,
+        credits_grant=plan.credits,
     )
     _send_purchase_receipt_email(
         user=user,
@@ -1233,8 +1234,10 @@ def update_admin_billing_settings(
             studio_price_usd=payload.studio_price_usd,
             studio_base_character_slots=payload.studio_base_character_slots,
             studio_stripe_price_id=payload.studio_stripe_price_id,
+            factory_one_time_credits=payload.factory_one_time_credits,
             factory_one_time_price_usd=payload.factory_one_time_price_usd,
             factory_one_time_stripe_price_id=payload.factory_one_time_stripe_price_id,
+            factory_subscription_credits=payload.factory_subscription_credits,
             factory_subscription_price_usd=payload.factory_subscription_price_usd,
             factory_subscription_stripe_price_id=payload.factory_subscription_stripe_price_id,
             owner_mode_enabled=payload.owner_mode_enabled,

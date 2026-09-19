@@ -633,8 +633,10 @@ class AdminBillingSettingsUpdateRequest(BaseModel):
     studio_price_usd: int
     studio_base_character_slots: int
     studio_stripe_price_id: Optional[str] = None
+    factory_one_time_credits: int
     factory_one_time_price_usd: int
     factory_one_time_stripe_price_id: Optional[str] = None
+    factory_subscription_credits: int
     factory_subscription_price_usd: int
     factory_subscription_stripe_price_id: Optional[str] = None
     owner_mode_enabled: bool

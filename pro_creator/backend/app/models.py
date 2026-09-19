@@ -216,8 +216,10 @@ class AppSettings(SQLModel, table=True):
     plan_studio_credits: int = Field(default=6000)
     plan_studio_price_usd: int = Field(default=119)
     plan_studio_stripe_price_id: Optional[str] = None
+    factory_one_time_credits: int = Field(default=0)
     factory_one_time_price_usd: int = Field(default=149)
     factory_one_time_stripe_price_id: Optional[str] = None
+    factory_subscription_credits: int = Field(default=0)
     factory_subscription_price_usd: int = Field(default=39)
     factory_subscription_stripe_price_id: Optional[str] = None
     owner_mode_enabled: bool = Field(default=False)
