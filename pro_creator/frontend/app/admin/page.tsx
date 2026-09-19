@@ -15,6 +15,7 @@ import {
   fetchAdmin2FAStatus,
   fetchAdminBillingPricing,
   fetchAdminVisitAnalyticsSummary,
+  resetAdminVisitAnalytics,
   fetchAdminSocialConnections,
   fetchAdminSubscriptions,
   deleteAdminSocialConnection,
@@ -202,6 +203,7 @@ export default function AdminPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalyticsSummary | null>(null);
   const [visitAnalyticsLoading, setVisitAnalyticsLoading] = useState(false);
+  const [visitAnalyticsResetting, setVisitAnalyticsResetting] = useState(false);
   const [visitAnalyticsError, setVisitAnalyticsError] = useState<string | null>(null);
   const socialSelectedIdRef = useRef<string | null>(null);
 
@@ -375,6 +377,23 @@ export default function AdminPage() {
       active = false;
     };
   }, [hasAdminAccess]);
+
+  const handleResetVisitAnalytics = async () => {
+    if (!window.confirm("Reset all visitor analytics to zero? This permanently deletes the current analytics history.")) {
+      return;
+    }
+    setVisitAnalyticsResetting(true);
+    setVisitAnalyticsError(null);
+    try {
+      await resetAdminVisitAnalytics();
+      const summary = await fetchAdminVisitAnalyticsSummary();
+      setVisitAnalytics(summary);
+    } catch (err) {
+      setVisitAnalyticsError(err instanceof Error ? err.message : "Failed to reset visitor analytics");
+    } finally {
+      setVisitAnalyticsResetting(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedSubscription) {
@@ -1070,9 +1089,19 @@ export default function AdminPage() {
                     Track humans, bots, top paths, recency, and daily traffic from the live app.
                   </p>
                 </div>
-                <span className="rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
-                  Live
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+                    Live
+                  </span>
+                  <button
+                    className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    disabled={visitAnalyticsResetting}
+                    onClick={() => void handleResetVisitAnalytics()}
+                  >
+                    {visitAnalyticsResetting ? "Resetting..." : "Reset Analytics"}
+                  </button>
+                </div>
               </div>
               {visitAnalyticsError ? (
                 <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
