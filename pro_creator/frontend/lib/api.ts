@@ -1514,6 +1514,20 @@ export async function fetchAdminVisitAnalyticsSummary(days = 30): Promise<VisitA
   return response.json();
 }
 
+export async function resetAdminVisitAnalytics(): Promise<{
+  deleted: boolean;
+  deleted_count: number;
+}> {
+  const response = await fetch(`${API_BASE}/analytics/visits`, {
+    method: "DELETE",
+    headers: withOwnerDashboardHeaders(undefined),
+  });
+  if (!response.ok) {
+    await throwApiError(response, "Failed to reset visitor analytics");
+  }
+  return response.json();
+}
+
 export async function updateAdminBillingPricing(payload: {
   moderate_credits: number;
   moderate_price_usd: number;
