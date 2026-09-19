@@ -21,11 +21,13 @@ import {
   WorkflowState,
   approveWorkflowCharacters,
   approveWorkflowScript,
+  beginSocialOAuth,
   archiveWorkflowProject,
   autoCreateWorkflowProject,
   applaudCommunityPost,
   createWorkflowCharacter,
   createWorkflowProject,
+  completeSocialOAuth,
   createLibraryCharacter,
   createStripeCheckoutSession,
   duplicateWorkflowProject,
@@ -1007,6 +1009,7 @@ export default function WorkflowHomePage() {
   const [socialAccountIdentifier, setSocialAccountIdentifier] = useState("");
   const [socialSaving, setSocialSaving] = useState(false);
   const [socialPublishingId, setSocialPublishingId] = useState<string | null>(null);
+  const socialOAuthHandledRef = useRef<string | null>(null);
   const [publishCaption, setPublishCaption] = useState("");
   const [publishSendMode, setPublishSendMode] = useState<"single" | "bulk">("single");
   const [showCreditPanel, setShowCreditPanel] = useState(false);
@@ -1293,6 +1296,66 @@ export default function WorkflowHomePage() {
       setShowCreditPanel(true);
     }
   }, [router, searchParams]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    const platform = searchParams?.get?.("social_oauth") as SocialAccountConnection["platform"] | null;
+    if (!platform || !SOCIAL_PLATFORM_OPTIONS.some((item) => item.key === platform)) {
+      return;
+    }
+
+    const state = searchParams?.get?.("state") ?? "";
+    const code = searchParams?.get?.("code");
+    const oauthToken = searchParams?.get?.("oauth_token");
+    const oauthVerifier = searchParams?.get?.("oauth_verifier");
+    const oauthError = searchParams?.get?.("error") ?? searchParams?.get?.("error_description");
+    const callbackKey = [platform, state, code, oauthToken, oauthVerifier, oauthError].join(":");
+
+    if (socialOAuthHandledRef.current === callbackKey) {
+      return;
+    }
+    socialOAuthHandledRef.current = callbackKey;
+
+    if (oauthError) {
+      setSocialError(`Authorization failed: ${oauthError}`);
+      router.replace("/?nav=publish");
+      return;
+    }
+
+    if (!state || (!code && platform !== "x") || (platform === "x" && (!oauthToken || !oauthVerifier))) {
+      setSocialError("The social authorization callback was incomplete. Please connect the account again.");
+      router.replace("/?nav=publish");
+      return;
+    }
+
+    setSocialLoading(true);
+    setSocialError(null);
+    setSocialStatus(null);
+
+    void completeSocialOAuth({
+      platform,
+      state,
+      code,
+      oauth_token: oauthToken,
+      oauth_verifier: oauthVerifier,
+    })
+      .then(async (connection) => {
+        await refreshSocialState(publishProject?.project_id);
+        setSocialConnectionId(connection.connection_id);
+        setSocialPlatform(connection.platform);
+        setSocialSettingsOpenPlatform(null);
+        setSocialStatus(`${socialPlatformLabel(connection.platform)} account connected successfully.`);
+      })
+      .catch((err) => {
+        setSocialError(err instanceof Error ? err.message : "Failed to connect social account");
+      })
+      .finally(() => {
+        setSocialLoading(false);
+        router.replace("/?nav=publish");
+      });
+  }, [isAuthenticated, publishProject?.project_id, refreshSocialState, router, searchParams]);
 
   useEffect(() => {
     if (activeNav !== "create" || !selectedProject) {
@@ -2356,6 +2419,19 @@ export default function WorkflowHomePage() {
       setError(err instanceof Error ? err.message : "Failed to retry production");
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function handleConnectSocial(platform: SocialAccountConnection["platform"]) {
+    setSocialLoading(true);
+    setSocialError(null);
+    setSocialStatus(null);
+    try {
+      const response = await beginSocialOAuth(platform);
+      window.location.assign(response.authorization_url);
+    } catch (err) {
+      setSocialError(err instanceof Error ? err.message : "Failed to start social account authorization");
+      setSocialLoading(false);
     }
   }
 
@@ -4596,51 +4672,24 @@ export default function WorkflowHomePage() {
                   : "max-h-0 border-transparent bg-transparent opacity-0 pointer-events-none"
               }`}
             >
-              <form className="space-y-4 p-6 pt-5" onSubmit={(event) => void handleSaveSocialConnection(event)}>
+              <div className="space-y-4 p-6 pt-5">
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                    {socialPlatformLabel(socialPlatform)}
+                    Connect {socialPlatformLabel(socialPlatform)}
                   </p>
-                  <div className="mt-[3px] grid gap-3 sm:grid-cols-2">
-                    <label className="grid gap-2 text-sm text-slate-200">
-                      <span
-                        className="flex min-h-[2.75rem] items-start text-xs uppercase leading-tight tracking-[0.2em] text-slate-500"
-                        style={{ transform: "translateY(-3px)" }}
-                      >
-                        Account label
-                      </span>
-                      <input
-                        className="h-14 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                        value={socialAccountLabel}
-                        onChange={(event) => setSocialAccountLabel(event.target.value)}
-                        placeholder="My Main Channel"
-                      />
-                    </label>
-                    <label className="grid gap-2 text-sm text-slate-200">
-                      <span
-                        className="flex min-h-[2.75rem] flex-col items-start justify-start leading-tight text-slate-500"
-                        style={{ transform: "translateY(-19px)" }}
-                      >
-                        <span className="text-xs uppercase tracking-[0.2em]">{socialPlatformLabel(socialPlatform)}</span>
-                        <span className="text-xs uppercase tracking-[0.2em]">Account ID</span>
-                      </span>
-                      <input
-                        className="h-14 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                        value={socialAccountIdentifier}
-                        onChange={(event) => setSocialAccountIdentifier(event.target.value)}
-                        placeholder="Account identifier"
-                      />
-                    </label>
-                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    Sign in to your {socialPlatformLabel(socialPlatform)} account and authorize Pro Creator Pro to publish finished media on your behalf. Your password is never entered into or stored by Pro Creator Pro.
+                  </p>
                 </div>
                 <button
                   className="w-full rounded-2xl border border-aurora/40 bg-aurora/10 px-4 py-3 text-sm font-semibold text-aurora disabled:cursor-not-allowed disabled:opacity-50"
-                  type="submit"
-                  disabled={socialSaving}
+                  type="button"
+                  disabled={socialLoading}
+                  onClick={() => void handleConnectSocial(socialPlatform)}
                 >
-                  {socialSaving ? "Saving..." : "Save account"}
+                  {socialLoading ? "Connecting..." : `Connect ${socialPlatformLabel(socialPlatform)}`}
                 </button>
-              </form>
+              </div>
             </div>
           </div>
 
