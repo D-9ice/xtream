@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
+from sqlalchemy import delete
 from sqlmodel import Session, select
 
 from app.models import VisitEvent
@@ -292,3 +293,15 @@ def summarize_visits(session: Session, window_days: int = 30) -> VisitAnalyticsS
         recent_visits=recent_visits,
         daily_visits=daily_visits,
     )
+
+
+def clear_visits(session: Session) -> int:
+    tenant_id = current_tenant_id()
+    existing = session.exec(
+        select(VisitEvent).where(VisitEvent.tenant_id == tenant_id)
+    ).all()
+    deleted_count = len(existing)
+    if deleted_count:
+        session.exec(delete(VisitEvent).where(VisitEvent.tenant_id == tenant_id))
+        session.commit()
+    return deleted_count
