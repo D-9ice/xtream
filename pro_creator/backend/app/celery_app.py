@@ -20,5 +20,9 @@ celery_app.conf.update(
             "task": "pro_creator.run_due_schedules",
             "schedule": 60.0,
         },
+        "reconcile-orchestration-jobs": {
+            "task": "pro_creator.reconcile_orchestration_jobs",
+            "schedule": 30.0,
+        },
     },
 )
