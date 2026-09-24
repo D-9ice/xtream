@@ -149,6 +149,23 @@ FFMPEG_CONCAT_TIMEOUT_SECONDS = max(
     int(os.getenv("FFMPEG_CONCAT_TIMEOUT_SECONDS", "300")),
 )
 
+VIDEO_IMPORT_MAX_BYTES = max(
+    50 * 1024 * 1024,
+    int(os.getenv("VIDEO_IMPORT_MAX_BYTES", str(2 * 1024 * 1024 * 1024))),
+)
+VIDEO_IMPORT_CONNECT_TIMEOUT_SECONDS = max(
+    1,
+    int(os.getenv("VIDEO_IMPORT_CONNECT_TIMEOUT_SECONDS", "10")),
+)
+VIDEO_IMPORT_READ_TIMEOUT_SECONDS = max(
+    5,
+    int(os.getenv("VIDEO_IMPORT_READ_TIMEOUT_SECONDS", "60")),
+)
+VIDEO_IMPORT_MAX_REDIRECTS = max(
+    0,
+    min(10, int(os.getenv("VIDEO_IMPORT_MAX_REDIRECTS", "5"))),
+)
+
 # Billing / Stripe / Paystack
 STRIPE_SECRET_KEY = _env_file_or_aws("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = _env_file_or_aws("STRIPE_WEBHOOK_SECRET", "")
