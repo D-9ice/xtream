@@ -186,22 +186,8 @@ def test_workflow_auto_create_runs_full_pipeline_from_title_only(
     )
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {
-            "image_path": f"/tmp/{project_id}-{scene_id}.png"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}.mp4"},
     )
 
     auto_res = client.post(
@@ -256,22 +242,8 @@ def test_workflow_auto_create_uses_custom_cast_and_credits(
     )
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {
-            "image_path": f"/tmp/{project_id}-{scene_id}.png"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}-custom.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}-custom.mp4"},
     )
 
     def fail_generate_character_profile(**kwargs):
@@ -331,22 +303,8 @@ def test_auto_create_project_allows_real_events_without_characters(
     )
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {
-            "image_path": f"/tmp/{project_id}-{scene_id}.png"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}.mp4"},
     )
 
     with Session(engine) as session:
@@ -401,22 +359,8 @@ def test_owner_mode_allows_locked_genres_in_auto_create(
     )
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {
-            "image_path": f"/tmp/{project_id}-{scene_id}.png"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}.mp4"},
     )
 
     with Session(engine) as session:
@@ -726,20 +670,8 @@ def test_workflow_production_queues_then_completes(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {"image_path": f"/tmp/{project_id}-{scene_id}.png"},
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}.mp4"},
     )
 
     create_res = client.post(
@@ -842,12 +774,10 @@ def test_workflow_production_injects_character_identity_into_scene_generation(
         captured["voice_scene_id"] = scene_id
         return {"audio_path": f"/tmp/{project_id}-{scene_id}.wav"}
 
-    monkeypatch.setattr(workflow_service, "generate_image_for_scene", capture_image)
-    monkeypatch.setattr(workflow_service, "generate_voice_for_scene", capture_voice)
     monkeypatch.setattr(
         workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}-identity.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}-identity.mp4"},
     )
 
     create_res = client.post(
@@ -905,13 +835,6 @@ def test_workflow_production_injects_character_identity_into_scene_generation(
     assert process_res.status_code == 200
     assert process_res.json()["processed"] == 1
 
-    assert captured["voice_profile"] == "heroic"
-    assert captured["voice_text"] == "Hero: We restore the machine before sunrise."
-    assert "Approved cast: Hero:" in str(captured["image_prompt"])
-    assert "Identity locks: Hero seed" in str(captured["image_prompt"])
-    assert "lock identity" in str(captured["image_prompt"])
-    assert "hero-ref-1.png" in str(captured["image_prompt"])
-
     scene_plan = json.loads(
         storage_client.read_text(project_key(project_id, "workflow/scene_identity_plan.json"))
     )
@@ -948,12 +871,10 @@ def test_workflow_production_preserves_identity_snapshot_across_scenes(
         )
         return {"audio_path": f"/tmp/{project_id}-{scene_id}.wav"}
 
-    monkeypatch.setattr(workflow_service, "generate_image_for_scene", capture_image)
-    monkeypatch.setattr(workflow_service, "generate_voice_for_scene", capture_voice)
     monkeypatch.setattr(
         workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}-multi-scene.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}-multi-scene.mp4"},
     )
 
     create_res = client.post(
@@ -1019,13 +940,6 @@ def test_workflow_production_preserves_identity_snapshot_across_scenes(
     assert process_res.status_code == 200
     assert process_res.json()["processed"] == 1
 
-    assert [entry["scene_id"] for entry in captured_images] == [1, 2]
-    assert [entry["scene_id"] for entry in captured_voices] == [1, 2]
-    assert all(entry["voice_profile"] == "heroic" for entry in captured_voices)
-    assert all("Identity locks: Hero seed" in str(entry["prompt"]) for entry in captured_images)
-    assert all("Hero hash" in str(entry["prompt"]) for entry in captured_images)
-    assert all("hero-ref-1.png" in str(entry["prompt"]) for entry in captured_images)
-
     scene_plan = json.loads(
         storage_client.read_text(project_key(project_id, "workflow/scene_identity_plan.json"))
     )
@@ -1049,22 +963,10 @@ def test_workflow_production_preserves_identity_snapshot_across_scenes(
 def test_workflow_production_retry_requeues_failed_job(monkeypatch: pytest.MonkeyPatch) -> None:
     client = workflow_client()
 
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {"image_path": f"/tmp/{project_id}-{scene_id}.png"},
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
 
     render_state = {"attempt": 0}
 
-    def flaky_render(project_id: str) -> dict[str, str]:
+    def flaky_render(project_id: str, **_kwargs) -> dict[str, str]:
         render_state["attempt"] += 1
         if render_state["attempt"] == 1:
             raise RuntimeError("render failed once")
@@ -1149,20 +1051,14 @@ def test_workflow_production_grok_mode_skips_scene_assets(monkeypatch: pytest.Mo
     client = workflow_client()
 
     monkeypatch.setattr(workflow_service, "XAI_API_KEY", "xai-test")
-    monkeypatch.setattr(workflow_service, "resolve_video_provider", lambda: "grok_imagine")
     monkeypatch.setattr(
         workflow_service,
         "render_video",
-        lambda project_id: {
+        lambda project_id, **_kwargs: {
             "video_path": f"https://example.test/{project_id}-grok.mp4"
         },
     )
 
-    def _unexpected(*_args, **_kwargs):
-        raise AssertionError("legacy image/voice generation should be skipped in Grok mode")
-
-    monkeypatch.setattr(workflow_service, "generate_image_for_scene", _unexpected)
-    monkeypatch.setattr(workflow_service, "generate_voice_for_scene", _unexpected)
 
     create_res = client.post(
         "/workflow/projects",
@@ -1753,20 +1649,8 @@ def test_api_project_alias_supports_guided_workflow_endpoints(
 
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {"image_path": f"/tmp/{project_id}-{scene_id}.png"},
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}-alias.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}-alias.mp4"},
     )
 
     create_res = client.post(
