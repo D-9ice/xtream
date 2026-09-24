@@ -11,7 +11,6 @@ const TRACKED_PATH_EXCLUDES = [
   "/robots.txt",
   "/sitemap.xml",
   "/app-icon.png",
-  "/xtream-logo.png",
 ];
 
 const BOT_MARKERS = [
@@ -128,5 +127,5 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|favicon.ico.png|manifest.webmanifest|robots.txt|sitemap.xml|app-icon.png|xtream-logo.png).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|favicon.ico.png|manifest.webmanifest|robots.txt|sitemap.xml|app-icon.png).*)"],
 };
