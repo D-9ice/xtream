@@ -113,15 +113,27 @@ def factory_mode_task(job_id: int) -> dict:
         try:
             result = execute_factory_mode_job(session=session, job=job)
             session.refresh(job)
-            if job.status != "cancelled":
+            if job.status == "cancelled":
+                FACTORY_RUN_TOTAL.labels(status="cancelled").inc()
+                return result
+
+            failed_titles = int(result.get("failed_titles") or 0)
+            stopped_reason = str(result.get("stopped_reason") or "").strip() or None
+            if failed_titles > 0 or stopped_reason == "credits_exhausted":
+                job.status = "failed"
+                job.last_error = (
+                    f"{failed_titles} Factory Mode title(s) failed."
+                    if failed_titles > 0
+                    else "Factory Mode stopped because credits were exhausted."
+                )
+                FACTORY_RUN_TOTAL.labels(status="failed").inc()
+            else:
                 job.status = "complete"
                 job.last_error = None
-                job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                session.add(job)
-                session.commit()
                 FACTORY_RUN_TOTAL.labels(status="complete").inc()
-            else:
-                FACTORY_RUN_TOTAL.labels(status="cancelled").inc()
+            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.add(job)
+            session.commit()
             return result
         except Exception as exc:
             session.refresh(job)
