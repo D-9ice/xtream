@@ -204,6 +204,62 @@ def _build_message(project: Project, message: str | None, title: str | None) -> 
     return primary
 
 
+def _publish_fingerprint(
+    *,
+    tenant_id: str,
+    user_id: int,
+    project_id: str,
+    connection_id: str,
+    message: str,
+) -> str:
+    canonical = "\n".join(
+        [
+            tenant_id,
+            str(user_id),
+            project_id,
+            connection_id,
+            message.strip(),
+        ]
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _matching_publish_jobs(
+    *,
+    session: Session,
+    current_user: User,
+    project_id: str,
+    connection_id: str,
+    platform: str,
+    fingerprint: str,
+) -> list[SocialPublishJob]:
+    tenant_id = getattr(current_user, "tenant_id", "default")
+    jobs = session.exec(
+        select(SocialPublishJob).where(
+            SocialPublishJob.tenant_id == tenant_id,
+            SocialPublishJob.user_id == (current_user.id or 0),
+            SocialPublishJob.project_id == project_id,
+            SocialPublishJob.connection_id == connection_id,
+            SocialPublishJob.platform == platform,
+        ).order_by(SocialPublishJob.created_at.desc())
+    ).all()
+    return [
+        job
+        for job in jobs
+        if str(_parse_json(job.payload_json, {}).get("idempotency_key") or "") == fingerprint
+    ]
+
+
+def _publish_failure_status(exc: Exception) -> str:
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+        return "uncertain"
+    if isinstance(exc, requests.HTTPError):
+        status_code = exc.response.status_code if exc.response is not None else None
+        if status_code is None or status_code >= 500:
+            return "uncertain"
+    return "failed"
+
+
 def _create_job(
     *,
     session: Session,
@@ -1031,12 +1087,42 @@ def _publish_connection(
     connection: SocialAccountConnection,
     message: str,
 ) -> SocialPublishJob:
+    tenant_id = getattr(current_user, "tenant_id", "default")
+    fingerprint = _publish_fingerprint(
+        tenant_id=tenant_id,
+        user_id=current_user.id or 0,
+        project_id=project.project_id,
+        connection_id=connection.connection_id,
+        message=message,
+    )
+    matching_jobs = _matching_publish_jobs(
+        session=session,
+        current_user=current_user,
+        project_id=project.project_id,
+        connection_id=connection.connection_id,
+        platform=connection.platform,
+        fingerprint=fingerprint,
+    )
+    for existing in matching_jobs:
+        if existing.status in {"complete", "queued", "processing", "uncertain"}:
+            return existing
+
+    previous_attempts = 0
+    for existing in matching_jobs:
+        payload = _parse_json(existing.payload_json, {})
+        try:
+            previous_attempts = max(previous_attempts, int(payload.get("attempt") or 0))
+        except (TypeError, ValueError):
+            continue
+
     publish_connection = _resolve_publish_connection(session, current_user, connection)
     publish_connection = _refresh_connection_access_token_if_needed(session, publish_connection)
     payload = {
         "message": message,
         "platform": publish_connection.platform,
         "account_identifier": publish_connection.account_identifier,
+        "idempotency_key": fingerprint,
+        "attempt": previous_attempts + 1,
     }
     job = _create_job(
         session=session,
@@ -1046,6 +1132,12 @@ def _publish_connection(
         connection_id=connection.connection_id,
         payload=payload,
     )
+    job.status = "processing"
+    job.updated_at = _utc_now()
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
     try:
         if not connection.enabled and _connection_has_publish_credentials(connection):
             raise RuntimeError("Connection is disabled")
@@ -1099,8 +1191,12 @@ def _publish_connection(
             published_url=published_url,
         )
     except Exception as exc:
-        return _finish_job(session=session, job=job, status="failed", error_message=str(exc))
-
+        return _finish_job(
+            session=session,
+            job=job,
+            status=_publish_failure_status(exc),
+            error_message=str(exc),
+        )
 
 def publish_to_connections(
     *,
