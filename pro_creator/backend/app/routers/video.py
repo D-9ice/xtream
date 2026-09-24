@@ -28,6 +28,8 @@ from app.config import (
     VIDEO_IMPORT_MAX_REDIRECTS,
     VIDEO_IMPORT_READ_TIMEOUT_SECONDS,
     XAI_API_KEY,
+    XAI_BASE_URL,
+    XAI_STT_MODEL,
     XAI_VIDEO_MODEL,
 )
 from app.database import get_session
@@ -221,6 +223,112 @@ def _probe_media(path: Path) -> dict:
         "width": int(video_stream.get("width") or 0),
         "height": int(video_stream.get("height") or 0),
         "has_audio": any(item.get("codec_type") == "audio" for item in streams),
+    }
+
+
+def _segments_from_xai_words(words: list[dict], fallback_text: str, duration: float) -> list[dict]:
+    if not words:
+        text = fallback_text.strip()
+        return [
+            {
+                "segment_id": 1,
+                "start": 0.0,
+                "end": round(max(0.0, duration), 2),
+                "text": text,
+            }
+        ] if text else []
+
+    segments: list[dict] = []
+    bucket: list[str] = []
+    bucket_start: float | None = None
+    bucket_end = 0.0
+    for word in words:
+        text = str(word.get("text") or word.get("word") or "").strip()
+        if not text:
+            continue
+        try:
+            start = float(word.get("start") or 0.0)
+            end = float(word.get("end") or start)
+        except (TypeError, ValueError):
+            continue
+        if bucket_start is None:
+            bucket_start = start
+        bucket.append(text)
+        bucket_end = max(bucket_end, end)
+        elapsed = bucket_end - bucket_start
+        sentence_end = text.endswith((".", "!", "?"))
+        if elapsed >= 8.0 or sentence_end:
+            segments.append(
+                {
+                    "segment_id": len(segments) + 1,
+                    "start": round(bucket_start, 2),
+                    "end": round(bucket_end, 2),
+                    "text": " ".join(bucket).strip(),
+                }
+            )
+            bucket = []
+            bucket_start = None
+            bucket_end = 0.0
+    if bucket and bucket_start is not None:
+        segments.append(
+            {
+                "segment_id": len(segments) + 1,
+                "start": round(bucket_start, 2),
+                "end": round(bucket_end, 2),
+                "text": " ".join(bucket).strip(),
+            }
+        )
+    return segments
+
+
+def _transcribe_with_xai(audio_path: Path) -> tuple[list[dict], dict]:
+    if not XAI_API_KEY:
+        raise HTTPException(status_code=503, detail="xAI speech transcription is not configured.")
+    suffix = audio_path.suffix.lower()
+    content_types = {
+        ".wav": "audio/wav",
+        ".mp3": "audio/mpeg",
+        ".ogg": "audio/ogg",
+        ".m4a": "audio/mp4",
+        ".webm": "audio/webm",
+    }
+    try:
+        with audio_path.open("rb") as handle:
+            response = requests.post(
+                f"{XAI_BASE_URL}/stt",
+                headers={"Authorization": f"Bearer {XAI_API_KEY}"},
+                data=[("model", XAI_STT_MODEL), ("format", "true")],
+                files={
+                    "file": (
+                        audio_path.name,
+                        handle,
+                        content_types.get(suffix, "application/octet-stream"),
+                    )
+                },
+                timeout=(10, 300),
+            )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("xAI speech transcription failed: %s", exc)
+        raise HTTPException(status_code=502, detail="xAI speech transcription failed.") from exc
+
+    try:
+        duration = float(payload.get("duration") or 0.0)
+    except (TypeError, ValueError):
+        duration = 0.0
+    segments = _segments_from_xai_words(
+        payload.get("words") or [],
+        str(payload.get("text") or ""),
+        duration,
+    )
+    if not segments:
+        raise HTTPException(status_code=502, detail="xAI speech transcription returned no transcript.")
+    return segments, {
+        "provider": "xai",
+        "model": XAI_STT_MODEL,
+        "language": payload.get("language"),
+        "duration": duration,
     }
 
 
@@ -860,52 +968,42 @@ def transcribe(project_id: str) -> FeatureStubResponse:
     audio_candidates = [
         project_key(project_id, "audio/scene_1.wav"),
         project_key(project_id, "audio/scene_1.mp3"),
+        project_key(project_id, "audio/scene_1.m4a"),
+        project_key(project_id, "audio/scene_1.ogg"),
     ]
     for key in storage_client.list_keys(f"{project_id}/audio/"):
-        if key.endswith((".wav", ".mp3", ".ogg", ".m4a")):
+        if key.endswith((".wav", ".mp3", ".ogg", ".m4a", ".webm")):
             audio_candidates.append(key)
-
     audio_key = next((key for key in audio_candidates if storage_client.exists(key)), None)
-    segments = []
-
-    if audio_key:
-        try:
-            import importlib
-
-            whisper = importlib.import_module("whisper")
-            model_name = "base"
-            model = whisper.load_model(model_name)
-            with tempfile.TemporaryDirectory(prefix="pro_creator_whisper_") as temp_dir:
-                audio_path = Path(temp_dir) / Path(audio_key).name
-                audio_path.write_bytes(storage_client.read_bytes(audio_key))
-                result = model.transcribe(str(audio_path))
-            for idx, seg in enumerate(result.get("segments", [])):
-                segments.append(
-                    {
-                        "segment_id": idx + 1,
-                        "start": round(seg["start"], 2),
-                        "end": round(seg["end"], 2),
-                        "text": seg["text"].strip(),
-                    }
-                )
-        except Exception:
-            segments = []
-
-    if not segments:
-        segments = fallback_segments(project_id)
-    if not segments:
+    if not audio_key:
         raise HTTPException(
             status_code=400,
-            detail="No transcript source found. Generate voice or provide script first.",
+            detail="No audio source found. Generate or import audio before transcription.",
         )
 
+    with tempfile.TemporaryDirectory(prefix="pro_creator_xai_stt_") as temp_dir:
+        audio_path = Path(temp_dir) / (Path(audio_key).name or "audio.m4a")
+        audio_path.write_bytes(storage_client.read_bytes(audio_key))
+        if not audio_path.stat().st_size:
+            raise HTTPException(status_code=400, detail="Audio source is empty.")
+        segments, metadata = _transcribe_with_xai(audio_path)
+
     transcript_path = PROJECTS_DIR / project_id / "video" / "transcript.json"
-    write_json_artifact(transcript_path, {"segments": segments})
+    write_json_artifact(
+        transcript_path,
+        {
+            "segments": segments,
+            "source": "xai_stt",
+            "provider": metadata["provider"],
+            "model": metadata["model"],
+            "language": metadata["language"],
+            "duration": metadata["duration"],
+        },
+    )
     return FeatureStubResponse(
         status="complete",
-        detail=f"Transcript saved to {transcript_path}",
+        detail=f"Speech transcript created with {metadata['model']} ({len(segments)} segment(s)).",
     )
-
 
 @router.post("/captions", response_model=FeatureStubResponse)
 def captions(project_id: str) -> FeatureStubResponse:
