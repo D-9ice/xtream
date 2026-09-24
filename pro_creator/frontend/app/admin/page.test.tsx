@@ -142,7 +142,7 @@ const adminState = vi.hoisted(() => ({
         referrer: null,
         device_type: "desktop",
         country_code: "GH",
-        page_title: "X'tream",
+        page_title: "Pro Creator Pro",
         session_id: "session-1",
         event_type: "page_view",
         is_bot: false,
