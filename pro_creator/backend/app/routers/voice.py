@@ -103,7 +103,6 @@ def _render_scene_dialogue_audio(
                 project_id=project_id,
                 text=line_text,
                 voice_profile=voice_profile,
-                provider=None,
                 override_voice_id=voice_id,
             )
             segment_path = temp_path / f"line_{item_index}.{ext}"
@@ -181,7 +180,6 @@ def generate_voice_endpoint(
         1,
         payload.text,
         payload.voice_profile,
-        None,
     )
     if scenes:
         for scene in scenes:
@@ -190,7 +188,6 @@ def generate_voice_endpoint(
                 scene.id or 1,
                 scene.text or payload.text,
                 payload.voice_profile,
-                None,
             )
             scene.audio_path = scene_result["audio_path"]
             session.add(scene)
@@ -225,7 +222,7 @@ async def clone_voice_endpoint(
     ensure_project_dirs(project_id)
     content = await sample.read()
     profile_path = save_voice_profile(project_id, profile_name, content)
-    clone_result = clone_voice_profile(profile_name, content, None)
+    clone_result = clone_voice_profile(profile_name, content)
     update_voice_profile_metadata(
         project_id,
         profile_name,
