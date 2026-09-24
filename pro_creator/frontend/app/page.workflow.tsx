@@ -4730,9 +4730,9 @@ export default function WorkflowHomePage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Community</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">X&apos;treamers</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-white">ProCreators</h2>
               <p className="mt-2 max-w-2xl text-sm text-slate-400">
-                A place for X&apos;treamers users to join the discussion, share feature ideas, and swap production notes.
+                A place for Pro Creator users to join the discussion, share feature ideas, and swap production notes.
               </p>
             </div>
             <div className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs uppercase tracking-[0.2em] text-slate-400">
@@ -4850,7 +4850,7 @@ export default function WorkflowHomePage() {
                   ))
                 ) : (
                   <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-6 text-sm text-slate-400">
-                    Be the first to start a discussion in X&apos;treamer.
+                    Be the first to start a discussion in the ProCreators community.
                   </div>
                 )}
               </div>
