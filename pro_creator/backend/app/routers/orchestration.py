@@ -423,6 +423,31 @@ def runner_status() -> OrchestrationRunnerStatus:
     )
 
 
+@router.post("/queue/{job_id}/cancel", response_model=OrchestrationQueueItem)
+def cancel_job(job_id: int, session: Session = Depends(get_session)) -> OrchestrationQueueItem:
+    tenant_id = current_tenant_id()
+    job = session.get(OrchestrationJob, job_id)
+    if not job or job.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status in {"complete", "failed", "cancelled"}:
+        raise HTTPException(status_code=400, detail=f"Job cannot be cancelled from status {job.status}")
+
+    payload = _parse_payload(job)
+    payload["cancel_requested"] = True
+    job.payload = json.dumps(payload)
+    if job.status in {"queued", "running"}:
+        job.status = "cancelled"
+    else:
+        job.status = "cancel_requested"
+    job.updated_at = utc_now_naive()
+    if ENABLE_CELERY and job.task_id:
+        celery_app.control.revoke(job.task_id, terminate=False)
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return _job_to_item(job)
+
+
 @router.post("/queue/{job_id}/retry", response_model=OrchestrationQueueItem)
 def retry_job(job_id: int, session: Session = Depends(get_session)) -> OrchestrationQueueItem:
     tenant_id = current_tenant_id()
@@ -448,6 +473,7 @@ def create_schedule(
     tenant_id = current_tenant_id()
     schedule = OrchestrationSchedule(
         tenant_id=tenant_id,
+        user_id=current_user.id,
         project_id=payload.project_id,
         cadence_days=payload.cadence_days,
         next_run_at=utc_now_naive() + timedelta(days=payload.cadence_days),
