@@ -710,10 +710,10 @@ describe("Workflow home page", () => {
       target: { value: "Drama" },
     });
     fireEvent.change(screen.getByLabelText(/^Start Credits/i), {
-      target: { value: "Starring\nLead Actor\nDirected by X'tream" },
+      target: { value: "Starring\nLead Actor\nDirected by Pro Creator Pro" },
     });
     fireEvent.change(screen.getByLabelText(/^End Credits/i), {
-      target: { value: "Thanks for watching\nProduced by X'tream" },
+      target: { value: "Thanks for watching\nProduced by Pro Creator Pro" },
     });
 
     fireEvent.click(screen.getByRole("button", { name: /Add Character/i }));
@@ -737,8 +737,8 @@ describe("Workflow home page", () => {
           duration_minutes: 10,
           genre: "Drama",
           short_description: "A compact studio-style launch piece.",
-          start_credits: "Starring\nLead Actor\nDirected by X'tream",
-          end_credits: "Thanks for watching\nProduced by X'tream",
+          start_credits: "Starring\nLead Actor\nDirected by Pro Creator Pro",
+          end_credits: "Thanks for watching\nProduced by Pro Creator Pro",
           custom_characters: [
             {
               name: "Ava Nova",
