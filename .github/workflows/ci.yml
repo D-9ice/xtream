@@ -4,6 +4,8 @@ on:
   push:
     branches: ["main", "master", "codex/push-current-work", "deploy/**"]
   pull_request:
+  schedule:
+    - cron: "0 6 * * *"
 
 jobs:
   backend:
@@ -48,6 +50,9 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ["20", "22"]
     defaults:
       run:
         working-directory: pro_creator/frontend
@@ -55,7 +60,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ matrix.node-version }}
           cache: "npm"
           cache-dependency-path: pro_creator/frontend/package-lock.json
       - name: Install deps
@@ -81,10 +86,67 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: frontend-ci-diagnostics
+          name: frontend-ci-diagnostics-node-${{ matrix.node-version }}
           path: |
             pro_creator/frontend/npm-ci.log
             pro_creator/frontend/lint.log
             pro_creator/frontend/test.log
             pro_creator/frontend/build.log
           if-no-files-found: ignore
+
+  compose:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pro_creator
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose files
+        run: |
+          docker compose -f docker-compose.yml config >/dev/null
+          docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml config >/dev/null
+
+  integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pro_creator
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke Test (Compose)
+        run: ./scripts/integration_smoke.sh
+
+  integration_full:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    defaults:
+      run:
+        working-directory: pro_creator
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke Test (Compose, Full Stack)
+        env:
+          PC_SMOKE_MODE: full
+        run: ./scripts/integration_smoke.sh
+
+  stress_harness:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    defaults:
+      run:
+        working-directory: pro_creator
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stress Harness (Tenant + Queue + Billing)
+        env:
+          PC_STRESS_REQUESTS_PER_TENANT: "10"
+          PC_STRESS_CONCURRENCY: "4"
+          PC_EXPECT_RATE_LIMIT: "true"
+        run: ./scripts/stress_harness.sh
+      - name: Upload stress report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-report
+          path: pro_creator/artifacts/stress-report.json
+          if-no-files-found: warn
