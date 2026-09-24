@@ -569,7 +569,7 @@ describe("Workflow home page", () => {
       expect(navButton(/Overview/i)).toBeInTheDocument();
     });
 
-    ["Auto-Create", "Download", "Factory Mode", "Library", "Manual-Create", "Overview", "Playback", "Projects", "Publish", "Transaction Records", "X'treamers"].forEach((label) => {
+    ["Auto-Create", "Download", "Factory Mode", "Library", "Manual-Create", "Overview", "Playback", "Projects", "Publish", "Transaction Records", "ProCreators"].forEach((label) => {
       expect(navButton(new RegExp(label, "i"))).toBeInTheDocument();
     });
     expect(navButton(/User Feedback/i)).toBeInTheDocument();
@@ -1146,17 +1146,17 @@ describe("Workflow home page", () => {
     expect(await screen.findByText(/Feedback sent\./i)).toBeInTheDocument();
   }, 20000);
 
-  it("shows the X'treamers community tab and posts a discussion", async () => {
+  it("shows the ProCreators community tab and posts a discussion", async () => {
     render(<HomePage />);
 
     await waitFor(() => {
       expect(navButton(/Auto-Create/i)).toBeInTheDocument();
     });
 
-    const communityTab = navButton(/X'treamers/i);
+    const communityTab = navButton(/ProCreators/i);
     fireEvent.click(communityTab);
 
-    expect(await screen.findByRole("heading", { name: /X'treamers/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /ProCreators/i })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/Topic/i), {
       target: { value: "Feature idea" },
@@ -1173,7 +1173,7 @@ describe("Workflow home page", () => {
       });
     });
 
-    expect(await screen.findByText(/Posted to X'treamers\./i)).toBeInTheDocument();
+    expect(await screen.findByText(/Posted to ProCreators\./i)).toBeInTheDocument();
   }, 20000);
 
   it("lets the user applaud a community post", async () => {
@@ -1195,7 +1195,7 @@ describe("Workflow home page", () => {
       expect(navButton(/Auto-Create/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(navButton(/X'treamers/i));
+    fireEvent.click(navButton(/ProCreators/i));
 
     expect(await screen.findByText(/0 applause/i)).toBeInTheDocument();
 
@@ -1215,7 +1215,7 @@ describe("Workflow home page", () => {
       expect(navButton(/Auto-Create/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(navButton(/X'treamers/i));
+    fireEvent.click(navButton(/ProCreators/i));
 
     expect(await screen.findByText(/Pinned topics/i)).toBeInTheDocument();
 
