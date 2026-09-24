@@ -13,7 +13,7 @@ from app.services.script_engine import generate_script
 from app.services.lipsync_engine import generate_lipsync
 from app.services.voice_engine import generate_voice_for_scene
 from app.services.image_engine import generate_image_for_scene
-from app.services.video_engine import render_video
+from app.services.video_engine import RenderCancelled, render_video
 from app.services.workflow_service import execute_factory_mode_job, execute_workflow_production_job
 from app.services.metrics import FACTORY_RUN_TOTAL, ORCHESTRATION_JOB_TOTAL
 from app.utils.file_manager import ensure_project_dirs, write_scene_metadata, write_script
@@ -62,14 +62,43 @@ def export_preset_task(project_id: str, preset: str) -> dict:
     return {"export_path": response.export_path}
 
 
+def _workflow_job_cancel_requested(session: Session, job: OrchestrationJob) -> bool:
+    session.refresh(job)
+    if job.status in {"cancel_requested", "cancelled"}:
+        return True
+    try:
+        payload = json.loads(job.payload or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    return bool(payload.get("cancel_requested")) if isinstance(payload, dict) else False
+
+
 @celery_app.task(name="pro_creator.workflow_production")
 def workflow_production_task(job_id: int) -> dict:
     with Session(engine) as session:
         job = session.get(OrchestrationJob, job_id)
         if not job:
             raise ValueError(f"Workflow production job {job_id} not found")
-        video_path = execute_workflow_production_job(session=session, job=job)
-        return {"video_path": video_path}
+        if _workflow_job_cancel_requested(session, job):
+            job.status = "cancelled"
+            job.last_error = None
+            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.add(job)
+            session.commit()
+            return {"video_path": None, "cancelled": True}
+
+        def cancel_check() -> bool:
+            return _workflow_job_cancel_requested(session, job)
+
+        try:
+            video_path = execute_workflow_production_job(
+                session=session,
+                job=job,
+                cancel_check=cancel_check,
+            )
+        except RenderCancelled:
+            return {"video_path": None, "cancelled": True}
+        return {"video_path": video_path, "cancelled": False}
 
 
 @celery_app.task(name="pro_creator.factory_mode")
