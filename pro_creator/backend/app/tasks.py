@@ -15,6 +15,7 @@ from app.services.voice_engine import generate_voice_bytes, generate_voice_for_s
 from app.services.image_engine import generate_image_for_scene
 from app.services.video_engine import render_video
 from app.services.workflow_service import execute_factory_mode_job, execute_workflow_production_job
+from app.services.metrics import FACTORY_RUN_TOTAL, ORCHESTRATION_JOB_TOTAL
 from app.utils.file_manager import ensure_project_dirs, write_scene_metadata, write_script
 from app.utils.file_manager import read_scene_metadata
 from app.utils.file_manager import read_character_voice_profiles
@@ -87,6 +88,7 @@ def factory_mode_task(job_id: int) -> dict:
         if not job:
             raise ValueError(f"Factory mode job {job_id} not found")
         if job.status == "cancelled":
+            FACTORY_RUN_TOTAL.labels(status="cancelled").inc()
             return {"processed_titles": 0, "titles": [], "stopped_reason": "cancelled"}
         try:
             result = execute_factory_mode_job(session=session, job=job)
@@ -97,6 +99,9 @@ def factory_mode_task(job_id: int) -> dict:
                 job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 session.add(job)
                 session.commit()
+                FACTORY_RUN_TOTAL.labels(status="complete").inc()
+            else:
+                FACTORY_RUN_TOTAL.labels(status="cancelled").inc()
             return result
         except Exception as exc:
             session.refresh(job)
@@ -106,6 +111,9 @@ def factory_mode_task(job_id: int) -> dict:
                 job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 session.add(job)
                 session.commit()
+                FACTORY_RUN_TOTAL.labels(status="failed").inc()
+            else:
+                FACTORY_RUN_TOTAL.labels(status="cancelled").inc()
             raise
 
 
@@ -228,10 +236,12 @@ def reconcile_orchestration_jobs_task() -> dict:
             if result.failed():
                 job.status = "failed"
                 job.last_error = str(result.result)
+                ORCHESTRATION_JOB_TOTAL.labels(kind=job.kind, status="failed").inc()
                 failed += 1
             else:
                 job.status = "complete"
                 job.last_error = None
+                ORCHESTRATION_JOB_TOTAL.labels(kind=job.kind, status="complete").inc()
                 completed += 1
             job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
             session.add(job)
