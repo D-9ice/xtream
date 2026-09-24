@@ -320,6 +320,8 @@ export type OrchestrationQueueItem = {
   attempts: number;
   max_attempts: number;
   last_error?: string | null;
+  task_id?: string | null;
+  factory_items?: Array<Record<string, unknown>>;
   created_at: string;
   updated_at: string;
 };
