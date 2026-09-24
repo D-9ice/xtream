@@ -23,3 +23,57 @@ groups:
         annotations:
           summary: "High 5xx error rate"
           description: "5xx responses exceeded 5% for 10 minutes."
+
+      - alert: GrokRenderFailures
+        expr: increase(procreator_grok_render_total{status="failed"}[10m]) > 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Repeated Grok Imagine render failures"
+          description: "More than two Grok renders failed during the last 10 minutes."
+
+      - alert: CeleryQueueBacklog
+        expr: procreator_celery_queue_depth > 25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Celery queue backlog"
+          description: "The default Celery queue has remained above 25 pending tasks for 10 minutes."
+
+      - alert: FactoryModeFailures
+        expr: increase(procreator_factory_run_total{status="failed"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Factory Mode run failed"
+          description: "At least one Factory Mode run failed in the last 15 minutes."
+
+      - alert: SocialPublishingFailures
+        expr: sum(increase(procreator_social_publish_total{status=~"failed|uncertain"}[15m])) > 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Repeated social publishing failures"
+          description: "More than three social publishes failed or became uncertain during the last 15 minutes."
+
+      - alert: StorageOperationFailures
+        expr: sum(increase(procreator_storage_failure_total[10m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Storage operation failure"
+          description: "A ProCreator storage operation failed during the last 10 minutes."
+
+      - alert: VideoExportFailures
+        expr: sum(increase(procreator_video_export_total{status="failed"}[15m])) > 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Repeated video export failures"
+          description: "More than two video exports failed during the last 15 minutes."
