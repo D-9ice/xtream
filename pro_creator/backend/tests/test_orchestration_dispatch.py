@@ -8,7 +8,7 @@ from app.routers import orchestration
 import app.tasks as tasks
 
 
-def test_celery_full_dispatch_uses_full_pipeline_task(monkeypatch) -> None:
+def test_celery_full_dispatch_uses_workflow_production_task(monkeypatch) -> None:
     captured: dict[str, tuple] = {}
 
     class _Result:
@@ -20,33 +20,17 @@ def test_celery_full_dispatch_uses_full_pipeline_task(monkeypatch) -> None:
             captured["args"] = args
             return _Result()
 
-    monkeypatch.setattr(orchestration.celery_tasks, "full_pipeline_task", _Task())
+    monkeypatch.setattr(orchestration.celery_tasks, "workflow_production_task", _Task())
 
     job = OrchestrationJob(
+        id=17,
         project_id="proj-1",
         kind="full",
-        payload=json.dumps(
-            {
-                "topic": "topic",
-                "duration_minutes": 1.5,
-                "tone": "bold",
-                "export_preset": "youtube",
-                "voice_text": "voice text",
-                "image_prompt": "image prompt",
-            }
-        ),
+        payload=json.dumps({"user_id": 7, "export_preset": "youtube"}),
     )
     task_id = orchestration._dispatch_job(job)
     assert task_id == "task-123"
-    assert captured["args"] == (
-        "proj-1",
-        "topic",
-        1.5,
-        "bold",
-        "youtube",
-        "voice text",
-        "image prompt",
-    )
+    assert captured["args"] == (17,)
 
 
 def test_celery_factory_mode_dispatch_uses_factory_mode_task(monkeypatch) -> None:
