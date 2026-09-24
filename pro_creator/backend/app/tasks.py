@@ -294,7 +294,6 @@ def full_pipeline_task(
                     project_id=project_id,
                     text=text_line,
                     voice_profile=mapped.get("voice_profile") or "default",
-                    provider=None,
                     override_voice_id=mapped.get("voice_id"),
                 )
                 seg_path = temp_path / f"seg_{idx}.{ext}"
