@@ -11,7 +11,6 @@ from app.config import (
     XAI_API_KEY,
     XAI_BASE_URL,
     XAI_TTS_VOICE_ID,
-    TTS_PROVIDER,
 )
 from app.storage import project_key, storage_client
 from app.utils.file_manager import read_voice_profile_metadata
@@ -35,12 +34,6 @@ def _write_tone(duration_seconds: float) -> bytes:
             value = int(amplitude * math.sin(2 * math.pi * frequency * i / sample_rate))
             wav_file.writeframesraw(value.to_bytes(2, byteorder="little", signed=True))
     return buffer.getvalue()
-
-
-def _resolve_provider(provider: str | None) -> str:
-    if provider:
-        return provider.lower()
-    return TTS_PROVIDER.lower()
 
 
 def _write_audio(
@@ -84,8 +77,7 @@ def _generate_with_xai_tts(text: str, voice_id: str | None) -> bytes:
     return _write_tone(max(2.0, len(text.split()) / 2.0))
 
 
-def clone_voice_profile(profile_name: str, sample_bytes: bytes, provider: str | None) -> dict:
-    _resolve_provider(provider)
+def clone_voice_profile(profile_name: str, sample_bytes: bytes) -> dict:
     return {"provider": "xai"}
 
 
@@ -94,7 +86,6 @@ def generate_voice_for_scene(
     scene_id: int,
     text: str,
     voice_profile: str | None = None,
-    provider: str | None = None,
 ) -> dict:
     duration_seconds = max(2.0, len(text.split()) / 2.0)
     metadata = read_voice_profile_metadata(project_id)
@@ -113,8 +104,8 @@ def generate_voice_for_scene(
     }
 
 
-def generate_voice(project_id: str, text: str, voice_profile: str, provider: str | None) -> dict:
-    return generate_voice_for_scene(project_id, 1, text, voice_profile, provider)
+def generate_voice(project_id: str, text: str, voice_profile: str) -> dict:
+    return generate_voice_for_scene(project_id, 1, text, voice_profile)
 
 
 def generate_voice_bytes(
@@ -122,7 +113,6 @@ def generate_voice_bytes(
     project_id: str,
     text: str,
     voice_profile: str | None = None,
-    provider: str | None = None,
     override_voice_id: str | None = None,
 ) -> tuple[bytes, str, str]:
     """
