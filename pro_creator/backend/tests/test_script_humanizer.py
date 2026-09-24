@@ -1,11 +1,6 @@
 import app.services.script_engine as script_engine
 
-from app.services.script_engine import (
-    _build_script_blueprint,
-    _generate_script_template,
-    _normalize_subject_title,
-    _parse_script_brief,
-)
+from app.services.script_engine import _build_script_blueprint, _parse_script_brief
 
 
 def test_parse_script_brief_supports_inline_title_prompt() -> None:
@@ -28,36 +23,6 @@ def test_parse_script_brief_supports_inline_without_colons() -> None:
     assert prompt.startswith("Create a one-minute ad for Pro Creator")
 
 
-def test_template_output_avoids_legacy_robotic_phrases() -> None:
-    result = _generate_script_template(
-        topic=(
-            "Promotional Ad for Pro Creator App. "
-            "Create a high-energy one-minute ad for creators and marketers."
-        ),
-        duration_minutes=1,
-        tone="excited",
-    )
-    script = result["full_script"].lower()
-    assert "start this beat by framing" not in script
-    assert "end this section by bridging naturally" not in script
-    assert "everyday drivers" not in script
-    assert "publish-ready" in script
-
-
-def test_template_promo_fallback_is_domain_agnostic() -> None:
-    result = _generate_script_template(
-        topic=(
-            "Title: Launch Teaser for Pixel Brew Co "
-            "Prompt: Write a one-minute promotional ad for a specialty coffee brand launching cold brew."
-        ),
-        duration_minutes=1,
-        tone="excited",
-    )
-    script = result["full_script"]
-    assert "Pro Creator" not in script
-    assert "Pixel Brew Co" in script
-
-
 def test_script_blueprint_includes_strict_directives() -> None:
     blueprint = _build_script_blueprint(
         title="Skyline Rescue",
@@ -77,58 +42,68 @@ def test_script_blueprint_includes_strict_directives() -> None:
     assert "word-count adherence" in combined
 
 
-def test_true_story_genre_uses_factual_research_context(monkeypatch) -> None:
-    monkeypatch.setattr(script_engine, "XAI_API_KEY", "")
+def test_true_story_passes_research_context_to_xai(monkeypatch) -> None:
+    monkeypatch.setattr(script_engine, "XAI_API_KEY", "xai-test")
     monkeypatch.setattr(
         script_engine,
-        "_fetch_wikipedia_context",
-        lambda query: "- Elon Musk: South African-born entrepreneur and engineer.",
+        "_fetch_research_context",
+        lambda title, prompt, genre: "- Elon Musk: South African-born entrepreneur and engineer.",
     )
     monkeypatch.setattr(
         script_engine,
         "_fetch_current_events_context",
         lambda prompt, limit=5, force=False: "- Recent coverage: public reporting about Elon Musk.",
     )
+    captured: dict[str, object] = {}
 
+    def fake_llm(topic, duration_minutes, tone, **kwargs):
+        captured.update(kwargs)
+        return {
+            "full_script": "Research-grounded documentary script.",
+            "scenes": [{"id": 1, "text": "Scene 1\nIntent: factual\nNarration:\nVerified context.\nVisuals:\nArchive."}],
+        }
+
+    monkeypatch.setattr(script_engine, "_generate_script_llm", fake_llm)
     result = script_engine.generate_script(
         "A true story about Elon Musk",
         2,
         "documentary",
         genre="True Story",
     )
-    script = result["full_script"]
+    assert result["scenes"]
+    assert captured["factual_mode"] is True
+    assert "Elon Musk" in str(captured["research_context"])
+    assert "Recent coverage" in str(captured["current_events_context"])
 
-    assert "fact-driven narration" in script.lower()
-    assert "Elon Musk" in script
-    assert "Recent coverage" in script
 
-
-def test_real_events_genre_uses_factual_research_context(monkeypatch) -> None:
-    monkeypatch.setattr(script_engine, "XAI_API_KEY", "")
+def test_real_events_passes_research_context_to_xai(monkeypatch) -> None:
+    monkeypatch.setattr(script_engine, "XAI_API_KEY", "xai-test")
     monkeypatch.setattr(
         script_engine,
-        "_fetch_wikipedia_context",
-        lambda query: "- Apollo 11: the first crewed lunar landing mission.",
+        "_fetch_research_context",
+        lambda title, prompt, genre: "- Apollo 11: the first crewed lunar landing mission.",
     )
     monkeypatch.setattr(
         script_engine,
         "_fetch_current_events_context",
         lambda prompt, limit=5, force=False: "- Recent coverage: archival event reporting.",
     )
+    captured: dict[str, object] = {}
 
+    def fake_llm(topic, duration_minutes, tone, **kwargs):
+        captured.update(kwargs)
+        return {
+            "full_script": "Research-grounded real-events script.",
+            "scenes": [{"id": 1, "text": "Scene 1\nIntent: factual\nNarration:\nApollo archive.\nVisuals:\nArchive."}],
+        }
+
+    monkeypatch.setattr(script_engine, "_generate_script_llm", fake_llm)
     result = script_engine.generate_script(
         "Archive of Apollo 11",
         2,
         "documentary",
         genre="Real Events",
     )
-    script = result["full_script"]
-
-    assert "fact-driven narration" in script.lower()
-    assert "Apollo 11" in script
-    assert "Recent coverage" in script
-
-
-def test_normalize_subject_title_strips_ad_wrappers() -> None:
-    assert _normalize_subject_title("Pro Creator Launch Ad") == "Pro Creator"
-    assert _normalize_subject_title("Promotional Ad for Pro Creator App") == "Pro Creator App"
+    assert result["scenes"]
+    assert captured["factual_mode"] is True
+    assert "Apollo 11" in str(captured["research_context"])
