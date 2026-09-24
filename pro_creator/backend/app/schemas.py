@@ -313,6 +313,7 @@ class EditByTextRequest(BaseModel):
 
 class EditByTextResponse(BaseModel):
     segments_remaining: int
+    video_path: Optional[str] = None
 
 
 class FeatureStubResponse(BaseModel):
