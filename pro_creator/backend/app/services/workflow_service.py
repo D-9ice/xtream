@@ -1563,10 +1563,15 @@ def auto_create_project(
     end_credits: str | None = None,
     allow_factory_mode_genre: bool = False,
     cancel_check: Callable[[], bool] | None = None,
+    progress_callback: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> WorkflowAutoCreateResponse:
     def ensure_not_cancelled() -> None:
         if cancel_check is not None and cancel_check():
             raise RenderCancelled("Factory Mode render was cancelled.")
+
+    def notify_progress(stage: str, **details: Any) -> None:
+        if progress_callback is not None:
+            progress_callback(stage, details)
 
     ensure_not_cancelled()
     clean_title = title.strip()
@@ -1614,6 +1619,7 @@ def auto_create_project(
         end_credits=clean_end_credits,
     )
     project = get_project_or_404(session, created_project.project_id)
+    notify_progress("project_created", project_id=project.project_id)
 
     ensure_not_cancelled()
     generate_project_script(
@@ -1627,6 +1633,7 @@ def auto_create_project(
         tone="cinematic",
     )
     approve_script(session=session, project=project)
+    notify_progress("script_approved", project_id=project.project_id)
     ensure_not_cancelled()
 
     if clean_genre == REAL_EVENTS_GENRE:
@@ -1637,6 +1644,7 @@ def auto_create_project(
         session.add(project)
         session.commit()
         session.refresh(project)
+        notify_progress("characters_approved", project_id=project.project_id, character_ids=[])
     else:
         created_character_ids: list[str] = []
         if normalized_custom_characters:
@@ -1680,6 +1688,11 @@ def auto_create_project(
                     break
                 raise
             created_character_ids.append(profile.character_id)
+            notify_progress(
+                "characters_generating",
+                project_id=project.project_id,
+                character_ids=list(created_character_ids),
+            )
 
         if not created_character_ids:
             raise ValueError("Auto-create could not generate any characters")
@@ -1695,6 +1708,11 @@ def auto_create_project(
             current_user=current_user,
             selected_character_ids=created_character_ids,
         )
+        notify_progress(
+            "characters_approved",
+            project_id=project.project_id,
+            character_ids=list(created_character_ids),
+        )
     ensure_not_cancelled()
     project = get_project_or_404(session, project.project_id)
     start_production(
@@ -1702,6 +1720,7 @@ def auto_create_project(
         project=project,
         current_user=current_user,
     )
+    notify_progress("production_started", project_id=project.project_id)
     job = _get_project_production_job(session, project)
     if not job:
         raise ValueError("Production job not found")
@@ -1717,6 +1736,11 @@ def auto_create_project(
     session.commit()
     session.refresh(job)
     project = get_project_or_404(session, project.project_id)
+    notify_progress(
+        "video_complete",
+        project_id=project.project_id,
+        video_path=video_path,
+    )
     return WorkflowAutoCreateResponse(
         project=project_to_response(project),
         status=production_status(session, project),
