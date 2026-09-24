@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta, timezone
 import json
 
+from redis import Redis
+from redis.exceptions import LockError, RedisError
 from sqlmodel import Session, select
 
 from app.celery_app import celery_app
+from app.config import REDIS_URL
 from app.database import engine
 from app.models import OrchestrationJob, OrchestrationSchedule, Project
 from app.services.script_engine import generate_script
@@ -162,51 +165,95 @@ def scheduled_full_pipeline_task(job_id: int) -> dict:
 @celery_app.task(name="pro_creator.run_due_schedules")
 def run_due_schedules_task() -> dict:
     """Persist and dispatch due scheduled jobs from one Celery Beat authority."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    queued_ids: list[int] = []
-    with Session(engine) as session:
-        schedules = session.exec(
-            select(OrchestrationSchedule).where(
-                OrchestrationSchedule.enabled == True,  # noqa: E712
-                OrchestrationSchedule.next_run_at <= now,
-            )
-        ).all()
-        for schedule in schedules:
-            project = session.exec(
-                select(Project).where(
-                    Project.project_id == schedule.project_id,
-                    Project.tenant_id == schedule.tenant_id,
+    lock = Redis.from_url(
+        REDIS_URL,
+        socket_connect_timeout=2,
+        socket_timeout=2,
+    ).lock(
+        "procreator:scheduler:run_due_schedules",
+        timeout=55,
+        blocking_timeout=0,
+    )
+    try:
+        acquired = bool(lock.acquire(blocking=False))
+    except RedisError as exc:
+        raise RuntimeError("Scheduler lock could not be acquired from Redis.") from exc
+    if not acquired:
+        return {"queued_job_ids": [], "count": 0, "skipped": "scheduler_lock_held"}
+
+    try:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        queued_ids: list[int] = []
+        with Session(engine) as session:
+            schedules = session.exec(
+                select(OrchestrationSchedule).where(
+                    OrchestrationSchedule.enabled == True,  # noqa: E712
+                    OrchestrationSchedule.next_run_at <= now,
                 )
-            ).first()
-            if not project:
-                schedule.enabled = False
+            ).all()
+            for schedule in schedules:
+                project = session.exec(
+                    select(Project).where(
+                        Project.project_id == schedule.project_id,
+                        Project.tenant_id == schedule.tenant_id,
+                    )
+                ).first()
+                if not project:
+                    schedule.enabled = False
+                    session.add(schedule)
+                    session.commit()
+                    continue
+
+                scheduled_for = schedule.next_run_at
+                cadence = timedelta(days=max(1, schedule.cadence_days))
+                next_run_at = scheduled_for
+                while next_run_at <= now:
+                    next_run_at += cadence
+
+                job = OrchestrationJob(
+                    tenant_id=schedule.tenant_id,
+                    project_id=schedule.project_id,
+                    kind="full",
+                    status="queued",
+                    attempts=0,
+                    max_attempts=3,
+                    payload=json.dumps(
+                        {
+                            "export_preset": "social-vertical",
+                            "schedule_id": schedule.id,
+                            "scheduled_for": scheduled_for.isoformat(),
+                        }
+                    ),
+                )
+                schedule.last_run_at = now
+                schedule.next_run_at = next_run_at
+                session.add(job)
                 session.add(schedule)
                 session.commit()
-                continue
-            job = OrchestrationJob(
-                tenant_id=schedule.tenant_id,
-                project_id=schedule.project_id,
-                kind="full",
-                status="queued",
-                attempts=0,
-                max_attempts=3,
-                payload=json.dumps({"export_preset": "social-vertical"}),
-            )
-            schedule.last_run_at = now
-            schedule.next_run_at = now + timedelta(days=max(1, schedule.cadence_days))
-            session.add(job)
-            session.add(schedule)
-            session.commit()
-            session.refresh(job)
+                session.refresh(job)
 
-            result = scheduled_full_pipeline_task.delay(job.id or 0)
-            job.task_id = result.id
-            job.status = "processing"
-            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            session.add(job)
-            session.commit()
-            queued_ids.append(job.id or 0)
-    return {"queued_job_ids": queued_ids, "count": len(queued_ids)}
+                try:
+                    result = scheduled_full_pipeline_task.delay(job.id or 0)
+                except Exception as exc:
+                    job.status = "failed"
+                    job.last_error = f"Scheduled task dispatch failed: {exc}"
+                    job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    session.add(job)
+                    session.commit()
+                    raise
+
+                job.task_id = result.id
+                job.status = "processing"
+                job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                session.add(job)
+                session.commit()
+                queued_ids.append(job.id or 0)
+        return {"queued_job_ids": queued_ids, "count": len(queued_ids)}
+    finally:
+        try:
+            lock.release()
+        except (LockError, RedisError):
+            pass
 
 
 @celery_app.task(name="pro_creator.reconcile_orchestration_jobs")
