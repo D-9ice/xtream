@@ -10,7 +10,8 @@ from app.database import engine
 from app.services import app_settings
 from app.main import app
 from app.routers import billing
-from app.models import CreditLedgerEntry, HiddenReceipt, User
+from app.services.credits import has_factory_mode_access
+from app.models import CreditLedgerEntry, HiddenReceipt, SubscriptionAccount, User
 
 
 def billing_client() -> TestClient:
@@ -39,12 +40,10 @@ def test_credit_plans_expose_stripe_and_paystack_checkout_providers(monkeypatch)
     monkeypatch.setattr(billing, "STRIPE_PRICE_ID_MODERATE", "price_moderate")
     monkeypatch.setattr(billing, "STRIPE_PRICE_ID_PRO", "price_pro")
     monkeypatch.setattr(billing, "STRIPE_PRICE_ID_STUDIO", "price_studio")
-    monkeypatch.setattr(billing, "FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID", "price_factory_one_time")
     monkeypatch.setattr(billing, "FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID", "price_factory_subscription")
     monkeypatch.setattr(billing, "PAYSTACK_SECRET_KEY", "psk_test")
     monkeypatch.setattr(app_settings, "STRIPE_SECRET_KEY", "sk_test")
     monkeypatch.setattr(app_settings, "STRIPE_WEBHOOK_SECRET", "whsec_test")
-    monkeypatch.setattr(app_settings, "FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID", "price_factory_one_time")
     monkeypatch.setattr(app_settings, "FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID", "price_factory_subscription")
     monkeypatch.setattr(app_settings, "PAYSTACK_SECRET_KEY", "psk_test")
 
@@ -55,12 +54,26 @@ def test_credit_plans_expose_stripe_and_paystack_checkout_providers(monkeypatch)
     assert plans[0]["checkout_enabled"] is True
     assert sorted(plans[0]["checkout_providers"]) == ["paystack", "stripe"]
     factory_plan_ids = {plan["id"] for plan in plans if plan["kind"] == "factory_access"}
-    assert factory_plan_ids == {"factory_one_time", "factory_subscription"}
+    assert factory_plan_ids == {"factory_subscription"}
     factory_subscription = next(plan for plan in plans if plan["id"] == "factory_subscription")
     assert factory_subscription["access_mode"] == "subscription"
     assert factory_subscription["access_days"] == 30
-    factory_one_time = next(plan for plan in plans if plan["id"] == "factory_one_time")
-    assert sorted(factory_one_time["checkout_providers"]) == ["paystack", "stripe"]
+
+
+def test_legacy_factory_one_time_entitlement_remains_readable() -> None:
+    legacy = SubscriptionAccount(
+        user_id=1,
+        factory_mode_status="active",
+        factory_mode_access="one_time",
+    )
+    assert has_factory_mode_access(legacy) is True
+
+
+def test_new_factory_one_time_plan_is_not_exposed() -> None:
+    client = billing_client()
+    plans_res = client.get("/billing/plans")
+    assert plans_res.status_code == 200
+    assert all(plan["id"] != "factory_one_time" for plan in plans_res.json()["plans"])
 
 
 def test_paystack_checkout_and_webhook_grant_credits(monkeypatch) -> None:
@@ -173,97 +186,6 @@ def test_paystack_checkout_and_webhook_grant_credits(monkeypatch) -> None:
     assert receipt_calls[0]["provider"] == "paystack"
     assert receipt_calls[0]["currency"] == "GHS"
     assert receipt_calls[0]["reference_id"] == reference
-
-
-def test_factory_one_time_checkout_and_webhook_grants_access(monkeypatch) -> None:
-    client = TestClient(app, headers={"X-Tenant-ID": "billing-factory-one-time"})
-    reference = f"stripe_factory_one_{uuid4().hex[:12]}"
-    session_id = f"cs_factory_one_{uuid4().hex[:12]}"
-    monkeypatch.setattr(billing, "STRIPE_SECRET_KEY", "sk_test_secret")
-    monkeypatch.setattr(billing, "STRIPE_WEBHOOK_SECRET", "whsec_test_secret")
-    monkeypatch.setattr(billing, "FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID", "price_factory_one")
-    monkeypatch.setattr(app_settings, "STRIPE_SECRET_KEY", "sk_test_secret")
-    monkeypatch.setattr(app_settings, "STRIPE_WEBHOOK_SECRET", "whsec_test_secret")
-    monkeypatch.setattr(app_settings, "FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID", "price_factory_one")
-
-    class _FakeStripeCheckoutSession:
-        created_payloads: list[dict[str, object]] = []
-
-        @staticmethod
-        def create(**kwargs):
-            _FakeStripeCheckoutSession.created_payloads.append(kwargs)
-            return type("StripeSession", (), {"id": session_id, "url": "https://stripe.test/checkout"})()
-
-    class _FakeStripeWebhook:
-        @staticmethod
-        def construct_event(payload, signature, secret):
-            return {
-                "type": "checkout.session.completed",
-                "data": {
-                    "object": {
-                        "id": session_id,
-                        "payment_status": "paid",
-                        "customer": "cus_factory_one",
-                        "payment_intent": "pi_factory_one",
-                        "metadata": {
-                            "plan_id": "factory_one_time",
-                            "plan_kind": "factory_access",
-                            "access_mode": "one_time",
-                            "user_email": "admin@procreator.local",
-                            "tenant_id": "billing-factory-one-time",
-                        },
-                    }
-                },
-            }
-
-    class _FakeStripe:
-        api_key = None
-        checkout = type("CheckoutNamespace", (), {"Session": _FakeStripeCheckoutSession})
-        Webhook = _FakeStripeWebhook
-
-    monkeypatch.setattr(billing, "stripe", _FakeStripe())
-    receipt_calls: list[dict[str, object]] = []
-
-    def fake_send_purchase_receipt_email(**kwargs):
-        receipt_calls.append(kwargs)
-        return True
-
-    monkeypatch.setattr(billing, "send_purchase_receipt_email", fake_send_purchase_receipt_email)
-
-    checkout_res = client.post(
-        "/billing/purchase/checkout",
-        json={"plan_id": "factory_one_time", "provider": "stripe"},
-    )
-    assert checkout_res.status_code == 200
-    checkout_payload = checkout_res.json()
-    assert checkout_payload["provider"] == "stripe"
-    assert checkout_payload["checkout_url"] == "https://stripe.test/checkout"
-    assert checkout_payload["session_id"] == session_id
-    assert _FakeStripeCheckoutSession.created_payloads[0]["mode"] == "payment"
-
-    event_body = json.dumps({}).encode("utf-8")
-    webhook_res = client.post(
-        "/billing/stripe/webhook",
-        content=event_body,
-        headers={"stripe-signature": "sig"},
-    )
-    assert webhook_res.status_code == 200
-    assert webhook_res.json()["granted"] is True
-
-    me_res = client.get("/billing/me")
-    me_payload = me_res.json()
-    assert me_payload["owner_mode_enabled"] is False
-    assert me_payload["factory_mode_status"] == "active"
-    assert me_payload["factory_mode_access"] == "one_time"
-    assert me_payload["factory_mode_purchased_at"] is not None
-    assert receipt_calls[0]["item_description"] == "Factory Mode one-time access"
-
-    receipts_res = client.get("/billing/receipts")
-    receipts = receipts_res.json()["items"]
-    latest = receipts[0]
-    assert latest["plan_kind"] == "factory_access"
-    assert latest["access_mode"] == "one_time"
-    assert latest["purchase_label"] == "Factory Mode One-Time"
 
 
 def test_factory_subscription_checkout_and_webhook_grants_access(monkeypatch) -> None:
@@ -530,8 +452,7 @@ def test_admin_pricing_settings_are_editable() -> None:
             "studio_price_usd": 129,
             "studio_base_character_slots": 18,
             "studio_stripe_price_id": "price_studio_admin",
-            "factory_one_time_price_usd": 159,
-            "factory_one_time_stripe_price_id": "price_factory_one_time_admin",
+            "factory_subscription_credits": 0,
             "factory_subscription_price_usd": 45,
             "factory_subscription_stripe_price_id": "price_factory_subscription_admin",
             "owner_mode_enabled": True,
@@ -548,9 +469,6 @@ def test_admin_pricing_settings_are_editable() -> None:
     assert pro_plan["credits"] == 2400
     assert pro_plan["price_usd"] == 59
     assert pro_plan["base_character_slots"] == 12
-    factory_one_time_plan = next(plan for plan in updated["plans"] if plan["id"] == "factory_one_time")
-    assert factory_one_time_plan["price_usd"] == 159
-    assert factory_one_time_plan["stripe_price_id"] == "price_factory_one_time_admin"
     factory_subscription_plan = next(plan for plan in updated["plans"] if plan["id"] == "factory_subscription")
     assert factory_subscription_plan["price_usd"] == 45
     assert factory_subscription_plan["stripe_price_id"] == "price_factory_subscription_admin"
@@ -574,8 +492,7 @@ def test_admin_pricing_settings_are_editable() -> None:
             "studio_price_usd": 119,
             "studio_base_character_slots": 15,
             "studio_stripe_price_id": "",
-            "factory_one_time_price_usd": 149,
-            "factory_one_time_stripe_price_id": "",
+            "factory_subscription_credits": 0,
             "factory_subscription_price_usd": 39,
             "factory_subscription_stripe_price_id": "",
             "owner_mode_enabled": False,
