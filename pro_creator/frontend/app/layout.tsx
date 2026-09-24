@@ -4,6 +4,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./sidebar-branding.css";
 import AnalyticsTracker from "./AnalyticsTracker";
+import AuthGateGuard from "./AuthGateGuard";
 import PwaInstallPrompt from "./PwaInstallPrompt";
 import PwaRegister from "./PwaRegister";
 
@@ -48,7 +49,7 @@ export default function RootLayout({
           <AnalyticsTracker />
         </Suspense>
         <PwaInstallPrompt />
-{children}
+        <AuthGateGuard>{children}</AuthGateGuard>
       </body>
     </html>
   );
