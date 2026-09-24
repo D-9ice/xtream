@@ -146,6 +146,22 @@ def _dispatch_job(job: OrchestrationJob) -> str:
     return result.id
 
 
+def _dispatch_persisted_job(session: Session, job: OrchestrationJob) -> None:
+    job.attempts += 1
+    job.updated_at = utc_now_naive()
+    try:
+        job.task_id = _dispatch_job(job)
+        job.status = "processing"
+        job.last_error = None
+    except Exception as exc:
+        job.status = "failed"
+        job.last_error = f"Celery dispatch failed: {exc}"
+        job.task_id = None
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+
 def _process_queue_internal(
     limit: int,
     session: Session,
@@ -270,6 +286,8 @@ def enqueue_job(
     session.add(job)
     session.commit()
     session.refresh(job)
+    if ENABLE_CELERY:
+        _dispatch_persisted_job(session, job)
     logger.info("Queued orchestration job %s for %s", job.kind, job.project_id)
     return _job_to_item(job)
 
@@ -313,6 +331,8 @@ def enqueue_batch(
         session.add(job)
         session.commit()
         session.refresh(job)
+        if ENABLE_CELERY:
+            _dispatch_persisted_job(session, job)
         items.append(_job_to_item(job))
     return OrchestrationQueueResponse(items=items)
 
