@@ -1747,6 +1747,20 @@ def auto_create_project(
     )
 
 
+def _factory_cancel_requested(job: OrchestrationJob) -> bool:
+    payload = _loads_json(job.payload) if job.payload else {}
+    return bool(payload.get("cancel_requested")) if isinstance(payload, dict) else False
+
+
+def _mark_factory_cancelled(session: Session, job: OrchestrationJob) -> None:
+    job.status = "cancelled"
+    job.last_error = None
+    job.updated_at = utc_now()
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+
 def _clean_factory_mode_titles(raw_titles: Any) -> list[str]:
     titles: list[str] = []
     if isinstance(raw_titles, list):
@@ -1802,9 +1816,17 @@ def execute_factory_mode_job(
     duration_minutes = max(1, min(120, int(payload.get("duration_minutes") or 10)))
 
     processed: list[dict[str, Any]] = []
+    stopped_reason: str | None = None
     for index, title in enumerate(titles, start=1):
+        session.refresh(job)
+        if _factory_cancel_requested(job):
+            _mark_factory_cancelled(session, job)
+            stopped_reason = "cancelled"
+            break
+
         subscription = get_or_create_subscription(session, current_user)
         if not has_owner_mode_access(session, current_user) and subscription.credits_balance <= 0:
+            stopped_reason = "credits_exhausted"
             break
         try:
             auto_result = auto_create_project(
@@ -1821,8 +1843,25 @@ def execute_factory_mode_job(
             )
         except ValueError as exc:
             if "Not enough credits" in str(exc):
+                stopped_reason = "credits_exhausted"
                 break
             raise
+
+        session.refresh(job)
+        if _factory_cancel_requested(job):
+            processed.append(
+                {
+                    "index": index,
+                    "title": title,
+                    "project_id": auto_result.project.project_id,
+                    "video_path": auto_result.video_path,
+                    "published_jobs": [],
+                    "publish_error": "Factory Mode cancelled before publishing.",
+                }
+            )
+            _mark_factory_cancelled(session, job)
+            stopped_reason = "cancelled"
+            break
 
         published_jobs: list[str] = []
         publish_error: str | None = None
@@ -1855,7 +1894,7 @@ def execute_factory_mode_job(
     return {
         "processed_titles": len(processed),
         "titles": processed,
-        "stopped_reason": "credits_exhausted" if len(processed) < len(titles) else None,
+        "stopped_reason": stopped_reason,
     }
 
 
