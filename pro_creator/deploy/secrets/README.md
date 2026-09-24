@@ -10,7 +10,6 @@ ADMIN_PASSWORD_FILE=./deploy/secrets/admin_password
 POSTGRES_PASSWORD_FILE=./deploy/secrets/postgres_password
 DATABASE_URL_FILE=./deploy/secrets/database_url
 S3_SECRET_KEY_FILE=./deploy/secrets/s3_secret_key
-ELEVENLABS_API_KEY_FILE=./deploy/secrets/elevenlabs_api_key
 ```
 
 Create each file with the raw secret value only (no key/value syntax).
