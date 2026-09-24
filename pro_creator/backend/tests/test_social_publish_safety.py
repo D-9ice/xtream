@@ -49,3 +49,23 @@ def test_publish_4xx_is_definite_failure_and_5xx_is_uncertain() -> None:
 
     assert social_publish._publish_failure_status(error_400) == "failed"
     assert social_publish._publish_failure_status(error_503) == "uncertain"
+
+
+def test_publish_429_is_safe_retryable() -> None:
+    response = _Response(429)
+    response.headers = {"Retry-After": "2"}
+    error = requests.HTTPError("rate limited")
+    error.response = response
+    assert social_publish._rate_limit_retry_delay(error, 1) == 2.0
+
+
+def test_publish_5xx_is_not_blindly_retried() -> None:
+    response = _Response(503)
+    response.headers = {}
+    error = requests.HTTPError("unavailable")
+    error.response = response
+    assert social_publish._rate_limit_retry_delay(error, 1) is None
+
+
+def test_publish_timeout_is_not_blindly_retried() -> None:
+    assert social_publish._rate_limit_retry_delay(requests.Timeout("timeout"), 1) is None
