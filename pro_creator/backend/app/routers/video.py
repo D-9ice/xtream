@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from urllib.parse import urljoin, urlparse
 
-from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi import APIRouter, Query, Depends, File, HTTPException, UploadFile
 from PIL import Image, ImageDraw
 from sqlmodel import Session
 
@@ -337,6 +337,28 @@ def _materialize_video(project_id: str, temp_path: Path) -> tuple[str, Path, dic
     source = temp_path / "source.mp4"
     source.write_bytes(storage_client.read_bytes(key))
     return key, source, _probe_media(source)
+
+
+async def _save_upload_bounded(upload: UploadFile, target: Path) -> int:
+    total = 0
+    try:
+        with target.open("wb") as handle:
+            while True:
+                chunk = await upload.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > VIDEO_IMPORT_MAX_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Recording exceeds the configured media size limit.",
+                    )
+                handle.write(chunk)
+    finally:
+        await upload.close()
+    if total == 0:
+        raise HTTPException(status_code=400, detail="Uploaded recording is empty.")
+    return total
 
 
 def _run_ffmpeg(arguments: list[str], *, timeout: int = 600) -> None:
@@ -1469,52 +1491,89 @@ def magic_cut(project_id: str) -> FeatureStubResponse:
     )
 
 @router.post("/screen-record", response_model=FeatureStubResponse)
-def screen_record(project_id: str) -> FeatureStubResponse:
-    scenes = read_scene_metadata(project_id)
-    timeline = []
-    cursor = 0.0
-    for idx, scene in enumerate(scenes or []):
-        text = str(scene.get("text", "")).strip()
-        duration = max(6.0, min(20.0, len(text.split()) * 0.45 if text else 8.0))
-        timeline.append(
-            {
-                "scene_id": scene.get("id", idx + 1),
-                "start": round(cursor, 2),
-                "end": round(cursor + duration, 2),
-                "layout": "screen+webcam",
-                "webcam_position": "bottom-right",
-                "notes": text[:160] if text else "Narration-driven scene",
-            }
+async def screen_record(
+    project_id: str,
+    screen: UploadFile | None = File(default=None),
+    webcam: UploadFile | None = File(default=None),
+) -> FeatureStubResponse:
+    if screen is None:
+        raise HTTPException(
+            status_code=400,
+            detail="A captured screen recording file is required.",
         )
-        cursor += duration
 
-    if not timeline:
-        timeline = [
+    with tempfile.TemporaryDirectory(prefix="pro_creator_screen_record_") as temp_dir:
+        temp_path = Path(temp_dir)
+        screen_ext = Path(screen.filename or "screen.webm").suffix or ".webm"
+        screen_path = temp_path / f"screen{screen_ext}"
+        await _save_upload_bounded(screen, screen_path)
+        screen_meta = _probe_media(screen_path)
+
+        webcam_path: Path | None = None
+        webcam_meta: dict | None = None
+        if webcam is not None:
+            webcam_ext = Path(webcam.filename or "webcam.webm").suffix or ".webm"
+            webcam_path = temp_path / f"webcam{webcam_ext}"
+            await _save_upload_bounded(webcam, webcam_path)
+            webcam_meta = _probe_media(webcam_path)
+
+        output = temp_path / "screen_record.mp4"
+        if webcam_path is not None:
+            audio_input = "0:a?" if screen_meta["has_audio"] else ("1:a?" if webcam_meta and webcam_meta["has_audio"] else None)
+            args = [
+                "-i", str(screen_path),
+                "-i", str(webcam_path),
+                "-filter_complex",
+                "[1:v][0:v]scale2ref=w=main_w*0.24:h=ow/mdar[cam][base];"
+                "[base][cam]overlay=W-w-24:H-h-24:shortest=1[v]",
+                "-map", "[v]",
+            ]
+            if audio_input:
+                args.extend(["-map", audio_input])
+            args.extend([
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "20",
+                "-pix_fmt", "yuv420p",
+            ])
+            if audio_input:
+                args.extend(["-c:a", "aac", "-b:a", "192k"])
+            args.extend(["-movflags", "+faststart", str(output)])
+            _run_ffmpeg(args)
+        else:
+            args = [
+                "-i", str(screen_path),
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "20",
+                "-pix_fmt", "yuv420p",
+            ]
+            if screen_meta["has_audio"]:
+                args.extend(["-c:a", "aac", "-b:a", "192k"])
+            else:
+                args.append("-an")
+            args.extend(["-movflags", "+faststart", str(output)])
+            _run_ffmpeg(args)
+
+        output_meta = _probe_media(output)
+        output_key = project_key(project_id, "video/screen_record.mp4")
+        storage_client.write_file(output_key, output, content_type="video/mp4")
+        write_json_artifact(
+            PROJECTS_DIR / project_id / "video" / "screen_record.json",
             {
-                "scene_id": 1,
-                "start": 0.0,
-                "end": 10.0,
-                "layout": "screen+webcam",
-                "webcam_position": "bottom-right",
-                "notes": "Default recording segment",
-            }
-        ]
+                "project_id": project_id,
+                "video_path": storage_client.public_url(output_key),
+                "duration": output_meta["duration"],
+                "width": output_meta["width"],
+                "height": output_meta["height"],
+                "webcam_overlay": webcam_path is not None,
+            },
+        )
 
-    artifact_path = PROJECTS_DIR / project_id / "video" / "screen_record_plan.json"
-    write_json_artifact(
-        artifact_path,
-        {
-            "project_id": project_id,
-            "resolution": "1920x1080",
-            "fps": 30,
-            "timeline": timeline,
-        },
-    )
     return FeatureStubResponse(
         status="complete",
-        detail=f"Screen recording plan saved to {artifact_path}",
+        detail=f"Screen recording created at {storage_client.public_url(output_key)}",
     )
-
 
 @router.post("/templates", response_model=FeatureStubResponse)
 def templates(project_id: str) -> FeatureStubResponse:
