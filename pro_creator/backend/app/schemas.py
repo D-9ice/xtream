@@ -316,7 +316,7 @@ class EditByTextResponse(BaseModel):
     video_path: Optional[str] = None
 
 
-class FeatureStubResponse(BaseModel):
+class FeatureOperationResponse(BaseModel):
     status: str
     detail: str
 
