@@ -21,6 +21,8 @@ from app.config import (
     OWNER_EMAIL_ALLOWLIST,
     SOCIAL_TIKTOK_CLIENT_KEY,
     SOCIAL_TIKTOK_CLIENT_SECRET,
+    SOCIAL_PUBLISH_MAX_ATTEMPTS,
+    SOCIAL_PUBLISH_RETRY_BACKOFF_SECONDS,
     SOCIAL_YOUTUBE_CLIENT_ID,
     SOCIAL_YOUTUBE_CLIENT_SECRET,
 )
@@ -1079,6 +1081,47 @@ def _publish_to_tiktok(
     return publish_id, published_url
 
 
+def _rate_limit_retry_delay(exc: Exception, attempt: int) -> float | None:
+    """Return a safe retry delay only when the remote request was explicitly rate-limited.
+
+    Timeouts, connection failures, and 5xx responses are deliberately not retried
+    here because the remote platform may already have accepted the post.
+    """
+    if not isinstance(exc, requests.HTTPError) or exc.response is None:
+        return None
+    if exc.response.status_code != 429:
+        return None
+    retry_after = exc.response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return min(60.0, max(0.25, float(retry_after)))
+        except (TypeError, ValueError):
+            pass
+    return min(
+        60.0,
+        SOCIAL_PUBLISH_RETRY_BACKOFF_SECONDS * (2 ** max(0, attempt - 1)),
+    )
+
+
+def _publish_remote_once(
+    *,
+    project: Project,
+    connection: SocialAccountConnection,
+    message: str,
+) -> tuple[str, str | None]:
+    if connection.platform == "youtube":
+        return _publish_to_youtube(project=project, connection=connection, message=message)
+    if connection.platform == "instagram":
+        return _publish_to_instagram(project=project, connection=connection, message=message)
+    if connection.platform == "facebook":
+        return _publish_to_facebook(project=project, connection=connection, message=message)
+    if connection.platform == "x":
+        return _publish_to_x(project=project, connection=connection, message=message)
+    if connection.platform == "tiktok":
+        return _publish_to_tiktok(project=project, connection=connection, message=message)
+    raise RuntimeError(f"Unsupported platform: {connection.platform}")
+
+
 def _publish_connection(
     *,
     session: Session,
@@ -1141,38 +1184,32 @@ def _publish_connection(
     try:
         if not connection.enabled and _connection_has_publish_credentials(connection):
             raise RuntimeError("Connection is disabled")
-        if publish_connection.platform == "youtube":
-            remote_id, published_url = _publish_to_youtube(
-                project=project,
-                connection=publish_connection,
-                message=message,
-            )
-        elif publish_connection.platform == "instagram":
-            remote_id, published_url = _publish_to_instagram(
-                project=project,
-                connection=publish_connection,
-                message=message,
-            )
-        elif publish_connection.platform == "facebook":
-            remote_id, published_url = _publish_to_facebook(
-                project=project,
-                connection=publish_connection,
-                message=message,
-            )
-        elif publish_connection.platform == "x":
-            remote_id, published_url = _publish_to_x(
-                project=project,
-                connection=publish_connection,
-                message=message,
-            )
-        elif publish_connection.platform == "tiktok":
-            remote_id, published_url = _publish_to_tiktok(
-                project=project,
-                connection=publish_connection,
-                message=message,
-            )
-        else:
-            raise RuntimeError(f"Unsupported platform: {publish_connection.platform}")
+        remote_id = ""
+        published_url: str | None = None
+        last_error: Exception | None = None
+        transport_attempts = 0
+        for transport_attempt in range(1, SOCIAL_PUBLISH_MAX_ATTEMPTS + 1):
+            transport_attempts = transport_attempt
+            try:
+                remote_id, published_url = _publish_remote_once(
+                    project=project,
+                    connection=publish_connection,
+                    message=message,
+                )
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                delay = _rate_limit_retry_delay(exc, transport_attempt)
+                if delay is None or transport_attempt >= SOCIAL_PUBLISH_MAX_ATTEMPTS:
+                    raise
+                time.sleep(delay)
+        if last_error is not None:
+            raise last_error
+        payload["transport_attempts"] = transport_attempts
+        job.payload_json = _json_text(payload, {})
+        session.add(job)
+        session.commit()
         consume_credits(
             session=session,
             user=current_user,
