@@ -490,6 +490,8 @@ def retry_job(job_id: int, session: Session = Depends(get_session)) -> Orchestra
         raise HTTPException(status_code=404, detail="Job not found")
     if job.status != "failed":
         raise HTTPException(status_code=400, detail="Job is not failed")
+    if job.attempts >= job.max_attempts:
+        raise HTTPException(status_code=400, detail="Maximum orchestration attempts reached")
     job.status = "queued"
     job.last_error = None
     job.task_id = None
