@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -97,6 +98,15 @@ def test_export_requires_source_video() -> None:
     assert "No source video found" in response.json()["detail"]
 
 
+def test_grok_poll_honors_cancellation_before_network(monkeypatch) -> None:
+    def unexpected_get(*_args, **_kwargs):
+        raise AssertionError("network polling must not run after cancellation")
+
+    monkeypatch.setattr(grok_imagine_engine.requests, "get", unexpected_get)
+    with pytest.raises(grok_imagine_engine.RenderCancelled):
+        grok_imagine_engine._poll_video_url("request-cancelled", cancel_check=lambda: True)
+
+
 def test_grok_imagine_segments_chain_last_frame_into_next_segment(
     monkeypatch, tmp_path
 ) -> None:
@@ -122,6 +132,7 @@ def test_grok_imagine_segments_chain_last_frame_into_next_segment(
         total_segments,
         temp_path,
         initial_frame_bytes=None,
+        cancel_check=None,
     ):
         calls.append(initial_frame_bytes)
         segment_path = temp_path / f"segment_{scene_index}.mp4"
@@ -191,6 +202,7 @@ def test_grok_imagine_includes_start_and_end_credits_sequences(
         total_segments,
         temp_path,
         initial_frame_bytes=None,
+        cancel_check=None,
     ):
         scene_texts.append(scene_text)
         segment_path = temp_path / f"segment_{scene_index}.mp4"
