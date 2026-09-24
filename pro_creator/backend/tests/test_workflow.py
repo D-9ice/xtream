@@ -452,9 +452,19 @@ def test_factory_mode_runs_titles_and_publishes_each_project(monkeypatch: pytest
                 }
             ),
         )
+        session.add(job)
+        session.commit()
+        session.refresh(job)
         result = workflow_service.execute_factory_mode_job(session=session, job=job)
+        session.refresh(job)
+        persisted_payload = json.loads(job.payload or "{}")
 
     assert result["processed_titles"] == 2
+    assert result["completed_titles"] == 2
+    assert result["failed_titles"] == 0
+    assert [item["status"] for item in result["titles"]] == ["complete", "complete"]
+    assert [item["status"] for item in persisted_payload["factory_items"]] == ["complete", "complete"]
+    assert all(item["project_id"] for item in persisted_payload["factory_items"])
     assert [item["kind"] for item in calls] == ["auto_create", "publish", "auto_create", "publish"]
     assert [item["title"] for item in calls if item["kind"] == "auto_create"] == ["First Title", "Second Title"]
     assert [
@@ -468,6 +478,179 @@ def test_factory_mode_runs_titles_and_publishes_each_project(monkeypatch: pytest
         if item["kind"] == "auto_create"
     ] == [True, True]
     assert [item["project_id"] for item in calls if item["kind"] == "publish"] == ["factory-1", "factory-3"]
+
+
+
+def test_factory_mode_resume_skips_completed_titles(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class _FakeSubscription:
+        credits_balance = 1000
+
+    class _FakeProject:
+        def __init__(self, project_id: str, title: str) -> None:
+            self.project_id = project_id
+            self.title = title
+            self.final_video_url = f"https://example.test/{project_id}.mp4"
+
+    class _FakeAutoCreateResponse:
+        def __init__(self, project_id: str, title: str) -> None:
+            self.project = _FakeProject(project_id, title)
+            self.video_path = self.project.final_video_url
+
+    monkeypatch.setattr(workflow_service, "FACTORY_MODE_ENABLED", True)
+    monkeypatch.setattr(
+        workflow_service,
+        "has_factory_mode_access",
+        lambda _subscription, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "get_or_create_subscription",
+        lambda _session, _user: _FakeSubscription(),
+    )
+
+    def fake_auto_create_project(**kwargs):
+        calls.append({"kind": "auto_create", "title": kwargs["title"]})
+        return _FakeAutoCreateResponse("factory-resumed-2", kwargs["title"])
+
+    def fake_publish_to_all_connections(**kwargs):
+        calls.append({"kind": "publish", "project_id": kwargs["project_id"]})
+        return [type("Job", (), {"job_id": "pub-resumed-2"})()]
+
+    monkeypatch.setattr(workflow_service, "auto_create_project", fake_auto_create_project)
+    monkeypatch.setattr(workflow_service, "publish_to_all_connections", fake_publish_to_all_connections)
+
+    with Session(engine) as session:
+        user = User(email=f"factory-resume-{uuid4().hex[:8]}@example.com", hashed_password="hashed", role="admin")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        job = OrchestrationJob(
+            tenant_id="default",
+            project_id="factory-mode",
+            kind="factory_mode",
+            payload=json.dumps(
+                {
+                    "user_id": user.id,
+                    "titles": ["Already Complete", "Resume Me"],
+                    "duration_minutes": 10,
+                    "factory_items": [
+                        {
+                            "index": 1,
+                            "title": "Already Complete",
+                            "status": "complete",
+                            "stage": "complete",
+                            "attempts": 1,
+                            "project_id": "factory-complete-1",
+                            "video_path": "https://example.test/factory-complete-1.mp4",
+                            "published_jobs": ["pub-complete-1"],
+                        },
+                        {
+                            "index": 2,
+                            "title": "Resume Me",
+                            "status": "pending",
+                            "stage": "pending",
+                            "attempts": 0,
+                        },
+                    ],
+                }
+            ),
+        )
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+
+        result = workflow_service.execute_factory_mode_job(session=session, job=job)
+        session.refresh(job)
+        persisted = json.loads(job.payload or "{}")
+
+    assert result["completed_titles"] == 2
+    assert result["failed_titles"] == 0
+    assert calls == [
+        {"kind": "auto_create", "title": "Resume Me"},
+        {"kind": "publish", "project_id": "factory-resumed-2"},
+    ]
+    assert persisted["factory_items"][0]["project_id"] == "factory-complete-1"
+    assert persisted["factory_items"][0]["status"] == "complete"
+    assert persisted["factory_items"][1]["project_id"] == "factory-resumed-2"
+    assert persisted["factory_items"][1]["status"] == "complete"
+
+
+def test_factory_mode_title_failure_does_not_abort_remaining_titles(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    class _FakeSubscription:
+        credits_balance = 1000
+
+    class _FakeProject:
+        def __init__(self, project_id: str, title: str) -> None:
+            self.project_id = project_id
+            self.title = title
+            self.final_video_url = f"https://example.test/{project_id}.mp4"
+
+    class _FakeAutoCreateResponse:
+        def __init__(self, project_id: str, title: str) -> None:
+            self.project = _FakeProject(project_id, title)
+            self.video_path = self.project.final_video_url
+
+    monkeypatch.setattr(workflow_service, "FACTORY_MODE_ENABLED", True)
+    monkeypatch.setattr(
+        workflow_service,
+        "has_factory_mode_access",
+        lambda _subscription, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "get_or_create_subscription",
+        lambda _session, _user: _FakeSubscription(),
+    )
+
+    def fake_auto_create_project(**kwargs):
+        title = kwargs["title"]
+        calls.append(title)
+        if title == "Broken Title":
+            raise RuntimeError("synthetic title failure")
+        return _FakeAutoCreateResponse("factory-good-2", title)
+
+    monkeypatch.setattr(workflow_service, "auto_create_project", fake_auto_create_project)
+    monkeypatch.setattr(
+        workflow_service,
+        "publish_to_all_connections",
+        lambda **_kwargs: [type("Job", (), {"job_id": "pub-good-2"})()],
+    )
+
+    with Session(engine) as session:
+        user = User(email=f"factory-failure-{uuid4().hex[:8]}@example.com", hashed_password="hashed", role="admin")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        job = OrchestrationJob(
+            tenant_id="default",
+            project_id="factory-mode",
+            kind="factory_mode",
+            payload=json.dumps(
+                {
+                    "user_id": user.id,
+                    "titles": ["Broken Title", "Good Title"],
+                    "duration_minutes": 10,
+                }
+            ),
+        )
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+
+        result = workflow_service.execute_factory_mode_job(session=session, job=job)
+        session.refresh(job)
+        persisted = json.loads(job.payload or "{}")
+
+    assert calls == ["Broken Title", "Good Title"]
+    assert result["completed_titles"] == 1
+    assert result["failed_titles"] == 1
+    assert [item["status"] for item in persisted["factory_items"]] == ["failed", "complete"]
+    assert persisted["factory_items"][0]["error"] == "synthetic title failure"
 
 
 def test_workflow_feedback_submission_persists_and_emails(
