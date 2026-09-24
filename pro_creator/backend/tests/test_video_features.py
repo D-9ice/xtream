@@ -227,3 +227,42 @@ def test_grok_imagine_includes_start_and_end_credits_sequences(
     assert scene_texts[-1].startswith("__CREDITS_END__")
     assert len(scene_texts) == 4
     assert result["video_path"].startswith("public://")
+
+
+def test_internal_social_vertical_export_alias_is_real_media_output(monkeypatch, tmp_path) -> None:
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source-video")
+
+    monkeypatch.setattr(
+        video_router,
+        "_materialize_video",
+        lambda _project_id, _temp_path: (
+            "project/video/final.mp4",
+            source,
+            {"duration": 4.0, "width": 1920, "height": 1080, "has_audio": True},
+        ),
+    )
+
+    def fake_run_ffmpeg(args, **_kwargs):
+        Path(args[-1]).write_bytes(b"vertical-export")
+
+    monkeypatch.setattr(video_router, "_run_ffmpeg", fake_run_ffmpeg)
+    monkeypatch.setattr(
+        video_router,
+        "_probe_media",
+        lambda _path: {"duration": 4.0, "width": 1080, "height": 1920, "has_audio": True},
+    )
+    monkeypatch.setattr(video_router.storage_client, "write_file", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(video_router.storage_client, "write_text", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        video_router.storage_client,
+        "public_url",
+        lambda key: f"public://{key}",
+    )
+
+    response = video_router.export_preset(
+        video_router.ExportPresetRequest(project_id="scheduled-project", preset="social-vertical"),
+        session=None,
+        current_user=None,
+    )
+    assert response.export_path.endswith("/video/exports/social-vertical.mp4")
