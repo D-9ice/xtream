@@ -182,3 +182,26 @@ def test_schedule_rejects_non_positive_cadence() -> None:
         json={"project_id": "invalid-cadence", "cadence_days": 0},
     )
     assert response.status_code == 422
+
+
+
+def test_enqueue_dispatches_immediately_when_celery_enabled(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(orchestration, "ENABLE_CELERY", True)
+    monkeypatch.setattr(orchestration, "_dispatch_job", lambda job: f"task-{job.id}")
+
+    response = client.post(
+        "/orchestration/queue",
+        json={
+            "project_id": "direct-dispatch-test",
+            "kind": "workflow_production",
+            "topic": "Dispatch immediately",
+            "duration_minutes": 1,
+            "tone": "neutral",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "processing"
+    assert payload["task_id"] == f"task-{payload['id']}"
+    assert payload["attempts"] == 1
