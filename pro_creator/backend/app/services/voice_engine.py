@@ -1,7 +1,4 @@
-import io
-import math
 import time
-import wave
 
 import requests
 
@@ -19,23 +16,6 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def _write_tone(duration_seconds: float) -> bytes:
-    sample_rate = 22050
-    total_frames = int(duration_seconds * sample_rate)
-    amplitude = 16000
-    frequency = 440.0
-
-    buffer = io.BytesIO()
-    with wave.open(buffer, "w") as wav_file:
-        wav_file.setnchannels(1)
-        wav_file.setsampwidth(2)
-        wav_file.setframerate(sample_rate)
-        for i in range(total_frames):
-            value = int(amplitude * math.sin(2 * math.pi * frequency * i / sample_rate))
-            wav_file.writeframesraw(value.to_bytes(2, byteorder="little", signed=True))
-    return buffer.getvalue()
-
-
 def _write_audio(
     project_id: str,
     scene_id: int,
@@ -50,12 +30,13 @@ def _write_audio(
 
 def _generate_with_xai_tts(text: str, voice_id: str | None) -> bytes:
     if not XAI_API_KEY.strip():
-        return _write_tone(max(2.0, len(text.split()) / 2.0))
+        raise RuntimeError("XAI_API_KEY is required for voice generation")
     payload = {
         "text": text,
         "voice_id": voice_id or XAI_TTS_VOICE_ID,
     }
     attempts = max(1, PROVIDER_RETRY_ATTEMPTS)
+    last_error: Exception | str | None = None
     for attempt in range(1, attempts + 1):
         try:
             response = requests.post(
@@ -67,18 +48,42 @@ def _generate_with_xai_tts(text: str, voice_id: str | None) -> bytes:
                 json=payload,
                 timeout=60,
             )
-            if response.ok and response.content:
+            response.raise_for_status()
+            if response.content:
                 return response.content
-            logger.warning("xAI TTS request failed (attempt %s/%s): %s", attempt, attempts, response.text)
+            last_error = "xAI TTS returned an empty response"
         except Exception as exc:
+            last_error = exc
             logger.warning("xAI TTS request error (attempt %s/%s): %s", attempt, attempts, exc)
         if attempt < attempts:
             time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
-    return _write_tone(max(2.0, len(text.split()) / 2.0))
+    raise RuntimeError(f"xAI TTS generation failed: {last_error}")
 
 
-def clone_voice_profile(profile_name: str, sample_bytes: bytes) -> dict:
-    return {"provider": "xai"}
+def clone_voice_profile(
+    profile_name: str,
+    sample_bytes: bytes,
+    *,
+    filename: str = "reference.wav",
+    content_type: str = "audio/wav",
+) -> dict:
+    if not XAI_API_KEY.strip():
+        raise RuntimeError("XAI_API_KEY is required for custom voice creation")
+    if not sample_bytes:
+        raise ValueError("Voice reference sample is empty")
+    response = requests.post(
+        f"{XAI_BASE_URL}/custom-voices",
+        headers={"Authorization": f"Bearer {XAI_API_KEY}"},
+        files={"file": (filename or "reference.wav", sample_bytes, content_type or "audio/wav")},
+        data={"name": profile_name},
+        timeout=120,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    voice_id = str(payload.get("voice_id") or "").strip()
+    if not voice_id:
+        raise RuntimeError("xAI custom voice creation did not return a voice_id")
+    return {"provider": "xai", "voice_id": voice_id}
 
 
 def generate_voice_for_scene(
@@ -94,8 +99,6 @@ def generate_voice_for_scene(
     audio_bytes = _generate_with_xai_tts(text, voice_id)
     extension = "mp3"
     content_type = "audio/mpeg"
-    if not audio_bytes:
-        audio_bytes = _write_tone(duration_seconds)
     audio_path = _write_audio(project_id, scene_id, audio_bytes, extension, content_type)
     logger.info("Generated voice for project %s scene %s", project_id, scene_id)
     return {
