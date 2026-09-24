@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 from typing import Iterable, Optional
 
 import boto3
@@ -101,6 +102,23 @@ class StorageClient:
             path = PROJECTS_DIR / key
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
+
+    def write_file(self, key: str, source_path: Path, content_type: Optional[str] = None) -> None:
+        """Stream a local file into configured storage without loading it fully into memory."""
+        source = Path(source_path)
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        if self.backend == "s3":
+            self._ensure_bucket()
+            extra = {"ContentType": content_type} if content_type else None
+            if extra:
+                self._s3.upload_file(str(source), S3_BUCKET, key, ExtraArgs=extra)
+            else:
+                self._s3.upload_file(str(source), S3_BUCKET, key)
+        else:
+            path = PROJECTS_DIR / key
+            path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, path)
 
     def read_text(self, key: str) -> str:
         if self.backend == "s3":
