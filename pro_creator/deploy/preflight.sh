@@ -18,15 +18,23 @@ required_plain_vars=(
   ALLOWED_ORIGINS
   OWNER_EMAIL_ALLOWLIST
   FACTORY_MODE_ENABLED
-  NEXT_PUBLIC_FACTORY_MODE_ENABLED
-  NEXT_PUBLIC_API_BASE
-  NEXT_PUBLIC_PROJECTS_BASE
   POSTGRES_DB
   POSTGRES_USER
   S3_BUCKET
   S3_REGION
   S3_ENDPOINT
+  S3_USE_SSL
   S3_PUBLIC_URL
+  XAI_BASE_URL
+  XAI_TEXT_MODEL
+  XAI_IMAGE_MODEL
+  XAI_VIDEO_MODEL
+  XAI_TTS_VOICE_ID
+  GROK_IMAGINE_TARGET_SEGMENT_SECONDS
+  GROK_IMAGINE_INITIAL_CHUNK_SECONDS
+  GROK_IMAGINE_EXTENSION_CHUNK_SECONDS
+  GROK_IMAGINE_ASPECT_RATIO
+  GROK_IMAGINE_RESOLUTION
 )
 
 required_secret_vars=(
@@ -37,6 +45,7 @@ required_secret_vars=(
   DATABASE_URL
   S3_ACCESS_KEY
   S3_SECRET_KEY
+  XAI_API_KEY
 )
 
 resolve_host_path() {
@@ -100,6 +109,23 @@ if grep -Eq "^AWS_SECRETS_ENABLED=true$" "${ENV_FILE}"; then
     echo "ERROR: AWS_SECRETS_ENABLED=true requires AWS_SECRETS_REGION"
     exit 1
   fi
+fi
+
+allowed_origins="$(get_env_value "ALLOWED_ORIGINS")"
+if [[ "${allowed_origins}" == *"*"* || "${allowed_origins}" == *"localhost"* || "${allowed_origins}" == *"127.0.0.1"* ]]; then
+  echo "ERROR: ALLOWED_ORIGINS must contain only explicit production frontend origins."
+  exit 1
+fi
+
+s3_endpoint="$(get_env_value "S3_ENDPOINT")"
+s3_use_ssl="$(get_env_value "S3_USE_SSL")"
+if [[ "${s3_endpoint}" == http://* && "${s3_use_ssl}" == "true" ]]; then
+  echo "ERROR: S3_USE_SSL=true conflicts with an http:// S3_ENDPOINT."
+  exit 1
+fi
+if [[ "${s3_endpoint}" == https://* && "${s3_use_ssl}" == "false" ]]; then
+  echo "ERROR: S3_USE_SSL=false conflicts with an https:// S3_ENDPOINT."
+  exit 1
 fi
 
 unsafe_patterns=(
