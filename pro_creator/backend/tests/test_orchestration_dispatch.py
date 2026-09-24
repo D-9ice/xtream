@@ -172,3 +172,13 @@ def test_workflow_task_cancel_check_reads_payload() -> None:
             return None
 
     assert tasks._workflow_job_cancel_requested(_Session(), job) is True
+
+
+
+def test_schedule_rejects_non_positive_cadence() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/orchestration/schedules",
+        json={"project_id": "invalid-cadence", "cadence_days": 0},
+    )
+    assert response.status_code == 422
