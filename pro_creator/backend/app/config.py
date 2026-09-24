@@ -134,6 +134,7 @@ XAI_IMAGE_MODEL = os.getenv("XAI_IMAGE_MODEL", "grok-imagine-image").strip()
 XAI_VIDEO_MODEL = os.getenv("XAI_VIDEO_MODEL", "grok-imagine-video").strip()
 XAI_TTS_VOICE_ID = os.getenv("XAI_TTS_VOICE_ID", "eve").strip()
 XAI_TTS_MODEL = XAI_TTS_VOICE_ID
+XAI_STT_MODEL = os.getenv("XAI_STT_MODEL", "grok-voice-transcribe-2.0").strip()
 GROK_IMAGINE_TARGET_SEGMENT_SECONDS = max(10, int(os.getenv("GROK_IMAGINE_TARGET_SEGMENT_SECONDS", "15")))
 GROK_IMAGINE_INITIAL_CHUNK_SECONDS = max(1, min(15, int(os.getenv("GROK_IMAGINE_INITIAL_CHUNK_SECONDS", "15"))))
 GROK_IMAGINE_EXTENSION_CHUNK_SECONDS = max(1, min(10, int(os.getenv("GROK_IMAGINE_EXTENSION_CHUNK_SECONDS", "10"))))
