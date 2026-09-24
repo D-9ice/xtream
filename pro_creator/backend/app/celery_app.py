@@ -15,4 +15,10 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     imports=("app.tasks",),
+    beat_schedule={
+        "run-due-orchestration-schedules": {
+            "task": "pro_creator.run_due_schedules",
+            "schedule": 60.0,
+        },
+    },
 )
