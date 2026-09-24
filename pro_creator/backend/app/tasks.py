@@ -11,23 +11,14 @@ from app.database import engine
 from app.models import OrchestrationJob, OrchestrationSchedule, Project
 from app.services.script_engine import generate_script
 from app.services.lipsync_engine import generate_lipsync
-from app.services.voice_engine import generate_voice_bytes, generate_voice_for_scene
+from app.services.voice_engine import generate_voice_for_scene
 from app.services.image_engine import generate_image_for_scene
 from app.services.video_engine import render_video
 from app.services.workflow_service import execute_factory_mode_job, execute_workflow_production_job
 from app.services.metrics import FACTORY_RUN_TOTAL, ORCHESTRATION_JOB_TOTAL
 from app.utils.file_manager import ensure_project_dirs, write_scene_metadata, write_script
-from app.utils.file_manager import read_scene_metadata
-from app.utils.file_manager import read_character_voice_profiles
 from app.schemas import ExportPresetRequest
 from app.routers.video import export_preset
-from app.storage import storage_client
-
-import re
-import shutil
-import subprocess
-import tempfile
-from pathlib import Path
 
 
 @celery_app.task(name="pro_creator.generate_script")
