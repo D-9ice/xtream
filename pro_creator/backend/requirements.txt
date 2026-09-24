@@ -13,6 +13,7 @@ boto3
 celery
 redis
 python-jose[cryptography]
+cryptography
 passlib[bcrypt]
 bcrypt==3.2.2
 prometheus-client
