@@ -965,11 +965,9 @@ def generate_script(
     duration_minutes: float,
     tone: str,
     *,
-    script_provider: str | None = None,
-    model_name: str | None = None,
     genre: str | None = None,
 ) -> Dict:
-    selected_model = (model_name or XAI_TEXT_MODEL).strip()
+    selected_model = XAI_TEXT_MODEL.strip()
     _title, brief_prompt = _parse_script_brief(topic)
     factual_mode = _is_true_story_genre(genre, prompt=brief_prompt, title=_title)
     current_events_context = _fetch_current_events_context(
