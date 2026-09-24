@@ -235,7 +235,7 @@ export default function FactoryModePage() {
             <p className="text-xs uppercase tracking-[0.25em] text-amber-100/80">Access required</p>
             <h2 className="mt-2 text-lg font-semibold text-white">Unlock Factory Mode</h2>
             <p className="mt-2 max-w-2xl text-sm text-amber-50/80">
-              Factory Mode is deployed but locked until you purchase one-time access or a subscription in Credits & Plans.
+              Factory Mode is deployed but locked until you activate a subscription in Credits & Plans.
             </p>
             <button
               className="mt-4 inline-flex rounded-full border border-amber-300/40 bg-amber-300/10 px-4 py-2 text-sm font-semibold text-amber-50"
