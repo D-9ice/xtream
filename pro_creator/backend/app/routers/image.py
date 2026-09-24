@@ -8,7 +8,6 @@ from app.models import Scene, User
 from app.schemas import ImageRequest, ImageResponse
 from app.services.credits import consume_credits
 from app.services.image_engine import generate_image_for_scene
-from app.services.provider_routing import resolve_image_provider
 from app.tenant import current_tenant_id
 from app.utils.logger import get_logger
 
@@ -27,7 +26,6 @@ def generate_image_endpoint(
     current_user: User = Depends(get_current_user),
 ) -> ImageResponse:
     tenant_id = current_tenant_id()
-    provider = resolve_image_provider()
     scenes = session.exec(
         select(Scene).where(
             Scene.project_id == payload.project_id,
@@ -40,7 +38,6 @@ def generate_image_endpoint(
             1,
             payload.prompt,
             payload.style,
-            provider=provider,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Image generation failed: {exc}") from exc
@@ -52,7 +49,6 @@ def generate_image_endpoint(
                     scene.id or 1,
                     scene.text or payload.prompt,
                     payload.style,
-                    provider=provider,
                 )
             except Exception as exc:
                 raise HTTPException(
@@ -69,7 +65,7 @@ def generate_image_endpoint(
         reason="image generation",
         action="image.generate",
         reference_id=payload.project_id,
-        provider=provider,
+        provider="xai",
         model=payload.style,
         metadata={"scene_count": len(scenes) if scenes else 1},
     )
