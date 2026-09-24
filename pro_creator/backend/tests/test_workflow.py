@@ -287,8 +287,8 @@ def test_workflow_auto_create_uses_custom_cast_and_credits(
             "duration_minutes": 30,
             "genre": "Drama",
             "short_description": "A compact studio-style launch piece.",
-            "start_credits": "Starring\nLead Actor\nDirected by X'tream",
-            "end_credits": "Thanks for watching\nProduced by X'tream",
+            "start_credits": "Starring\nLead Actor\nDirected by Pro Creator Pro",
+            "end_credits": "Thanks for watching\nProduced by Pro Creator Pro",
             "custom_characters": [
                 {
                     "name": "Ava Nova",
@@ -303,8 +303,8 @@ def test_workflow_auto_create_uses_custom_cast_and_credits(
 
     assert payload["project"]["title"] == "Studio Premiere"
     assert payload["project"]["short_description"] == "A compact studio-style launch piece."
-    assert payload["project"]["start_credits"] == "Starring\nLead Actor\nDirected by X'tream"
-    assert payload["project"]["end_credits"] == "Thanks for watching\nProduced by X'tream"
+    assert payload["project"]["start_credits"] == "Starring\nLead Actor\nDirected by Pro Creator Pro"
+    assert payload["project"]["end_credits"] == "Thanks for watching\nProduced by Pro Creator Pro"
     assert payload["project"]["workflow_state"] == "video_completed"
     assert payload["project"]["final_video_url"] == payload["video_path"]
     assert len(payload["project"]["selected_character_ids"]) == 1
@@ -1907,3 +1907,19 @@ def test_duplicate_project_copies_guided_state_without_live_output_fields() -> N
         ).first()
         assert duplicated_package is not None
         assert json.loads(duplicated_package.selected_character_ids_json) == selected_ids
+
+
+def test_auto_create_grok_credit_estimate_matches_executed_pipeline() -> None:
+    expected_generated_cast = (
+        workflow_service.CREDITS_COST_SCRIPT_GENERATE
+        + (2 * workflow_service.CREDITS_COST_IMAGE_GENERATE)
+        + workflow_service.CREDITS_COST_VIDEO_RENDER
+    )
+    expected_custom_cast = (
+        workflow_service.CREDITS_COST_SCRIPT_GENERATE
+        + workflow_service.CREDITS_COST_VIDEO_RENDER
+    )
+
+    assert workflow_service._auto_create_estimated_credits(1, character_count=2) == expected_generated_cast
+    assert workflow_service._auto_create_estimated_credits(120, character_count=2) == expected_generated_cast
+    assert workflow_service._auto_create_estimated_credits(120, character_count=0) == expected_custom_cast
