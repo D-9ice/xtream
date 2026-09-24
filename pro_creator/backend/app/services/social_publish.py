@@ -28,6 +28,7 @@ from app.config import (
 )
 from app.models import Project, SocialAccountConnection, SocialPublishJob, User, utc_now
 from app.services.credits import consume_credits
+from app.services.metrics import SOCIAL_PUBLISH_TOTAL
 from app.storage import project_key, storage_client
 
 PLATFORM_KEYS = {"youtube", "instagram", "facebook", "x", "tiktok"}
@@ -296,6 +297,7 @@ def _finish_job(
     error_message: str | None = None,
 ) -> SocialPublishJob:
     job.status = status
+    SOCIAL_PUBLISH_TOTAL.labels(platform=job.platform, status=status).inc()
     job.published_url = published_url
     job.remote_post_id = remote_post_id
     job.error_message = error_message
