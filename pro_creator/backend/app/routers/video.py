@@ -1,8 +1,11 @@
 from datetime import datetime
 import io
+import ipaddress
 import shutil
+import socket
 import subprocess
 import tempfile
+from urllib.parse import urljoin, urlparse
 
 from fastapi import APIRouter, Query, Depends, HTTPException
 from PIL import Image, ImageDraw
@@ -18,6 +21,10 @@ from app.config import (
     CREDITS_COST_VIDEO_EXPORT,
     CREDITS_COST_VIDEO_RENDER,
     PROJECTS_DIR,
+    VIDEO_IMPORT_CONNECT_TIMEOUT_SECONDS,
+    VIDEO_IMPORT_MAX_BYTES,
+    VIDEO_IMPORT_MAX_REDIRECTS,
+    VIDEO_IMPORT_READ_TIMEOUT_SECONDS,
     XAI_API_KEY,
     XAI_VIDEO_MODEL,
 )
@@ -58,6 +65,93 @@ router = APIRouter(
 logger = get_logger(__name__)
 
 _THUMBNAIL_EXTENSIONS = ("png", "jpg", "jpeg")
+_ALLOWED_REMOTE_VIDEO_TYPES = {"application/octet-stream", "binary/octet-stream"}
+
+
+def _validate_public_remote_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Video import URL must use http or https.")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="Credentials in video import URLs are not allowed.")
+    hostname = parsed.hostname.rstrip(".").lower()
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        raise HTTPException(status_code=400, detail="Local/private video import URLs are blocked.")
+    try:
+        addresses = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=400, detail="Video import host could not be resolved.") from exc
+    if not addresses:
+        raise HTTPException(status_code=400, detail="Video import host could not be resolved.")
+    for entry in addresses:
+        raw_address = str(entry[4][0]).split("%", 1)[0]
+        try:
+            address = ipaddress.ip_address(raw_address)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Video import resolved to an invalid address.") from exc
+        if not address.is_global:
+            raise HTTPException(status_code=400, detail="Local/private video import URLs are blocked.")
+
+
+def _open_remote_video(url: str) -> tuple[requests.Response, str]:
+    current_url = url
+    for _ in range(VIDEO_IMPORT_MAX_REDIRECTS + 1):
+        _validate_public_remote_url(current_url)
+        response = requests.get(
+            current_url,
+            stream=True,
+            timeout=(VIDEO_IMPORT_CONNECT_TIMEOUT_SECONDS, VIDEO_IMPORT_READ_TIMEOUT_SECONDS),
+            allow_redirects=False,
+            headers={"Accept": "video/*,application/octet-stream;q=0.8"},
+        )
+        if 300 <= response.status_code < 400:
+            location = response.headers.get("Location")
+            response.close()
+            if not location:
+                raise HTTPException(status_code=400, detail="Video import redirect did not include a destination.")
+            current_url = urljoin(current_url, location)
+            continue
+        try:
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            response.close()
+            raise HTTPException(status_code=400, detail="Remote video could not be downloaded.") from exc
+        return response, current_url
+    raise HTTPException(status_code=400, detail="Video import exceeded the allowed redirect limit.")
+
+
+def _validate_downloaded_video(path: Path) -> None:
+    ffprobe_path = shutil.which("ffprobe")
+    if not ffprobe_path:
+        raise HTTPException(status_code=503, detail="ffprobe is required to validate imported video.")
+    try:
+        probe = subprocess.run(
+            [
+                ffprobe_path,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(status_code=400, detail="Imported media could not be validated.") from exc
+    if probe.returncode != 0 or "video" not in probe.stdout.lower():
+        raise HTTPException(status_code=400, detail="Remote content is not a valid video file.")
+
+
+def _redact_remote_url(url: str) -> str:
+    parsed = urlparse(url)
+    return parsed._replace(query="", fragment="").geturl()
 
 
 def _find_scene_image_key(project_id: str, scene_id: int) -> str | None:
@@ -466,14 +560,45 @@ def import_video_endpoint(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> VideoImportResponse:
-    response = requests.get(payload.url, stream=True, timeout=30)
-    response.raise_for_status()
-    chunks = []
-    for chunk in response.iter_content(chunk_size=1024 * 1024):
-        if chunk:
-            chunks.append(chunk)
-    key = project_key(payload.project_id, "video/imported.mp4")
-    storage_client.write_bytes(key, b"".join(chunks), content_type="video/mp4")
+    response, final_url = _open_remote_video(payload.url)
+    content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+    if content_type and not (content_type.startswith("video/") or content_type in _ALLOWED_REMOTE_VIDEO_TYPES):
+        response.close()
+        raise HTTPException(status_code=415, detail="Remote URL did not return video content.")
+
+    content_length = response.headers.get("Content-Length")
+    if content_length:
+        try:
+            if int(content_length) > VIDEO_IMPORT_MAX_BYTES:
+                response.close()
+                raise HTTPException(status_code=413, detail="Remote video exceeds the configured import size limit.")
+        except ValueError:
+            pass
+
+    temp_path: Path | None = None
+    try:
+        total_bytes = 0
+        with tempfile.NamedTemporaryFile(prefix="procreator-import-", suffix=".video", delete=False) as temp_file:
+            temp_path = Path(temp_file.name)
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                total_bytes += len(chunk)
+                if total_bytes > VIDEO_IMPORT_MAX_BYTES:
+                    raise HTTPException(status_code=413, detail="Remote video exceeds the configured import size limit.")
+                temp_file.write(chunk)
+        if total_bytes == 0:
+            raise HTTPException(status_code=400, detail="Remote video download was empty.")
+        _validate_downloaded_video(temp_path)
+        key = project_key(payload.project_id, "video/imported.mp4")
+        storage_client.write_file(key, temp_path, content_type="video/mp4")
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=400, detail="Remote video download failed.") from exc
+    finally:
+        response.close()
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+
     record_usage_event(
         session=session,
         user=current_user,
@@ -482,7 +607,7 @@ def import_video_endpoint(
         reference_id=payload.project_id,
         provider="remote_url",
         model="n/a",
-        metadata={"url": payload.url},
+        metadata={"url": _redact_remote_url(final_url)},
     )
     return VideoImportResponse(video_path=storage_client.public_url(key))
 
