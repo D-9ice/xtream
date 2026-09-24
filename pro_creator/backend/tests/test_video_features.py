@@ -1,9 +1,12 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.config import PROJECTS_DIR
 from app.main import app
 import app.services.grok_imagine_engine as grok_imagine_engine
-from app.utils.file_manager import read_json_artifact
+import app.routers.video as video_router
+from app.utils.file_manager import read_json_artifact, write_json_artifact
 
 
 def _create_project(client: TestClient) -> str:
@@ -15,7 +18,7 @@ def _create_project(client: TestClient) -> str:
     return response.json()["project_id"]
 
 
-def test_video_feature_routes_generate_artifacts() -> None:
+def test_metadata_feature_routes_generate_artifacts() -> None:
     client = TestClient(app)
     project_id = _create_project(client)
 
@@ -26,14 +29,6 @@ def test_video_feature_routes_generate_artifacts() -> None:
     presets_res = client.post(f"/video/export-presets?project_id={project_id}")
     assert presets_res.status_code == 200
     assert presets_res.json()["status"] == "complete"
-
-    screen_res = client.post(f"/video/screen-record?project_id={project_id}")
-    assert screen_res.status_code == 200
-    assert screen_res.json()["status"] == "complete"
-
-    magic_res = client.post(f"/video/magic-cut?project_id={project_id}")
-    assert magic_res.status_code == 200
-    assert magic_res.json()["status"] == "complete"
 
     template_artifact = read_json_artifact(
         PROJECTS_DIR / project_id / "video" / "template_plan.json"
@@ -46,15 +41,48 @@ def test_video_feature_routes_generate_artifacts() -> None:
     assert export_artifact.get("presets")
     assert export_artifact.get("recommended")
 
-    screen_artifact = read_json_artifact(
-        PROJECTS_DIR / project_id / "video" / "screen_record_plan.json"
-    )
-    assert screen_artifact.get("timeline")
 
-    magic_cut_artifact = read_json_artifact(
-        PROJECTS_DIR / project_id / "video" / "magic_cut.json"
+def test_screen_record_requires_real_captured_media() -> None:
+    client = TestClient(app)
+    project_id = _create_project(client)
+    response = client.post(f"/video/screen-record?project_id={project_id}")
+    assert response.status_code == 400
+    assert "captured screen recording" in response.json()["detail"]
+
+
+def test_screen_record_processes_uploaded_media(monkeypatch) -> None:
+    client = TestClient(app)
+    project_id = _create_project(client)
+
+    monkeypatch.setattr(
+        video_router,
+        "_probe_media",
+        lambda _path: {"duration": 2.0, "width": 1280, "height": 720, "has_audio": True},
     )
-    assert magic_cut_artifact.get("project_id") == project_id
+
+    def fake_run_ffmpeg(args, **_kwargs):
+        Path(args[-1]).write_bytes(b"processed-video")
+
+    monkeypatch.setattr(video_router, "_run_ffmpeg", fake_run_ffmpeg)
+
+    response = client.post(
+        f"/video/screen-record?project_id={project_id}",
+        files={"screen": ("screen.webm", b"captured-screen", "video/webm")},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "complete"
+    artifact = read_json_artifact(
+        PROJECTS_DIR / project_id / "video" / "screen_record.json"
+    )
+    assert artifact["webcam_overlay"] is False
+    assert artifact["video_path"]
+
+
+def test_magic_cut_requires_transcript_and_media() -> None:
+    client = TestClient(app)
+    project_id = _create_project(client)
+    response = client.post(f"/video/magic-cut?project_id={project_id}")
+    assert response.status_code == 400
 
 
 def test_export_requires_source_video() -> None:
