@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 from app.auth import get_current_user
 from app.config import ENABLE_CELERY, FACTORY_MODE_ENABLED
 from app.database import engine, get_session
-from app.models import OrchestrationJob, OrchestrationSchedule, Scene, User
+from app.models import OrchestrationJob, OrchestrationSchedule, User
 from app.schemas import (
     ExportPresetRequest,
     ExportPresetResponse,
@@ -24,10 +24,6 @@ from app.schemas import (
     OrchestrationScheduleItem,
     OrchestrationScheduleRequest,
     OrchestrationScheduleResponse,
-    ScriptRequest,
-    VoiceRequest,
-    ImageRequest,
-    VideoRequest,
 )
 from app.services.workflow_service import execute_factory_mode_job, execute_workflow_production_job
 from app.services.credits import has_owner_mode_access
