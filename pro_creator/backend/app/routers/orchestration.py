@@ -147,6 +147,16 @@ def _dispatch_job(job: OrchestrationJob) -> str:
 
 
 def _dispatch_persisted_job(session: Session, job: OrchestrationJob) -> None:
+    if job.attempts >= job.max_attempts:
+        job.status = "failed"
+        job.last_error = "Maximum orchestration attempts reached."
+        job.task_id = None
+        job.updated_at = utc_now_naive()
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+        return
+
     job.attempts += 1
     job.updated_at = utc_now_naive()
     try:
@@ -477,10 +487,14 @@ def retry_job(job_id: int, session: Session = Depends(get_session)) -> Orchestra
     if job.status != "failed":
         raise HTTPException(status_code=400, detail="Job is not failed")
     job.status = "queued"
+    job.last_error = None
+    job.task_id = None
     job.updated_at = utc_now_naive()
     session.add(job)
     session.commit()
     session.refresh(job)
+    if ENABLE_CELERY:
+        _dispatch_persisted_job(session, job)
     return _job_to_item(job)
 
 
