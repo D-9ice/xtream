@@ -134,9 +134,10 @@ def test_grok_imagine_segments_chain_last_frame_into_next_segment(
 
     monkeypatch.setattr(grok_imagine_engine, "_render_segment", fake_render_segment)
     monkeypatch.setattr(grok_imagine_engine, "_concat_videos", fake_concat_videos)
+    monkeypatch.setattr(grok_imagine_engine, "_validate_video_file", lambda _path: None)
     monkeypatch.setattr(
         grok_imagine_engine.storage_client,
-        "write_bytes",
+        "write_file",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
@@ -202,9 +203,10 @@ def test_grok_imagine_includes_start_and_end_credits_sequences(
 
     monkeypatch.setattr(grok_imagine_engine, "_render_segment", fake_render_segment)
     monkeypatch.setattr(grok_imagine_engine, "_concat_videos", fake_concat_videos)
+    monkeypatch.setattr(grok_imagine_engine, "_validate_video_file", lambda _path: None)
     monkeypatch.setattr(
         grok_imagine_engine.storage_client,
-        "write_bytes",
+        "write_file",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
