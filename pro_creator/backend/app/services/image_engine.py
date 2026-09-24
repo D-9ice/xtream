@@ -13,7 +13,6 @@ from app.config import (
     XAI_BASE_URL,
     XAI_IMAGE_MODEL,
 )
-from app.services.provider_routing import resolve_image_provider
 from app.storage import project_key, storage_client
 from app.utils.logger import get_logger
 
@@ -111,13 +110,11 @@ def generate_image_for_scene(
     scene_id: int,
     prompt: str,
     style: str,
-    provider: str | None = None,
 ) -> dict:
     image_bytes, selected_provider = generate_image_bytes(
         prompt=prompt,
         style=style,
         scene_id=scene_id,
-        provider=provider,
     )
     key = project_key(project_id, f"images/scene_{scene_id}.png")
     storage_client.write_bytes(key, image_bytes, content_type="image/png")
@@ -134,16 +131,8 @@ def generate_image_bytes(
     prompt: str,
     style: str,
     scene_id: int = 1,
-    provider: str | None = None,
 ) -> tuple[bytes, str]:
-    selected_provider = (provider or resolve_image_provider()).strip().lower()
-    if selected_provider in {"xai", "grok"}:
-        image_bytes = _generate_xai_image(prompt, style, scene_id=scene_id)
-    else:
-        if not ALLOW_LOCAL_PLACEHOLDERS:
-            raise RuntimeError(f"Unsupported image provider in production: {selected_provider}")
-        image_bytes = _generate_local_placeholder(prompt, scene_id)
-    return image_bytes, selected_provider
+    return _generate_xai_image(prompt, style, scene_id=scene_id), "xai"
 
 
 
