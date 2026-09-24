@@ -119,13 +119,7 @@ FACTORY_MODE_ENABLED = os.getenv(
     os.getenv("NEXT_PUBLIC_FACTORY_MODE_ENABLED", "false"),
 ).lower() == "true"
 
-# Voice/TTS and provider routing are fixed to xAI/Grok.
-TTS_PROVIDER = "xai"
-SCRIPT_PROVIDER = "xai"
-IMAGE_PROVIDER = "xai"
-VOICE_PROVIDER_DEFAULT = "xai"
-VIDEO_PROVIDER_DEFAULT = "grok_imagine"
-
+# xAI / Grok is the authoritative production generation stack.
 # xAI / Grok
 XAI_API_KEY = _env_file_or_aws("XAI_API_KEY", "").strip()
 XAI_BASE_URL = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1").rstrip("/")
