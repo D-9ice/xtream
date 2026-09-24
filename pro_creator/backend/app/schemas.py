@@ -435,7 +435,7 @@ class OrchestrationRunnerStatus(BaseModel):
 
 class OrchestrationScheduleRequest(BaseModel):
     project_id: str
-    cadence_days: int = 1
+    cadence_days: int = Field(default=1, ge=1, le=3650)
 
 
 class OrchestrationScheduleItem(BaseModel):
