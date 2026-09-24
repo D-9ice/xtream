@@ -56,6 +56,9 @@ def _runner_disabled_detail() -> str:
 
 
 def _job_to_item(job: OrchestrationJob) -> OrchestrationQueueItem:
+    payload = _parse_payload(job)
+    raw_factory_items = payload.get("factory_items") if isinstance(payload, dict) else None
+    factory_items = [item for item in raw_factory_items if isinstance(item, dict)] if isinstance(raw_factory_items, list) else []
     return OrchestrationQueueItem(
         id=job.id or 0,
         project_id=job.project_id,
@@ -65,6 +68,7 @@ def _job_to_item(job: OrchestrationJob) -> OrchestrationQueueItem:
         max_attempts=job.max_attempts,
         last_error=job.last_error,
         task_id=job.task_id,
+        factory_items=factory_items,
         created_at=job.created_at,
         updated_at=job.updated_at,
     )
