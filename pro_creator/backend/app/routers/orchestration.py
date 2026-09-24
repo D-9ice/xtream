@@ -604,9 +604,40 @@ async def start_runner(
 
 
 @router.post("/queue/runner/stop", response_model=OrchestrationRunnerStatus)
-async def stop_runner() -> OrchestrationRunnerStatus:
+async def stop_runner(
+    session: Session = Depends(get_session),
+) -> OrchestrationRunnerStatus:
     if ENABLE_CELERY:
-        raise HTTPException(status_code=400, detail=_runner_disabled_detail())
+        tenant_id = current_tenant_id()
+        jobs = session.exec(
+            select(OrchestrationJob).where(
+                OrchestrationJob.tenant_id == tenant_id,
+                OrchestrationJob.kind == "factory_mode",
+                OrchestrationJob.status.in_(["queued", "running", "processing", "cancel_requested"]),
+            )
+        ).all()
+        cancelled = 0
+        for job in jobs:
+            payload = _parse_payload(job)
+            payload["cancel_requested"] = True
+            job.payload = json.dumps(payload)
+            if job.status in {"queued", "running"}:
+                job.status = "cancelled"
+            else:
+                job.status = "cancel_requested"
+            job.updated_at = utc_now_naive()
+            if job.task_id:
+                celery_app.control.revoke(job.task_id, terminate=False)
+            session.add(job)
+            cancelled += 1
+        session.commit()
+        return OrchestrationRunnerStatus(
+            enabled=True,
+            running=False,
+            interval_seconds=_runner_interval,
+            detail=f"Cancellation requested for {cancelled} Factory Mode job(s).",
+        )
+
     global _runner_task
     if _runner_task is not None:
         _runner_task.cancel()
