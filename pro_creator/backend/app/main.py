@@ -30,6 +30,7 @@ from app.seed import seed_admin_user
 from app.routers import auth, billing, community, editor, image, orchestration, project, script, social, video, voice, workflow, analytics
 from app.tenant import current_tenant_id, reset_current_tenant_id, set_current_tenant_id
 from app.services.rate_limit import rate_limit_hit
+from app.services.metrics import refresh_celery_queue_depth
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -177,6 +178,7 @@ def health() -> dict:
 
 @app.get("/metrics")
 def metrics() -> Response:
+    refresh_celery_queue_depth()
     response = Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
     for header_name, header_value in SECURITY_HEADERS.items():
         response.headers.setdefault(header_name, header_value)
