@@ -1949,6 +1949,9 @@ def execute_factory_mode_job(
 
         subscription = get_or_create_subscription(session, current_user)
         if not has_owner_mode_access(session, current_user) and subscription.credits_balance <= 0:
+            if not item.get("project_id"):
+                item["status"] = "pending"
+            item["stage"] = "waiting_for_credits"
             item["error"] = "Insufficient credits to continue Factory Mode."
             _persist_factory_progress(session=session, job=job, payload=payload, items=items)
             stopped_reason = "credits_exhausted"
@@ -2080,6 +2083,9 @@ def execute_factory_mode_job(
                 break
             except ValueError as exc:
                 if "Not enough credits" in str(exc):
+                    if not item.get("project_id"):
+                        item["status"] = "pending"
+                    item["stage"] = "waiting_for_credits"
                     item["error"] = str(exc)
                     _persist_factory_progress(session=session, job=job, payload=payload, items=items)
                     stopped_reason = "credits_exhausted"
@@ -2127,13 +2133,17 @@ def execute_factory_mode_job(
                 message=publish_message,
                 title=title,
             )
-            item["published_jobs"] = [publish_job.job_id for publish_job in published]
+            item["published_jobs"] = [
+                str(getattr(publish_job, "job_id", ""))
+                for publish_job in published
+                if str(getattr(publish_job, "job_id", "")).strip()
+            ]
             item["publish_statuses"] = [
                 {
-                    "job_id": publish_job.job_id,
-                    "platform": publish_job.platform,
-                    "status": publish_job.status,
-                    "error": publish_job.error_message,
+                    "job_id": str(getattr(publish_job, "job_id", "")),
+                    "platform": str(getattr(publish_job, "platform", "unknown")),
+                    "status": str(getattr(publish_job, "status", "complete")),
+                    "error": getattr(publish_job, "error_message", None),
                 }
                 for publish_job in published
             ]
