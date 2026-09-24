@@ -1265,6 +1265,8 @@ def export_preset(
         "instagram": (1080, 1350),
         "facebook": (1280, 720),
         "x": (1920, 1080),
+        # Internal scheduler alias; not exposed as a new UI preset.
+        "social-vertical": (1080, 1920),
     }
     if payload.preset not in presets:
         raise HTTPException(status_code=400, detail="Unsupported export preset.")
