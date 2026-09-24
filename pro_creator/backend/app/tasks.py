@@ -109,59 +109,6 @@ def factory_mode_task(job_id: int) -> dict:
             raise
 
 
-@celery_app.task(name="pro_creator.scheduled_full_pipeline")
-def scheduled_full_pipeline_task(job_id: int) -> dict:
-    with Session(engine) as session:
-        job = session.get(OrchestrationJob, job_id)
-        if not job:
-            raise ValueError(f"Scheduled orchestration job {job_id} not found")
-        project = session.exec(
-            select(Project).where(
-                Project.project_id == job.project_id,
-                Project.tenant_id == job.tenant_id,
-            )
-        ).first()
-        if not project:
-            job.status = "failed"
-            job.last_error = "Scheduled project no longer exists"
-            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            session.add(job)
-            session.commit()
-            raise ValueError(job.last_error)
-        try:
-            payload = json.loads(job.payload or "{}")
-        except json.JSONDecodeError:
-            payload = {}
-        job.status = "processing"
-        job.attempts += 1
-        job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        session.add(job)
-        session.commit()
-        try:
-            result = full_pipeline_task.run(
-                project.project_id,
-                project.topic or project.title,
-                max(1, int(project.target_duration_minutes or 3)),
-                "neutral",
-                str(payload.get("export_preset") or "social-vertical"),
-                None,
-                None,
-            )
-            job.status = "complete"
-            job.last_error = None
-            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            session.add(job)
-            session.commit()
-            return result
-        except Exception as exc:
-            job.status = "failed"
-            job.last_error = str(exc)
-            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            session.add(job)
-            session.commit()
-            raise
-
-
 @celery_app.task(name="pro_creator.run_due_schedules")
 def run_due_schedules_task() -> dict:
     """Persist and dispatch due scheduled jobs from one Celery Beat authority."""
@@ -210,15 +157,22 @@ def run_due_schedules_task() -> dict:
                 while next_run_at <= now:
                     next_run_at += cadence
 
+                if not schedule.user_id:
+                    schedule.enabled = False
+                    session.add(schedule)
+                    session.commit()
+                    continue
+
                 job = OrchestrationJob(
                     tenant_id=schedule.tenant_id,
                     project_id=schedule.project_id,
-                    kind="full",
+                    kind="workflow_production",
                     status="queued",
                     attempts=0,
                     max_attempts=3,
                     payload=json.dumps(
                         {
+                            "user_id": schedule.user_id,
                             "export_preset": "social-vertical",
                             "schedule_id": schedule.id,
                             "scheduled_for": scheduled_for.isoformat(),
@@ -233,7 +187,7 @@ def run_due_schedules_task() -> dict:
                 session.refresh(job)
 
                 try:
-                    result = scheduled_full_pipeline_task.delay(job.id or 0)
+                    result = workflow_production_task.delay(job.id or 0)
                 except Exception as exc:
                     job.status = "failed"
                     job.last_error = f"Scheduled task dispatch failed: {exc}"
@@ -283,139 +237,3 @@ def reconcile_orchestration_jobs_task() -> dict:
             session.add(job)
         session.commit()
     return {"completed": completed, "failed": failed}
-
-
-@celery_app.task(name="pro_creator.full_pipeline")
-def full_pipeline_task(
-    project_id: str,
-    topic: str,
-    duration_minutes: float,
-    tone: str,
-    export_preset_name: str = "youtube",
-    voice_text: str | None = None,
-    image_prompt: str | None = None,
-) -> dict:
-    script_result = generate_script(topic, duration_minutes, tone, genre=None)
-    project_path = ensure_project_dirs(project_id)
-    write_script(project_path, script_result["full_script"])
-    write_scene_metadata(project_path, script_result["scenes"])
-
-    scenes = read_scene_metadata(project_id)
-    if not scenes:
-        scenes = [{"id": 1, "text": voice_text or topic or "Narration"}]
-
-    def _extract_dialogue_lines(scene_text: str) -> list[tuple[str, str]]:
-        dialogue: list[tuple[str, str]] = []
-        for raw_line in (scene_text or "").splitlines():
-            line = raw_line.strip()
-            if not line or ":" not in line:
-                continue
-            if line.lower().startswith(("scene ", "intent:", "narration:", "visuals:")):
-                continue
-            speaker, text_line = line.split(":", 1)
-            speaker = speaker.strip()
-            text_line = text_line.strip()
-            if not speaker or not text_line:
-                continue
-            if len(speaker) > 24 or re.search(r"\s{2,}", speaker):
-                continue
-            dialogue.append((speaker, text_line))
-        return dialogue
-
-    def _render_dialogue_scene(scene_id: int, dialogue: list[tuple[str, str]]) -> str:
-        ffmpeg_path = shutil.which("ffmpeg")
-        if not ffmpeg_path:
-            return generate_voice_for_scene(project_id, scene_id, " ".join(t for _, t in dialogue))["audio_path"]
-        character_map = {
-            str(item.get("character_id", "")).strip(): item
-            for item in read_character_voice_profiles(project_id)
-            if isinstance(item, dict)
-        }
-        with tempfile.TemporaryDirectory(prefix="pro_creator_task_dialogue_") as temp_dir:
-            temp_path = Path(temp_dir)
-            parts: list[Path] = []
-            idx = 0
-            for speaker, text_line in dialogue:
-                mapped = character_map.get(speaker, {})
-                audio_bytes, ext, _content_type = generate_voice_bytes(
-                    project_id=project_id,
-                    text=text_line,
-                    voice_profile=mapped.get("voice_profile") or "default",
-                    override_voice_id=mapped.get("voice_id"),
-                )
-                seg_path = temp_path / f"seg_{idx}.{ext}"
-                seg_path.write_bytes(audio_bytes)
-                parts.append(seg_path)
-                idx += 1
-                pause_path = temp_path / f"pause_{idx}.wav"
-                subprocess.run(
-                    [
-                        ffmpeg_path,
-                        "-y",
-                        "-f",
-                        "lavfi",
-                        "-i",
-                        "anullsrc=r=22050:cl=mono",
-                        "-t",
-                        "0.20",
-                        str(pause_path),
-                    ],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                parts.append(pause_path)
-                idx += 1
-
-            concat_path = temp_path / "concat.txt"
-            concat_path.write_text("\n".join([f"file '{p}'" for p in parts]), encoding="utf-8")
-            out_path = temp_path / f"scene_{scene_id}.m4a"
-            subprocess.run(
-                [
-                    ffmpeg_path,
-                    "-y",
-                    "-f",
-                    "concat",
-                    "-safe",
-                    "0",
-                    "-i",
-                    str(concat_path),
-                    "-c:a",
-                    "aac",
-                    str(out_path),
-                ],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            key = f"{project_id}/audio/scene_{scene_id}.m4a"
-            storage_client.write_bytes(key, out_path.read_bytes(), content_type="audio/mp4")
-            return storage_client.public_url(key)
-
-    voice_outputs: list[dict] = []
-    image_outputs: list[dict] = []
-    for idx, scene in enumerate(scenes, start=1):
-        scene_id = int(scene.get("id", idx))
-        scene_text = str(scene.get("text", "")).strip()
-        voice_input = voice_text or scene_text or topic or "Narration"
-        image_input = image_prompt or scene_text or topic or "Visual concept"
-        dialogue = _extract_dialogue_lines(scene_text)
-        if len(dialogue) >= 2 and len({speaker.lower() for speaker, _ in dialogue}) >= 2:
-            voice_outputs.append(
-                {"audio_path": _render_dialogue_scene(scene_id, dialogue), "duration_seconds": max(2.0, len(dialogue))}
-            )
-        else:
-            voice_outputs.append(generate_voice_for_scene(project_id, scene_id, voice_input))
-        image_outputs.append(generate_image_for_scene(project_id, scene_id, image_input, "cinematic"))
-
-    video_output = render_video(project_id)
-    export_output = export_preset(
-        ExportPresetRequest(project_id=project_id, preset=export_preset_name)
-    )
-    return {
-        "script": script_result,
-        "voice": voice_outputs,
-        "image": image_outputs,
-        "video": video_output,
-        "export_path": export_output.export_path,
-    }
