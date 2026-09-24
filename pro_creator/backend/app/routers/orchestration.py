@@ -443,6 +443,9 @@ def _process_queue_internal(
         session.refresh(job)
         try:
             if ENABLE_CELERY:
+                session.refresh(job)
+                if job.status in {"cancelled", "cancel_requested"}:
+                    continue
                 job.task_id = _dispatch_job(job)
                 job.status = "processing"
             else:
