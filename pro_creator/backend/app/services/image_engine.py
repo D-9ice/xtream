@@ -1,12 +1,10 @@
 import base64
-import io
 from typing import Any
 import time
 
 import requests
 
 from app.config import (
-    ENVIRONMENT,
     PROVIDER_RETRY_ATTEMPTS,
     PROVIDER_RETRY_BACKOFF_SECONDS,
     XAI_API_KEY,
@@ -17,8 +15,6 @@ from app.storage import project_key, storage_client
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
-ALLOW_LOCAL_PLACEHOLDERS = ENVIRONMENT != "production"
-
 
 def _quality_image_prompt(prompt: str, style: str) -> str:
     base = (prompt or "").strip() or "cinematic scene"
@@ -55,9 +51,7 @@ def _extract_image_bytes(payload: dict[str, Any]) -> bytes | None:
 def _generate_xai_image(prompt: str, style: str, scene_id: int = 1) -> bytes:
     api_key = XAI_API_KEY.strip()
     if not api_key:
-        if ALLOW_LOCAL_PLACEHOLDERS:
-            return _generate_local_placeholder(prompt, scene_id)
-        raise RuntimeError("XAI_API_KEY is required for image generation in production")
+        raise RuntimeError("XAI_API_KEY is required for image generation")
 
     request_url = f"{XAI_BASE_URL}/images/generations"
     headers = {
@@ -84,25 +78,7 @@ def _generate_xai_image(prompt: str, style: str, scene_id: int = 1) -> bytes:
             last_error = str(exc)
         if attempt < attempts:
             time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
-    if ALLOW_LOCAL_PLACEHOLDERS:
-        logger.warning("xAI image generation failed, falling back to local placeholder: %s", last_error)
-        return _generate_local_placeholder(prompt, scene_id)
     raise RuntimeError(f"xAI image generation failed: {last_error}")
-
-
-def _generate_local_placeholder(prompt: str, scene_id: int) -> bytes:
-    from PIL import Image, ImageDraw
-
-    canvas = Image.new("RGB", (1024, 576), color=(18, 24, 38))
-    draw = ImageDraw.Draw(canvas)
-    draw.rectangle([(40, 40), (984, 536)], outline=(34, 211, 238), width=3)
-    title = f"Scene {scene_id}"
-    subtitle = prompt[:80]
-    draw.text((80, 80), title, fill=(226, 232, 240))
-    draw.text((80, 140), subtitle, fill=(148, 163, 184))
-    buffer = io.BytesIO()
-    canvas.save(buffer, format="PNG")
-    return buffer.getvalue()
 
 
 def generate_image_for_scene(
