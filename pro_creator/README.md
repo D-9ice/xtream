@@ -180,6 +180,8 @@ Report output is written to `artifacts/stress-report.json`.
 
 - Prometheus/Grafana/Alertmanager monitoring covers API health, Celery queue depth, Grok rendering, Factory Mode, social publishing, exports, and storage failures.
 - Production scheduling runs through Celery Beat with a distributed Redis lock.
+- Celery-backed orchestration jobs dispatch immediately when queued; retry and cancellation state is persisted.
+- Factory Mode persists per-title checkpoints so completed work is not recreated after a worker interruption.
 - Android remains a development-only companion scaffold.
 
 ## Execution roadmap
