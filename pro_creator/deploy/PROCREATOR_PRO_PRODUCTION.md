@@ -93,7 +93,7 @@ Do not mark production complete until all of the following pass:
 1. Frontend install, lint, tests and production build.
 2. Backend tests and production startup validation.
 3. Postgres migration to latest Alembic revision.
-4. Redis/Celery worker + Celery Beat connectivity and due-schedule dispatch.
+4. Redis/Celery worker + Celery Beat connectivity, immediate queue dispatch, cooperative cancellation, retry bounds, and due-schedule dispatch.
 5. S3-compatible read/write test.
 6. xAI provider smoke test.
 7. Browser smoke test through the Vercel production URL.
@@ -101,6 +101,7 @@ Do not mark production complete until all of the following pass:
 9. Script -> character -> production queue -> completed media end-to-end test.
 10. Payment callback test for each enabled payment provider.
 11. Prometheus/Grafana metrics verification for Grok, queue depth, Factory Mode, social publishing, exports, and storage.
+12. Factory Mode restart verification confirming completed title checkpoints are skipped and unfinished safe checkpoints resume without duplicate project creation or charging.
 
 ## Naming
 
