@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import math
 import hashlib
 import json
 from pathlib import Path
@@ -16,7 +15,6 @@ from app.config import (
     CREDITS_COST_IMAGE_GENERATE,
     CREDITS_COST_SCRIPT_GENERATE,
     CREDITS_COST_VIDEO_RENDER,
-    CREDITS_COST_VOICE_GENERATE,
     FACTORY_MODE_ENABLED,
     XAI_API_KEY,
     XAI_TEXT_MODEL,
@@ -44,11 +42,10 @@ from app.schemas import (
 )
 from app.services.credits import consume_credits, get_or_create_subscription, has_factory_mode_access, has_owner_mode_access
 from app.services.character_slots import ensure_character_slot_available
-from app.services.image_engine import generate_image_bytes, generate_image_for_scene
+from app.services.image_engine import generate_image_bytes
 from app.services.script_engine import generate_script
 from app.services.social_publish import publish_to_all_connections
 from app.services.video_engine import render_video
-from app.services.voice_engine import generate_voice_for_scene
 from app.storage import project_key, storage_client
 from app.tenant import current_tenant_id
 from app.utils.file_manager import (
@@ -1360,16 +1357,6 @@ def _perform_production(
     _persist_project_script(session=session, project=project, script_text=approved_script, scenes=scenes)
     _write_production_bundle_artifact(project.project_id, bundle)
     _write_character_dna_artifacts(project.project_id, bundle)
-    grok_mode = bool(XAI_API_KEY.strip())
-    scene_rows = {
-        int(scene.id or 0): scene
-        for scene in session.exec(
-            select(Scene).where(
-                Scene.project_id == project.project_id,
-                Scene.tenant_id == project.tenant_id,
-            )
-        ).all()
-    }
     scene_plan: list[dict[str, Any]] = []
     for scene in scenes:
         scene_id = int(scene.get("id", 1))
@@ -1383,30 +1370,6 @@ def _perform_production(
                 "voice_profile": scene_context["voice_profile"],
             }
         )
-        if grok_mode:
-            continue
-        if not _image_exists(project.project_id, scene_id):
-            image_result = generate_image_for_scene(
-                project.project_id,
-                scene_id,
-                scene_context["prompt"],
-                "cinematic",
-            )
-            scene_row = scene_rows.get(scene_id)
-            if scene_row:
-                scene_row.image_path = image_result.get("image_path")
-                session.add(scene_row)
-        if not _audio_exists(project.project_id, scene_id):
-            voice_result = generate_voice_for_scene(
-                project.project_id,
-                scene_id,
-                scene_text,
-                voice_profile=scene_context["voice_profile"],
-            )
-            scene_row = scene_rows.get(scene_id)
-            if scene_row:
-                scene_row.audio_path = voice_result.get("audio_path")
-                session.add(scene_row)
     _write_scene_identity_plan(project.project_id, scene_plan)
     video_result = render_video(project.project_id)
     project.final_video_url = video_result["video_path"]
@@ -1419,8 +1382,8 @@ def _perform_production(
         reason="workflow video production",
         action="workflow.production.start",
         reference_id=project.project_id,
-        provider="xai" if grok_mode else "video",
-        model=XAI_VIDEO_MODEL if grok_mode else "ffmpeg",
+        provider="xai",
+        model=XAI_VIDEO_MODEL,
     )
     session.commit()
     session.refresh(project)
@@ -1555,20 +1518,13 @@ def _auto_create_custom_character_specs(custom_characters: list[dict[str, Any]])
     return specs
 
 
-def _auto_create_scene_count(duration_minutes: int) -> int:
-    clean_duration = max(1, int(duration_minutes or 1))
-    return max(6, min(10, int(math.ceil(clean_duration / 5.0))))
-
-
 def _auto_create_estimated_credits(duration_minutes: int, *, character_count: int = 2) -> int:
-    scene_count = _auto_create_scene_count(duration_minutes)
+    # Grok Imagine is the authoritative audiovisual renderer. It generates
+    # synchronized video + audio together, so Auto-Create must not reserve
+    # obsolete per-scene image/voice costs that are never executed.
+    _ = duration_minutes
     character_generation_cost = max(0, int(character_count)) * CREDITS_COST_IMAGE_GENERATE
-    return (
-        CREDITS_COST_SCRIPT_GENERATE
-        + character_generation_cost
-        + CREDITS_COST_VIDEO_RENDER
-        + (scene_count * (CREDITS_COST_IMAGE_GENERATE + CREDITS_COST_VOICE_GENERATE))
-    )
+    return CREDITS_COST_SCRIPT_GENERATE + character_generation_cost + CREDITS_COST_VIDEO_RENDER
 
 
 def _max_affordable_auto_create_duration(credits_balance: int, *, character_count: int = 2) -> int:
