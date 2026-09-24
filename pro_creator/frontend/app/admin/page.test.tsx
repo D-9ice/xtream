@@ -62,17 +62,6 @@ const adminState = vi.hoisted(() => ({
         checkout_enabled: true,
       },
       {
-        id: "factory_one_time",
-        name: "Factory Mode One-Time",
-        kind: "factory_access",
-        credits: 0,
-        price_usd: 149,
-        base_character_slots: 0,
-        stripe_price_id: "price_factory_one_time",
-        checkout_enabled: true,
-        access_mode: "one_time",
-      },
-      {
         id: "factory_subscription",
         name: "Factory Mode Subscription",
         kind: "factory_access",
@@ -214,13 +203,6 @@ vi.mock("../../lib/api", () => ({
           stripe_price_id: payload.pro_stripe_price_id ?? null,
         };
       }
-      if (plan.id === "factory_one_time") {
-        return {
-          ...plan,
-          price_usd: payload.factory_one_time_price_usd,
-          stripe_price_id: payload.factory_one_time_stripe_price_id ?? null,
-        };
-      }
       if (plan.id === "factory_subscription") {
         return {
           ...plan,
@@ -357,12 +339,6 @@ describe("Admin pricing dashboard", () => {
     fireEvent.change(within(proCard as HTMLElement).getByDisplayValue("10"), {
       target: { value: "12" },
     });
-    fireEvent.change(screen.getByDisplayValue("149"), {
-      target: { value: "159" },
-    });
-    fireEvent.change(screen.getByDisplayValue("price_factory_one_time"), {
-      target: { value: "price_factory_one_time_new" },
-    });
     fireEvent.change(screen.getByDisplayValue("39"), {
       target: { value: "45" },
     });
@@ -389,8 +365,6 @@ describe("Admin pricing dashboard", () => {
           pro_credits: 2500,
           pro_price_usd: 59,
           pro_base_character_slots: 12,
-          factory_one_time_price_usd: 159,
-          factory_one_time_stripe_price_id: "price_factory_one_time_new",
           factory_subscription_price_usd: 45,
           factory_subscription_stripe_price_id: "price_factory_subscription_new",
           receipts_live_mode: true,
