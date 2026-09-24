@@ -58,6 +58,7 @@ from app.schemas import (
 )
 from app.services.video_engine import render_video
 from app.services.lipsync_engine import fallback_segments, generate_lipsync
+from app.services.metrics import VIDEO_EXPORT_TOTAL
 from app.utils.file_manager import read_json_artifact, read_scene_metadata, write_json_artifact
 from app.utils.logger import get_logger
 
@@ -1112,11 +1113,19 @@ def multitrack(project_id: str) -> FeatureStubResponse:
                 "-i", str(narration),
                 "-stream_loop", "-1", "-i", str(music),
                 "-filter_complex",
-                "[1:a]volume=0.12[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[a]",
+                "[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice];"
+                "[1:a]volume=0.35[bg];"
+                "[bg][voice]sidechaincompress=threshold=0.04:ratio=8:attack=20:release=250[ducked];"
+                "[voice][ducked]amix=inputs=2:duration=first:dropout_transition=2,"
+                "loudnorm=I=-16:TP=-1.5:LRA=11[a]",
                 "-map", "[a]", "-c:a", "aac", "-b:a", "192k", str(output),
             ])
         else:
-            shutil.copyfile(narration, output)
+            _run_ffmpeg([
+                "-i", str(narration),
+                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+                "-c:a", "aac", "-b:a", "192k", str(output),
+            ])
 
         output_key = project_key(project_id, "audio/multitrack_mix.m4a")
         storage_client.write_file(output_key, output, content_type="audio/mp4")
@@ -1253,11 +1262,10 @@ def get_captions(project_id: str) -> dict:
     return {"captions": storage_client.read_text(key)}
 
 
-@router.post("/export", response_model=ExportPresetResponse)
-def export_preset(
+def _export_preset_impl(
     payload: ExportPresetRequest,
-    session: Session | None = Depends(get_session),
-    current_user: User | None = Depends(get_current_user),
+    session: Session | None = None,
+    current_user: User | None = None,
 ) -> ExportPresetResponse:
     presets = {
         "youtube": (1920, 1080),
@@ -1336,6 +1344,21 @@ def export_preset(
         )
 
     return ExportPresetResponse(export_path=storage_client.public_url(export_key))
+
+@router.post("/export", response_model=ExportPresetResponse)
+def export_preset(
+    payload: ExportPresetRequest,
+    session: Session | None = Depends(get_session),
+    current_user: User | None = Depends(get_current_user),
+) -> ExportPresetResponse:
+    try:
+        result = _export_preset_impl(payload, session=session, current_user=current_user)
+    except Exception:
+        VIDEO_EXPORT_TOTAL.labels(preset=payload.preset, status="failed").inc()
+        raise
+    VIDEO_EXPORT_TOTAL.labels(preset=payload.preset, status="complete").inc()
+    return result
+
 
 @router.post("/export/batch", response_model=ExportBatchResponse)
 def export_batch(
@@ -1591,11 +1614,39 @@ def templates(project_id: str) -> FeatureStubResponse:
         selected = "cinematic"
 
     template_catalog = [
-        {"id": "cinematic", "aspect_ratio": "16:9", "transition": "crossfade"},
-        {"id": "tutorial", "aspect_ratio": "16:9", "transition": "cut"},
-        {"id": "promo", "aspect_ratio": "9:16", "transition": "zoom"},
-        {"id": "talking-head", "aspect_ratio": "1:1", "transition": "slide"},
+        {"id": "cinematic", "aspect_ratio": "16:9", "width": 1920, "height": 1080},
+        {"id": "tutorial", "aspect_ratio": "16:9", "width": 1920, "height": 1080},
+        {"id": "promo", "aspect_ratio": "9:16", "width": 1080, "height": 1920},
+        {"id": "talking-head", "aspect_ratio": "1:1", "width": 1080, "height": 1080},
     ]
+    selected_template = next(item for item in template_catalog if item["id"] == selected)
+    width = int(selected_template["width"])
+    height = int(selected_template["height"])
+
+    with tempfile.TemporaryDirectory(prefix="pro_creator_template_") as temp_dir:
+        temp_path = Path(temp_dir)
+        _, source_path, _ = _materialize_video(project_id, temp_path)
+        output = temp_path / f"{selected}.mp4"
+        _run_ffmpeg([
+            "-i", str(source_path),
+            "-vf",
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},setsar=1",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(output),
+        ])
+        meta = _probe_media(output)
+        if meta["width"] != width or meta["height"] != height or meta["duration"] <= 0:
+            raise HTTPException(status_code=500, detail="Template media validation failed.")
+        output_key = project_key(project_id, f"video/templates/{selected}.mp4")
+        storage_client.write_file(output_key, output, content_type="video/mp4")
+
     artifact_path = PROJECTS_DIR / project_id / "video" / "template_plan.json"
     write_json_artifact(
         artifact_path,
@@ -1603,11 +1654,15 @@ def templates(project_id: str) -> FeatureStubResponse:
             "project_id": project_id,
             "selected_template": selected,
             "available_templates": template_catalog,
+            "output_path": storage_client.public_url(output_key),
+            "validated": True,
+            "width": width,
+            "height": height,
         },
     )
     return FeatureStubResponse(
         status="complete",
-        detail=f"Template selection saved to {artifact_path}",
+        detail=f"Template media created at {storage_client.public_url(output_key)}",
     )
 
 
@@ -1639,6 +1694,6 @@ def export_presets(project_id: str) -> FeatureStubResponse:
         },
     )
     return FeatureStubResponse(
-        status="complete",
-        detail=f"Export presets saved to {artifact_path}",
+        status="ready",
+        detail=f"Export preset catalog saved to {artifact_path}; use /video/export to render a preset.",
     )
