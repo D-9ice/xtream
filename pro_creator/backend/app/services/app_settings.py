@@ -3,8 +3,6 @@ from __future__ import annotations
 from sqlmodel import Session, select
 
 from app.config import (
-    FACTORY_MODE_ONE_TIME_PRICE_USD,
-    FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID,
     FACTORY_MODE_SUBSCRIPTION_PERIOD_DAYS,
     FACTORY_MODE_SUBSCRIPTION_PRICE_USD,
     FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID,
@@ -21,7 +19,6 @@ PLAN_LABELS = {
     "studio": "Studio",
 }
 FACTORY_PLAN_LABELS = {
-    "factory_one_time": "Factory Mode Extended Access",
     "factory_subscription": "Factory Mode Subscription",
 }
 
@@ -45,8 +42,6 @@ def get_or_create_settings(session: Session) -> AppSettings:
     settings = AppSettings(
         id=1,
         auth_required=False,
-        factory_one_time_price_usd=FACTORY_MODE_ONE_TIME_PRICE_USD,
-        factory_one_time_stripe_price_id=FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID or None,
         factory_subscription_price_usd=FACTORY_MODE_SUBSCRIPTION_PRICE_USD,
         factory_subscription_stripe_price_id=FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID or None,
         owner_mode_enabled=False,
@@ -112,19 +107,6 @@ def get_plan_settings_payload(settings: AppSettings) -> list[dict[str, object]]:
             "checkout_providers": checkout_providers(settings.plan_studio_stripe_price_id),
         },
         {
-            "id": "factory_one_time",
-            "name": FACTORY_PLAN_LABELS["factory_one_time"],
-            "kind": "factory_access",
-            "access_mode": "one_time",
-            "access_days": None,
-            "description": "Extended autonomous production access using the configured Factory Mode credit allocation.",
-            "credits": settings.factory_one_time_credits,
-            "price_usd": settings.factory_one_time_price_usd,
-            "stripe_price_id": settings.factory_one_time_stripe_price_id,
-            "base_character_slots": 0,
-            "checkout_providers": checkout_providers(settings.factory_one_time_stripe_price_id),
-        },
-        {
             "id": "factory_subscription",
             "name": FACTORY_PLAN_LABELS["factory_subscription"],
             "kind": "factory_access",
@@ -163,9 +145,6 @@ def update_billing_settings(
     studio_price_usd: int,
     studio_base_character_slots: int,
     studio_stripe_price_id: str | None,
-    factory_one_time_credits: int,
-    factory_one_time_price_usd: int,
-    factory_one_time_stripe_price_id: str | None,
     factory_subscription_credits: int,
     factory_subscription_price_usd: int,
     factory_subscription_stripe_price_id: str | None,
@@ -210,18 +189,6 @@ def update_billing_settings(
         minimum=1,
     )
     settings.plan_studio_stripe_price_id = _clean_optional_text(studio_stripe_price_id)
-
-    settings.factory_one_time_credits = _clean_non_negative_int(
-        factory_one_time_credits,
-        field_name="factory extended access credits",
-        minimum=0,
-    )
-    settings.factory_one_time_price_usd = _clean_non_negative_int(
-        factory_one_time_price_usd,
-        field_name="factory extended access price",
-        minimum=0,
-    )
-    settings.factory_one_time_stripe_price_id = _clean_optional_text(factory_one_time_stripe_price_id)
 
     settings.factory_subscription_credits = _clean_non_negative_int(
         factory_subscription_credits,
