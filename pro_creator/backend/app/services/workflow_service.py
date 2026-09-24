@@ -1789,6 +1789,111 @@ def _clean_factory_mode_titles(raw_titles: Any) -> list[str]:
     return unique_titles[:25]
 
 
+_FACTORY_ITEM_STATUSES = {
+    "pending",
+    "processing",
+    "video_complete",
+    "publishing",
+    "complete",
+    "failed",
+    "cancelled",
+}
+
+
+def _factory_progress_items(payload: dict[str, Any], titles: list[str]) -> list[dict[str, Any]]:
+    raw_items = payload.get("factory_items")
+    existing_by_index: dict[int, dict[str, Any]] = {}
+    if isinstance(raw_items, list):
+        for raw in raw_items:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                index = int(raw.get("index") or 0)
+            except (TypeError, ValueError):
+                continue
+            if index > 0:
+                existing_by_index[index] = raw
+
+    items: list[dict[str, Any]] = []
+    for index, title in enumerate(titles, start=1):
+        existing = existing_by_index.get(index, {})
+        if str(existing.get("title") or "").strip().lower() not in {"", title.lower()}:
+            existing = {}
+        status = str(existing.get("status") or "pending").strip().lower()
+        if status not in _FACTORY_ITEM_STATUSES:
+            status = "pending"
+        try:
+            attempts = max(0, int(existing.get("attempts") or 0))
+        except (TypeError, ValueError):
+            attempts = 0
+        character_ids = existing.get("character_ids")
+        published_jobs = existing.get("published_jobs")
+        publish_statuses = existing.get("publish_statuses")
+        items.append(
+            {
+                "index": index,
+                "title": title,
+                "status": status,
+                "stage": str(existing.get("stage") or "pending"),
+                "attempts": attempts,
+                "project_id": str(existing.get("project_id") or "").strip() or None,
+                "video_path": str(existing.get("video_path") or "").strip() or None,
+                "character_ids": [str(value) for value in character_ids] if isinstance(character_ids, list) else [],
+                "published_jobs": [str(value) for value in published_jobs] if isinstance(published_jobs, list) else [],
+                "publish_statuses": [value for value in publish_statuses if isinstance(value, dict)]
+                if isinstance(publish_statuses, list)
+                else [],
+                "publish_error": str(existing.get("publish_error") or "").strip() or None,
+                "error": str(existing.get("error") or "").strip() or None,
+            }
+        )
+    return items
+
+
+def _persist_factory_progress(
+    *,
+    session: Session,
+    job: OrchestrationJob,
+    payload: dict[str, Any],
+    items: list[dict[str, Any]],
+) -> None:
+    # Merge against the freshest row so an external cancellation request cannot
+    # be overwritten by a progress checkpoint from the worker.
+    session.expire(job)
+    session.refresh(job)
+    current = _loads_json(job.payload) if job.payload else {}
+    merged = dict(current) if isinstance(current, dict) else {}
+    for key, value in payload.items():
+        if key not in {"factory_items", "cancel_requested"}:
+            merged[key] = value
+    if bool(payload.get("cancel_requested")) or bool(merged.get("cancel_requested")):
+        merged["cancel_requested"] = True
+    merged["factory_items"] = items
+    payload.clear()
+    payload.update(merged)
+    job.payload = _dumps_json(merged)
+    job.updated_at = utc_now()
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+
+def _factory_item_result(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "index": item.get("index"),
+        "title": item.get("title"),
+        "status": item.get("status"),
+        "stage": item.get("stage"),
+        "attempts": item.get("attempts"),
+        "project_id": item.get("project_id"),
+        "video_path": item.get("video_path"),
+        "published_jobs": item.get("published_jobs", []),
+        "publish_statuses": item.get("publish_statuses", []),
+        "publish_error": item.get("publish_error"),
+        "error": item.get("error"),
+    }
+
+
 def execute_factory_mode_job(
     *,
     session: Session,
@@ -1820,97 +1925,257 @@ def execute_factory_mode_job(
     publish_message = str(payload.get("publish_message") or "").strip() or None
     duration_minutes = max(1, min(120, int(payload.get("duration_minutes") or 10)))
 
-    processed: list[dict[str, Any]] = []
+    items = _factory_progress_items(payload, titles)
+    _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+
     stopped_reason: str | None = None
-    for index, title in enumerate(titles, start=1):
+    for item in items:
+        index = int(item["index"])
+        title = str(item["title"])
+
+        if item["status"] == "complete":
+            continue
+
+        session.expire(job)
         session.refresh(job)
         if _factory_cancel_requested(job):
+            if item["status"] not in {"complete", "failed"}:
+                item["status"] = "cancelled"
+                item["stage"] = "cancelled"
+            _persist_factory_progress(session=session, job=job, payload=payload, items=items)
             _mark_factory_cancelled(session, job)
             stopped_reason = "cancelled"
             break
 
         subscription = get_or_create_subscription(session, current_user)
         if not has_owner_mode_access(session, current_user) and subscription.credits_balance <= 0:
+            item["error"] = "Insufficient credits to continue Factory Mode."
+            _persist_factory_progress(session=session, job=job, payload=payload, items=items)
             stopped_reason = "credits_exhausted"
             break
+
         def factory_cancel_check() -> bool:
             session.expire(job)
             session.refresh(job)
             return _factory_cancel_requested(job)
 
-        try:
-            auto_result = auto_create_project(
-                session=session,
-                current_user=current_user,
-                title=title,
-                duration_minutes=duration_minutes,
-                genre=genre,
-                short_description=short_description,
-                custom_characters=[],
-                start_credits=start_credits,
-                end_credits=end_credits,
-                allow_factory_mode_genre=True,
-                cancel_check=factory_cancel_check,
-            )
-        except RenderCancelled:
-            session.expire(job)
-            session.refresh(job)
-            _mark_factory_cancelled(session, job)
-            stopped_reason = "cancelled"
-            break
-        except ValueError as exc:
-            if "Not enough credits" in str(exc):
-                stopped_reason = "credits_exhausted"
-                break
-            raise
+        def factory_progress_callback(stage: str, details: dict[str, Any]) -> None:
+            item["stage"] = stage
+            project_id = str(details.get("project_id") or "").strip()
+            if project_id:
+                item["project_id"] = project_id
+            video_path = str(details.get("video_path") or "").strip()
+            if video_path:
+                item["video_path"] = video_path
+            character_ids = details.get("character_ids")
+            if isinstance(character_ids, list):
+                item["character_ids"] = [str(value) for value in character_ids]
+            _persist_factory_progress(session=session, job=job, payload=payload, items=items)
 
+        auto_result = None
+        existing_project = None
+        if item.get("project_id"):
+            existing_project = session.exec(
+                select(Project).where(
+                    Project.tenant_id == job.tenant_id,
+                    Project.project_id == str(item["project_id"]),
+                )
+            ).first()
+
+        if existing_project and existing_project.final_video_url and existing_project.workflow_state == "video_completed":
+            item["video_path"] = existing_project.final_video_url
+            item["status"] = "video_complete"
+            item["stage"] = "video_complete"
+            item["error"] = None
+            _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+        elif existing_project and existing_project.workflow_state in {
+            "production_ready",
+            "production_queued",
+            "production_failed",
+        }:
+            item["status"] = "processing"
+            item["stage"] = "production_resuming"
+            item["attempts"] = int(item.get("attempts") or 0) + 1
+            item["error"] = None
+            _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+            try:
+                if existing_project.workflow_state == "production_ready":
+                    start_production(
+                        session=session,
+                        project=existing_project,
+                        current_user=current_user,
+                    )
+                production_job = _get_project_production_job(session, existing_project)
+                if not production_job:
+                    raise ValueError("Production job not found for Factory Mode recovery")
+                video_path = execute_workflow_production_job(
+                    session=session,
+                    job=production_job,
+                    cancel_check=factory_cancel_check,
+                )
+                item["video_path"] = video_path
+                item["status"] = "video_complete"
+                item["stage"] = "video_complete"
+                _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+            except RenderCancelled:
+                item["status"] = "cancelled"
+                item["stage"] = "cancelled"
+                _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+                _mark_factory_cancelled(session, job)
+                stopped_reason = "cancelled"
+                break
+            except Exception as exc:
+                item["status"] = "failed"
+                item["stage"] = "production_resume_failed"
+                item["error"] = str(exc)
+                _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+                continue
+        elif existing_project and item["status"] in {"processing", "failed"}:
+            # The worker was interrupted before a safe automatic-resume boundary.
+            # Preserve the partial project instead of creating a duplicate and
+            # potentially charging the same title twice.
+            item["status"] = "failed"
+            item["stage"] = "manual_recovery_required"
+            item["error"] = (
+                f"Factory Mode was interrupted while project {existing_project.project_id} "
+                f"was in state {existing_project.workflow_state}; the existing project was retained."
+            )
+            _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+            continue
+        elif item["status"] != "video_complete":
+            item["status"] = "processing"
+            item["stage"] = "starting"
+            item["attempts"] = int(item.get("attempts") or 0) + 1
+            item["error"] = None
+            item["publish_error"] = None
+            _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+            try:
+                auto_result = auto_create_project(
+                    session=session,
+                    current_user=current_user,
+                    title=title,
+                    duration_minutes=duration_minutes,
+                    genre=genre,
+                    short_description=short_description,
+                    custom_characters=[],
+                    start_credits=start_credits,
+                    end_credits=end_credits,
+                    allow_factory_mode_genre=True,
+                    cancel_check=factory_cancel_check,
+                    progress_callback=factory_progress_callback,
+                )
+                item["project_id"] = auto_result.project.project_id
+                item["video_path"] = auto_result.video_path
+                item["status"] = "video_complete"
+                item["stage"] = "video_complete"
+                _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+            except RenderCancelled:
+                item["status"] = "cancelled"
+                item["stage"] = "cancelled"
+                _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+                session.expire(job)
+                session.refresh(job)
+                _mark_factory_cancelled(session, job)
+                stopped_reason = "cancelled"
+                break
+            except ValueError as exc:
+                if "Not enough credits" in str(exc):
+                    item["error"] = str(exc)
+                    _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+                    stopped_reason = "credits_exhausted"
+                    break
+                item["status"] = "failed"
+                item["stage"] = "auto_create_failed"
+                item["error"] = str(exc)
+                _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+                continue
+            except Exception as exc:
+                item["status"] = "failed"
+                item["stage"] = "auto_create_failed"
+                item["error"] = str(exc)
+                _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+                continue
+
+        session.expire(job)
         session.refresh(job)
         if _factory_cancel_requested(job):
-            processed.append(
-                {
-                    "index": index,
-                    "title": title,
-                    "project_id": auto_result.project.project_id,
-                    "video_path": auto_result.video_path,
-                    "published_jobs": [],
-                    "publish_error": "Factory Mode cancelled before publishing.",
-                }
-            )
+            item["status"] = "cancelled"
+            item["stage"] = "cancelled_before_publish"
+            item["publish_error"] = "Factory Mode cancelled before publishing."
+            _persist_factory_progress(session=session, job=job, payload=payload, items=items)
             _mark_factory_cancelled(session, job)
             stopped_reason = "cancelled"
             break
 
-        published_jobs: list[str] = []
-        publish_error: str | None = None
+        project_id = str(item.get("project_id") or "").strip()
+        if not project_id:
+            item["status"] = "failed"
+            item["stage"] = "publish_blocked"
+            item["error"] = "Factory Mode completed video generation without a persisted project id."
+            _persist_factory_progress(session=session, job=job, payload=payload, items=items)
+            continue
+
+        item["status"] = "publishing"
+        item["stage"] = "publishing"
+        item["publish_error"] = None
+        _persist_factory_progress(session=session, job=job, payload=payload, items=items)
         try:
             published = publish_to_all_connections(
                 session=session,
                 current_user=current_user,
-                project_id=auto_result.project.project_id,
+                project_id=project_id,
                 message=publish_message,
                 title=title,
             )
-            published_jobs = [job.job_id for job in published]
+            item["published_jobs"] = [publish_job.job_id for publish_job in published]
+            item["publish_statuses"] = [
+                {
+                    "job_id": publish_job.job_id,
+                    "platform": publish_job.platform,
+                    "status": publish_job.status,
+                    "error": publish_job.error_message,
+                }
+                for publish_job in published
+            ]
+            incomplete = [
+                value for value in item["publish_statuses"]
+                if value.get("status") != "complete"
+            ]
+            if incomplete:
+                item["status"] = "failed"
+                item["stage"] = "publish_incomplete"
+                item["publish_error"] = "One or more social publishing jobs did not complete."
+            else:
+                item["status"] = "complete"
+                item["stage"] = "complete"
+                item["error"] = None
         except HTTPException as exc:
             if "No connected social accounts found" in str(exc.detail):
-                publish_error = str(exc.detail)
+                item["publish_error"] = str(exc.detail)
+                item["status"] = "complete"
+                item["stage"] = "complete_without_social_accounts"
+                item["error"] = None
             else:
-                raise
+                item["status"] = "failed"
+                item["stage"] = "publish_failed"
+                item["publish_error"] = str(exc.detail)
+                item["error"] = str(exc.detail)
+        except Exception as exc:
+            item["status"] = "failed"
+            item["stage"] = "publish_failed"
+            item["publish_error"] = str(exc)
+            item["error"] = str(exc)
+        _persist_factory_progress(session=session, job=job, payload=payload, items=items)
 
-        processed.append(
-            {
-                "index": index,
-                "title": title,
-                "project_id": auto_result.project.project_id,
-                "video_path": auto_result.video_path,
-                "published_jobs": published_jobs,
-                "publish_error": publish_error,
-            }
-        )
-
+    completed_items = [item for item in items if item["status"] == "complete"]
+    failed_items = [item for item in items if item["status"] == "failed"]
+    pending_items = [item for item in items if item["status"] in {"pending", "processing", "video_complete", "publishing"}]
     return {
-        "processed_titles": len(processed),
-        "titles": processed,
+        "processed_titles": len(completed_items) + len(failed_items),
+        "completed_titles": len(completed_items),
+        "failed_titles": len(failed_items),
+        "pending_titles": len(pending_items),
+        "titles": [_factory_item_result(item) for item in items],
         "stopped_reason": stopped_reason,
     }
 
