@@ -305,7 +305,7 @@ NEXT ENGINEERING STEPS
 ====================================================================
 
 Step 1: Integrate Ollama into script_engine.py  
-Step 2: Integrate Coqui XTTS into voice_engine.py  
+Step 2: Integrate the supported xAI voice path into voice_engine.py  
 Step 3: Implement FFmpeg stitching in video_engine.py  
 Step 4: Build React or Electron UI  
 Step 5: Build Android companion app
