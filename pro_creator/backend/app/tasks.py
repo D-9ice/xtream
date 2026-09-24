@@ -1,8 +1,11 @@
-from sqlmodel import Session
+from datetime import datetime, timedelta, timezone
+import json
+
+from sqlmodel import Session, select
 
 from app.celery_app import celery_app
 from app.database import engine
-from app.models import OrchestrationJob
+from app.models import OrchestrationJob, OrchestrationSchedule
 from app.services.script_engine import generate_script
 from app.services.lipsync_engine import generate_lipsync
 from app.services.voice_engine import generate_voice_bytes, generate_voice_for_scene
@@ -80,8 +83,79 @@ def factory_mode_task(job_id: int) -> dict:
         job = session.get(OrchestrationJob, job_id)
         if not job:
             raise ValueError(f"Factory mode job {job_id} not found")
-        result = execute_factory_mode_job(session=session, job=job)
-        return result
+        if job.status == "cancelled":
+            return {"processed_titles": 0, "titles": [], "stopped_reason": "cancelled"}
+        try:
+            result = execute_factory_mode_job(session=session, job=job)
+            session.refresh(job)
+            if job.status != "cancelled":
+                job.status = "complete"
+                job.last_error = None
+                job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                session.add(job)
+                session.commit()
+            return result
+        except Exception as exc:
+            session.refresh(job)
+            if job.status not in {"cancelled", "cancel_requested"}:
+                job.status = "failed"
+                job.last_error = str(exc)
+                job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                session.add(job)
+                session.commit()
+            raise
+
+
+@celery_app.task(name="pro_creator.run_due_schedules")
+def run_due_schedules_task() -> dict:
+    """Persist and dispatch due scheduled full-pipeline jobs.
+
+    A single Celery Beat instance is the scheduler authority. Schedule timestamps
+    are advanced before dispatch so a worker retry cannot duplicate the same run.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    queued_ids: list[int] = []
+    with Session(engine) as session:
+        schedules = session.exec(
+            select(OrchestrationSchedule).where(
+                OrchestrationSchedule.enabled == True,  # noqa: E712
+                OrchestrationSchedule.next_run_at <= now,
+            )
+        ).all()
+        for schedule in schedules:
+            job = OrchestrationJob(
+                tenant_id=schedule.tenant_id,
+                project_id=schedule.project_id,
+                kind="full",
+                status="queued",
+                attempts=0,
+                max_attempts=3,
+                payload=json.dumps({"export_preset": "social-vertical"}),
+            )
+            schedule.last_run_at = now
+            schedule.next_run_at = now + timedelta(days=max(1, schedule.cadence_days))
+            session.add(job)
+            session.add(schedule)
+            session.commit()
+            session.refresh(job)
+
+            result = full_pipeline_task.delay(
+                job.project_id,
+                "",
+                3,
+                "neutral",
+                "social-vertical",
+                None,
+                None,
+            )
+            job.task_id = result.id
+            job.status = "processing"
+            job.attempts = 1
+            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.add(job)
+            session.commit()
+            queued_ids.append(job.id or 0)
+    return {"queued_job_ids": queued_ids, "count": len(queued_ids)}
 
 
 @celery_app.task(name="pro_creator.full_pipeline")
