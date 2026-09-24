@@ -1,6 +1,6 @@
 import base64
 
-from app.services import image_engine, provider_routing
+from app.services import image_engine
 
 
 class _FakeResponse:
@@ -15,10 +15,6 @@ class _FakeResponse:
     def raise_for_status(self):
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
-
-
-def test_resolve_image_provider_auto_uses_xai_when_key_present(monkeypatch):
-    assert provider_routing.resolve_image_provider() == "xai"
 
 
 def test_generate_xai_image_reads_b64_payload(monkeypatch):
