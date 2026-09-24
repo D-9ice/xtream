@@ -11,6 +11,7 @@ from typing import Any, Iterable
 from urllib.parse import parse_qsl, quote, urlparse
 
 import requests
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
@@ -56,7 +57,8 @@ def _clean_metadata(metadata: dict[str, str] | None) -> dict[str, str]:
     return cleaned
 
 
-def _derive_stream(secret: str, salt: str, length: int) -> bytes:
+def _derive_legacy_stream(secret: str, salt: str, length: int) -> bytes:
+    """Compatibility only: decrypt pre-hardening token rows."""
     seed = hashlib.sha256(f"{secret}::{salt}".encode("utf-8")).digest()
     out = bytearray()
     counter = 0
@@ -67,28 +69,41 @@ def _derive_stream(secret: str, salt: str, length: int) -> bytes:
     return bytes(out[:length])
 
 
+def _social_fernet() -> Fernet:
+    # Preserve the existing JWT-secret dependency so deployed connections survive
+    # without introducing an unsynchronised second secret during this migration.
+    digest = hashlib.sha256(f"procreator-social-v2::{JWT_SECRET}".encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
 def _encrypt_secret(value: str | None) -> str | None:
     clean = _clean_optional_text(value)
     if clean is None:
         return None
-    salt = hashlib.sha256(f"{JWT_SECRET}:{time.time_ns()}".encode("utf-8")).hexdigest()[:32]
-    raw = clean.encode("utf-8")
-    stream = _derive_stream(JWT_SECRET, salt, len(raw))
-    cipher = bytes(a ^ b for a, b in zip(raw, stream))
-    return f"{salt}:{base64.urlsafe_b64encode(cipher).decode('utf-8')}"
+    token = _social_fernet().encrypt(clean.encode("utf-8")).decode("ascii")
+    return f"v2:{token}"
+
+
+def _decrypt_legacy_secret(value: str) -> str | None:
+    try:
+        salt, encoded = value.split(":", 1)
+        cipher = base64.urlsafe_b64decode(encoded.encode("utf-8"))
+        stream = _derive_legacy_stream(JWT_SECRET, salt, len(cipher))
+        plain = bytes(a ^ b for a, b in zip(cipher, stream))
+        return plain.decode("utf-8")
+    except Exception:
+        return None
 
 
 def _decrypt_secret(value: str | None) -> str | None:
     if not value:
         return None
-    try:
-        salt, encoded = value.split(":", 1)
-        cipher = base64.urlsafe_b64decode(encoded.encode("utf-8"))
-        stream = _derive_stream(JWT_SECRET, salt, len(cipher))
-        plain = bytes(a ^ b for a, b in zip(cipher, stream))
-        return plain.decode("utf-8")
-    except Exception:
-        return None
+    if value.startswith("v2:"):
+        try:
+            return _social_fernet().decrypt(value[3:].encode("ascii")).decode("utf-8")
+        except (InvalidToken, ValueError, UnicodeDecodeError):
+            return None
+    return _decrypt_legacy_secret(value)
 
 
 def _json_text(value: Any, default: Any) -> str:
