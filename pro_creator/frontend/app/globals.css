@@ -141,7 +141,6 @@ body aside[class*="w-[15rem]"] > div:first-child::before {
   background: url("/procreator-wordmark.svg") center / contain no-repeat;
 }
 
-body aside[class*="w-[15rem]"] > div:first-child > img[src="/xtream-logo.png"],
 body aside[class*="w-[15rem]"] > div:first-child > img[src="/procreator-pro-logo.png"] {
   display: none !important;
 }
@@ -207,7 +206,6 @@ body aside[class*="w-[min(88vw,17rem)]"] > div:first-child > div:first-child::be
   background: url("/procreator-wordmark.svg") left center / contain no-repeat;
 }
 
-body aside[class*="w-[min(88vw,17rem)]"] img[src="/xtream-logo.png"],
 body aside[class*="w-[min(88vw,17rem)]"] img[src="/procreator-pro-logo.png"] {
   display: none !important;
 }
