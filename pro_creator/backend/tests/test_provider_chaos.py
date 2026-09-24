@@ -59,7 +59,6 @@ def test_image_xai_retries_then_succeeds(monkeypatch):
         prompt="cinematic city",
         style="cinematic",
         scene_id=1,
-        provider="xai",
     )
     assert provider == "xai"
     assert image == png_bytes
