@@ -89,9 +89,10 @@ Implemented:
 - Celery Beat is the production schedule authority.
 - Due-schedule dispatch is protected by a Redis distributed lock.
 - Scheduled production uses the same approved workflow/Grok Imagine path as normal production.
+- Factory Mode persists per-title progress checkpoints and resumes only from safe states; ambiguous interrupted projects are retained rather than recreated blindly.
 
 Acceptance:
-- With `ENABLE_CELERY=true`, queue processing happens entirely via worker(s).
+- With `ENABLE_CELERY=true`, persisted queue items dispatch immediately to Celery workers; task id, attempts, cancellation and retry state remain stored on the orchestration job.
 - Schedules run via beat/scheduler, not via an app-process async loop.
 
 ### 6) Auth Hardening (Even Single-Tenant)
@@ -109,7 +110,7 @@ Acceptance:
 Implemented:
 - Compose smoke test starts Redis + MinIO + backend and validates create/script/storage/delete-all.
 - CI runs the smoke test.
-- Optional hardening: add a "full-stack smoke" that also validates Celery worker processing (recommended if production will rely on Celery).
+- Full-stack CI contains Compose/integration coverage for the persistent backend stack and must execute successfully before final production verification.
 
 Acceptance:
 - One command can validate the “production topology” works end-to-end.
