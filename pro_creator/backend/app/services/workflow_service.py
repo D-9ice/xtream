@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -45,7 +45,7 @@ from app.services.character_slots import ensure_character_slot_available
 from app.services.image_engine import generate_image_bytes
 from app.services.script_engine import generate_script
 from app.services.social_publish import publish_to_all_connections
-from app.services.video_engine import render_video
+from app.services.video_engine import RenderCancelled, render_video
 from app.storage import project_key, storage_client
 from app.tenant import current_tenant_id
 from app.utils.file_manager import (
@@ -1351,6 +1351,7 @@ def _perform_production(
     project: Project,
     current_user: User,
     bundle: dict[str, Any],
+    cancel_check: Callable[[], bool] | None = None,
 ) -> str | None:
     approved_script = str(bundle["script"]).strip() or "(empty script)"
     scenes = _scenes_from_script(approved_script)
@@ -1371,7 +1372,7 @@ def _perform_production(
             }
         )
     _write_scene_identity_plan(project.project_id, scene_plan)
-    video_result = render_video(project.project_id)
+    video_result = render_video(project.project_id, cancel_check=cancel_check)
     project.final_video_url = video_result["video_path"]
     transition_project_state(project, "video_completed")
     session.add(project)
@@ -1394,6 +1395,7 @@ def execute_workflow_production_job(
     *,
     session: Session,
     job: OrchestrationJob,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> str | None:
     project = get_project_or_404(session, job.project_id)
     payload = _loads_json(job.payload) if job.payload else {}
@@ -1430,7 +1432,21 @@ def execute_workflow_production_job(
             project=project,
             current_user=current_user,
             bundle=bundle,
+            cancel_check=cancel_check,
         )
+    except RenderCancelled:
+        project = get_project_or_404(session, job.project_id)
+        _set_project_state(project, "production_ready")
+        project.final_video_url = None
+        job.status = "cancelled"
+        job.last_error = None
+        job.updated_at = utc_now()
+        session.add(project)
+        session.add(job)
+        session.commit()
+        session.refresh(project)
+        session.refresh(job)
+        raise
     except Exception:
         project = get_project_or_404(session, job.project_id)
         if project.workflow_state in {"production_queued", "production_running"}:
@@ -1546,7 +1562,13 @@ def auto_create_project(
     start_credits: str | None = None,
     end_credits: str | None = None,
     allow_factory_mode_genre: bool = False,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> WorkflowAutoCreateResponse:
+    def ensure_not_cancelled() -> None:
+        if cancel_check is not None and cancel_check():
+            raise RenderCancelled("Factory Mode render was cancelled.")
+
+    ensure_not_cancelled()
     clean_title = title.strip()
     if not clean_title:
         raise ValueError("Title is required")
@@ -1593,6 +1615,7 @@ def auto_create_project(
     )
     project = get_project_or_404(session, created_project.project_id)
 
+    ensure_not_cancelled()
     generate_project_script(
         session=session,
         project=project,
@@ -1604,6 +1627,7 @@ def auto_create_project(
         tone="cinematic",
     )
     approve_script(session=session, project=project)
+    ensure_not_cancelled()
 
     if clean_genre == REAL_EVENTS_GENRE:
         _store_project_selected_character_ids(project, [])
@@ -1620,6 +1644,7 @@ def auto_create_project(
         else:
             character_specs = _auto_create_character_specs(clean_title)
         for spec in character_specs:
+            ensure_not_cancelled()
             try:
                 if normalized_custom_characters:
                     profile = create_character_profile(
@@ -1670,6 +1695,7 @@ def auto_create_project(
             current_user=current_user,
             selected_character_ids=created_character_ids,
         )
+    ensure_not_cancelled()
     project = get_project_or_404(session, project.project_id)
     start_production(
         session=session,
@@ -1679,7 +1705,11 @@ def auto_create_project(
     job = _get_project_production_job(session, project)
     if not job:
         raise ValueError("Production job not found")
-    video_path = execute_workflow_production_job(session=session, job=job)
+    video_path = execute_workflow_production_job(
+        session=session,
+        job=job,
+        cancel_check=cancel_check,
+    )
     job.status = "complete"
     job.last_error = None
     job.updated_at = utc_now()
@@ -1779,6 +1809,11 @@ def execute_factory_mode_job(
         if not has_owner_mode_access(session, current_user) and subscription.credits_balance <= 0:
             stopped_reason = "credits_exhausted"
             break
+        def factory_cancel_check() -> bool:
+            session.expire(job)
+            session.refresh(job)
+            return _factory_cancel_requested(job)
+
         try:
             auto_result = auto_create_project(
                 session=session,
@@ -1791,7 +1826,14 @@ def execute_factory_mode_job(
                 start_credits=start_credits,
                 end_credits=end_credits,
                 allow_factory_mode_genre=True,
+                cancel_check=factory_cancel_check,
             )
+        except RenderCancelled:
+            session.expire(job)
+            session.refresh(job)
+            _mark_factory_cancelled(session, job)
+            stopped_reason = "cancelled"
+            break
         except ValueError as exc:
             if "Not enough credits" in str(exc):
                 stopped_reason = "credits_exhausted"
