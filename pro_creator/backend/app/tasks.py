@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 
 from app.celery_app import celery_app
 from app.database import engine
-from app.models import OrchestrationJob, OrchestrationSchedule
+from app.models import OrchestrationJob, OrchestrationSchedule, Project
 from app.services.script_engine import generate_script
 from app.services.lipsync_engine import generate_lipsync
 from app.services.voice_engine import generate_voice_bytes, generate_voice_for_scene
@@ -106,13 +106,62 @@ def factory_mode_task(job_id: int) -> dict:
             raise
 
 
+@celery_app.task(name="pro_creator.scheduled_full_pipeline")
+def scheduled_full_pipeline_task(job_id: int) -> dict:
+    with Session(engine) as session:
+        job = session.get(OrchestrationJob, job_id)
+        if not job:
+            raise ValueError(f"Scheduled orchestration job {job_id} not found")
+        project = session.exec(
+            select(Project).where(
+                Project.project_id == job.project_id,
+                Project.tenant_id == job.tenant_id,
+            )
+        ).first()
+        if not project:
+            job.status = "failed"
+            job.last_error = "Scheduled project no longer exists"
+            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.add(job)
+            session.commit()
+            raise ValueError(job.last_error)
+        try:
+            payload = json.loads(job.payload or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        job.status = "processing"
+        job.attempts += 1
+        job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        session.add(job)
+        session.commit()
+        try:
+            result = full_pipeline_task.run(
+                project.project_id,
+                project.topic or project.title,
+                max(1, int(project.target_duration_minutes or 3)),
+                "neutral",
+                str(payload.get("export_preset") or "social-vertical"),
+                None,
+                None,
+            )
+            job.status = "complete"
+            job.last_error = None
+            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.add(job)
+            session.commit()
+            return result
+        except Exception as exc:
+            job.status = "failed"
+            job.last_error = str(exc)
+            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.add(job)
+            session.commit()
+            raise
+
+
 @celery_app.task(name="pro_creator.run_due_schedules")
 def run_due_schedules_task() -> dict:
-    """Persist and dispatch due scheduled full-pipeline jobs.
-
-    A single Celery Beat instance is the scheduler authority. Schedule timestamps
-    are advanced before dispatch so a worker retry cannot duplicate the same run.
-    """
+    """Persist and dispatch due scheduled jobs from one Celery Beat authority."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     queued_ids: list[int] = []
     with Session(engine) as session:
@@ -123,6 +172,17 @@ def run_due_schedules_task() -> dict:
             )
         ).all()
         for schedule in schedules:
+            project = session.exec(
+                select(Project).where(
+                    Project.project_id == schedule.project_id,
+                    Project.tenant_id == schedule.tenant_id,
+                )
+            ).first()
+            if not project:
+                schedule.enabled = False
+                session.add(schedule)
+                session.commit()
+                continue
             job = OrchestrationJob(
                 tenant_id=schedule.tenant_id,
                 project_id=schedule.project_id,
@@ -139,23 +199,43 @@ def run_due_schedules_task() -> dict:
             session.commit()
             session.refresh(job)
 
-            result = full_pipeline_task.delay(
-                job.project_id,
-                "",
-                3,
-                "neutral",
-                "social-vertical",
-                None,
-                None,
-            )
+            result = scheduled_full_pipeline_task.delay(job.id or 0)
             job.task_id = result.id
             job.status = "processing"
-            job.attempts = 1
             job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
             session.add(job)
             session.commit()
             queued_ids.append(job.id or 0)
     return {"queued_job_ids": queued_ids, "count": len(queued_ids)}
+
+
+@celery_app.task(name="pro_creator.reconcile_orchestration_jobs")
+def reconcile_orchestration_jobs_task() -> dict:
+    completed = 0
+    failed = 0
+    with Session(engine) as session:
+        jobs = session.exec(
+            select(OrchestrationJob).where(
+                OrchestrationJob.status == "processing",
+                OrchestrationJob.task_id.is_not(None),
+            )
+        ).all()
+        for job in jobs:
+            result = celery_app.AsyncResult(job.task_id or "")
+            if not result.ready():
+                continue
+            if result.failed():
+                job.status = "failed"
+                job.last_error = str(result.result)
+                failed += 1
+            else:
+                job.status = "complete"
+                job.last_error = None
+                completed += 1
+            job.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.add(job)
+        session.commit()
+    return {"completed": completed, "failed": failed}
 
 
 @celery_app.task(name="pro_creator.full_pipeline")
