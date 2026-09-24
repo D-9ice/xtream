@@ -104,12 +104,12 @@ const MAIN_NAV_ITEMS: Array<{ id: NavItem; label: string }> = [
 
 const FOOTER_NAV_ITEMS: Array<{ id: NavItem; label: string }> = [
   { id: "feedback", label: "User Feedback" },
-  { id: "community", label: "X'treamers" },
+  { id: "community", label: "Community" },
 ];
 
 const ALL_NAV_ITEMS = [...MAIN_NAV_ITEMS, ...FOOTER_NAV_ITEMS];
 const NAV_ITEMS = MAIN_NAV_ITEMS;
-const XTREAM_LOGO_SRC = "/xtream-logo.png";
+const PROCREATOR_LOGO_SRC = "/procreator-pro-logo.png";
 const VIDEO_READY_MESSAGE = "VIDEO READY";
 const FACTORY_MODE_ENABLED = process.env.NEXT_PUBLIC_FACTORY_MODE_ENABLED === "true";
 
@@ -2582,7 +2582,7 @@ export default function WorkflowHomePage() {
         throw new Error("Write a message before posting.");
       }
       await createCommunityPost({ subject, message });
-      setCommunityStatus("Posted to X'treamers.");
+      setCommunityStatus("Posted to Community.");
       setCommunityMessage("");
       await refreshCommunityPosts();
     } catch (err) {
@@ -4717,7 +4717,7 @@ export default function WorkflowHomePage() {
     const pinnedTopics = [
       {
         subject: "Feature ideas",
-        message: "Share one feature that would make X'treamers better for your workflow.",
+        message: "Share one feature that would make the Community better for your workflow.",
       },
       {
         subject: "Production tips",
@@ -5133,7 +5133,7 @@ export default function WorkflowHomePage() {
           <aside className="absolute right-0 top-0 flex h-full w-[min(88vw,17rem)] flex-col overflow-y-auto border-l border-slate-800 bg-slate-950/95 p-5 shadow-2xl shadow-black/40">
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col">
-                <img className="h-[183px] w-auto -translate-y-[47px] object-contain" src={XTREAM_LOGO_SRC} alt="X'tream" />
+                <img className="h-[183px] w-auto -translate-y-[47px] object-contain" src={PROCREATOR_LOGO_SRC} alt="Pro Creator Pro" />
                 <p className="relative -top-[110px] mt-[3px] text-[11px] font-bold uppercase tracking-[0.35em] text-white">
                   Production Dashboard
                 </p>
@@ -5191,7 +5191,7 @@ export default function WorkflowHomePage() {
           className={playbackMode ? "hidden" : "hidden h-full w-[15rem] shrink-0 flex-col border-r border-slate-900/80 bg-slate-950/85 p-4 lg:flex"}
         >
           <div>
-            <img className="h-[187px] w-auto -translate-y-[47px] object-contain" src={XTREAM_LOGO_SRC} alt="X'tream" />
+            <img className="h-[187px] w-auto -translate-y-[47px] object-contain" src={PROCREATOR_LOGO_SRC} alt="Pro Creator Pro" />
             <p className="relative -top-[110px] mt-[3px] text-[11px] font-bold uppercase tracking-[0.35em] text-white">
               Production Dashboard
             </p>
