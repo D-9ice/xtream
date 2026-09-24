@@ -82,8 +82,8 @@ def grant_factory_mode_access(
     credits_grant: int = 0,
 ) -> SubscriptionAccount:
     normalized_access_mode = (access_mode or "").strip().lower()
-    if normalized_access_mode not in {"one_time", "subscription"}:
-        raise HTTPException(status_code=400, detail="access_mode must be one_time or subscription")
+    if normalized_access_mode != "subscription":
+        raise HTTPException(status_code=400, detail="new Factory Mode grants must use subscription access")
     subscription = get_or_create_subscription(session, user)
     credit_amount = max(0, int(credits_grant or 0))
     subscription.factory_mode_status = "active"
