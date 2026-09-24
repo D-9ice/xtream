@@ -132,6 +132,13 @@ def test_schedule_creation_persists_owner_user_id() -> None:
 def test_generic_queue_cancel_sets_persisted_cancel_request(monkeypatch) -> None:
     client = TestClient(app)
     monkeypatch.setattr(orchestration, "ENABLE_CELERY", True)
+    monkeypatch.setattr(orchestration, "_dispatch_job", lambda job: f"cancel-task-{job.id}")
+    revoked: list[str] = []
+    monkeypatch.setattr(
+        orchestration.celery_app.control,
+        "revoke",
+        lambda task_id, terminate=False: revoked.append(task_id),
+    )
 
     queued = client.post(
         "/orchestration/queue",
@@ -148,7 +155,8 @@ def test_generic_queue_cancel_sets_persisted_cancel_request(monkeypatch) -> None
 
     cancelled = client.post(f"/orchestration/queue/{job_id}/cancel")
     assert cancelled.status_code == 200
-    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["status"] == "cancel_requested"
+    assert revoked == [f"cancel-task-{job_id}"]
 
     with Session(engine) as session:
         job = session.get(OrchestrationJob, job_id)
@@ -205,3 +213,59 @@ def test_enqueue_dispatches_immediately_when_celery_enabled(monkeypatch) -> None
     assert payload["status"] == "processing"
     assert payload["task_id"] == f"task-{payload['id']}"
     assert payload["attempts"] == 1
+
+
+
+def test_retry_failed_job_redispatches_under_celery(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(orchestration, "ENABLE_CELERY", True)
+    monkeypatch.setattr(orchestration, "_dispatch_job", lambda job: f"retry-task-{job.id}")
+
+    with Session(engine) as session:
+        job = OrchestrationJob(
+            tenant_id="default",
+            project_id="retry-test-project",
+            kind="workflow_production",
+            status="failed",
+            attempts=1,
+            max_attempts=3,
+            last_error="synthetic failure",
+            payload=json.dumps({"user_id": 1}),
+        )
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+        job_id = int(job.id or 0)
+
+    response = client.post(f"/orchestration/queue/{job_id}/retry")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "processing"
+    assert payload["attempts"] == 2
+    assert payload["task_id"] == f"retry-task-{job_id}"
+    assert payload["last_error"] is None
+
+
+def test_retry_rejects_job_at_max_attempts(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(orchestration, "ENABLE_CELERY", True)
+
+    with Session(engine) as session:
+        job = OrchestrationJob(
+            tenant_id="default",
+            project_id="retry-limit-project",
+            kind="workflow_production",
+            status="failed",
+            attempts=3,
+            max_attempts=3,
+            last_error="final failure",
+            payload=json.dumps({"user_id": 1}),
+        )
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+        job_id = int(job.id or 0)
+
+    response = client.post(f"/orchestration/queue/{job_id}/retry")
+    assert response.status_code == 400
+    assert "Maximum orchestration attempts reached" in response.json()["detail"]
