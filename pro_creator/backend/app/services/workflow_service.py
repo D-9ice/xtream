@@ -19,6 +19,8 @@ from app.config import (
     CREDITS_COST_VOICE_GENERATE,
     FACTORY_MODE_ENABLED,
     XAI_API_KEY,
+    XAI_TEXT_MODEL,
+    XAI_VIDEO_MODEL,
 )
 from app.models import (
     CharacterProfile,
@@ -43,12 +45,10 @@ from app.schemas import (
 from app.services.credits import consume_credits, get_or_create_subscription, has_factory_mode_access, has_owner_mode_access
 from app.services.character_slots import ensure_character_slot_available
 from app.services.image_engine import generate_image_bytes, generate_image_for_scene
-from app.services.provider_routing import resolve_script_route, resolve_video_provider
 from app.services.script_engine import generate_script
 from app.services.social_publish import publish_to_all_connections
 from app.services.video_engine import render_video
 from app.services.voice_engine import generate_voice_for_scene
-from app.config import XAI_VIDEO_MODEL
 from app.storage import project_key, storage_client
 from app.tenant import current_tenant_id
 from app.utils.file_manager import (
@@ -658,14 +658,10 @@ def generate_project_script(
     session.add(project)
     session.commit()
 
-    subscription = get_or_create_subscription(session, current_user)
-    script_provider, script_model = resolve_script_route(subscription.plan_name)
     result = generate_script(
         project.topic,
         project.target_duration_minutes,
         tone,
-        script_provider=script_provider,
-        model_name=script_model,
         genre=project.genre,
     )
     script_text = result["full_script"]
@@ -683,8 +679,8 @@ def generate_project_script(
         reason="workflow script generation",
         action="workflow.script.generate",
         reference_id=project.project_id,
-        provider=script_provider,
-        model=script_model,
+        provider="xai",
+        model=XAI_TEXT_MODEL,
         metadata={"duration_minutes": project.target_duration_minutes, "tone": tone},
     )
     session.commit()
@@ -1364,8 +1360,7 @@ def _perform_production(
     _persist_project_script(session=session, project=project, script_text=approved_script, scenes=scenes)
     _write_production_bundle_artifact(project.project_id, bundle)
     _write_character_dna_artifacts(project.project_id, bundle)
-    video_provider = resolve_video_provider()
-    grok_mode = video_provider in {"grok_imagine", "grok"} and bool(XAI_API_KEY.strip())
+    grok_mode = bool(XAI_API_KEY.strip())
     scene_rows = {
         int(scene.id or 0): scene
         for scene in session.exec(
