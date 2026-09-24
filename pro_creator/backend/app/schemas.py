@@ -408,6 +408,7 @@ class OrchestrationQueueItem(BaseModel):
     max_attempts: int
     last_error: Optional[str] = None
     task_id: Optional[str] = None
+    factory_items: List[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
