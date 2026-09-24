@@ -28,6 +28,7 @@ from app.config import (
     XAI_VIDEO_MODEL,
 )
 from app.storage import project_key, storage_client
+from app.services.metrics import GROK_RENDER_SECONDS, GROK_RENDER_TOTAL, GROK_RETRY_TOTAL
 from app.utils.file_manager import read_scene_metadata, read_script
 from app.utils.logger import get_logger
 
@@ -365,6 +366,7 @@ def _download_video(url: str, target_path: Path, cancel_check: Callable[[], bool
             last_error = exc
             target_path.unlink(missing_ok=True)
             if attempt < attempts:
+                GROK_RETRY_TOTAL.labels(phase="download", reason=type(exc).__name__).inc()
                 _sleep_with_cancel(PROVIDER_RETRY_BACKOFF_SECONDS * attempt, cancel_check)
     raise RuntimeError(f"Failed to download Grok Imagine video: {last_error}")
 
@@ -481,6 +483,7 @@ def _render_segment(
             except _RetryableGenerationError as exc:
                 last_generation_error = exc
                 if generation_attempt < generation_attempts:
+                    GROK_RETRY_TOTAL.labels(phase="generation", reason=type(exc).__name__).inc()
                     _sleep_with_cancel(PROVIDER_RETRY_BACKOFF_SECONDS * generation_attempt, cancel_check)
                     continue
                 raise
@@ -488,6 +491,7 @@ def _render_segment(
                 status_code = exc.response.status_code if exc.response is not None else None
                 if status_code in {429, 500, 502, 503, 504} and generation_attempt < generation_attempts:
                     last_generation_error = exc
+                    GROK_RETRY_TOTAL.labels(phase="generation", reason=f"http_{status_code}").inc()
                     _sleep_with_cancel(PROVIDER_RETRY_BACKOFF_SECONDS * generation_attempt, cancel_check)
                     continue
                 raise
@@ -511,7 +515,7 @@ def _render_segment(
     return final_segment_path, final_frame_path.read_bytes()
 
 
-def render_grok_imagine_video(project_id: str, cancel_check: Callable[[], bool] | None = None) -> dict:
+def _render_grok_imagine_video_impl(project_id: str, cancel_check: Callable[[], bool] | None = None) -> dict:
     _check_cancelled(cancel_check)
     api_key = XAI_API_KEY.strip()
     if not api_key:
@@ -585,3 +589,20 @@ def render_grok_imagine_video(project_id: str, cancel_check: Callable[[], bool] 
 
     logger.info("Rendered Grok Imagine video for project %s", project_id)
     return {"video_path": storage_client.public_url(video_key)}
+
+
+def render_grok_imagine_video(project_id: str, cancel_check: Callable[[], bool] | None = None) -> dict:
+    started = time.monotonic()
+    try:
+        result = _render_grok_imagine_video_impl(project_id, cancel_check=cancel_check)
+    except RenderCancelled:
+        GROK_RENDER_TOTAL.labels(status="cancelled").inc()
+        raise
+    except Exception:
+        GROK_RENDER_TOTAL.labels(status="failed").inc()
+        raise
+    else:
+        GROK_RENDER_TOTAL.labels(status="complete").inc()
+        return result
+    finally:
+        GROK_RENDER_SECONDS.observe(max(0.0, time.monotonic() - started))
