@@ -163,6 +163,7 @@ def _fallback_schema_sync(engine: Engine) -> None:
 
     # Legacy fields previously maintained via ad-hoc alters.
     _ensure_column("orchestrationjob", "task_id", "ALTER TABLE orchestrationjob ADD COLUMN task_id TEXT")
+    _ensure_column("orchestrationschedule", "user_id", "ALTER TABLE orchestrationschedule ADD COLUMN user_id INTEGER")
     _ensure_column(
         "subscriptionaccount",
         "credits_reserved",
