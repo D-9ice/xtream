@@ -19,9 +19,31 @@ def _create_project(client: TestClient) -> str:
     return response.json()["project_id"]
 
 
-def test_metadata_feature_routes_generate_artifacts() -> None:
+def test_template_route_creates_media_and_export_catalog_is_informational(monkeypatch, tmp_path) -> None:
     client = TestClient(app)
     project_id = _create_project(client)
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source-video")
+
+    monkeypatch.setattr(
+        video_router,
+        "_materialize_video",
+        lambda _project_id, _temp_path: (
+            "project/video/final.mp4",
+            source,
+            {"duration": 4.0, "width": 1920, "height": 1080, "has_audio": True},
+        ),
+    )
+
+    def fake_run_ffmpeg(args, **_kwargs):
+        Path(args[-1]).write_bytes(b"template-video")
+
+    monkeypatch.setattr(video_router, "_run_ffmpeg", fake_run_ffmpeg)
+    monkeypatch.setattr(
+        video_router,
+        "_probe_media",
+        lambda _path: {"duration": 4.0, "width": 1920, "height": 1080, "has_audio": True},
+    )
 
     template_res = client.post(f"/video/templates?project_id={project_id}")
     assert template_res.status_code == 200
@@ -29,12 +51,14 @@ def test_metadata_feature_routes_generate_artifacts() -> None:
 
     presets_res = client.post(f"/video/export-presets?project_id={project_id}")
     assert presets_res.status_code == 200
-    assert presets_res.json()["status"] == "complete"
+    assert presets_res.json()["status"] == "ready"
 
     template_artifact = read_json_artifact(
         PROJECTS_DIR / project_id / "video" / "template_plan.json"
     )
     assert template_artifact.get("selected_template")
+    assert template_artifact.get("output_path")
+    assert template_artifact.get("validated") is True
 
     export_artifact = read_json_artifact(
         PROJECTS_DIR / project_id / "video" / "export_presets.json"
@@ -278,3 +302,27 @@ def test_internal_social_vertical_export_alias_is_real_media_output(monkeypatch,
         current_user=None,
     )
     assert response.export_path.endswith("/video/exports/social-vertical.mp4")
+
+
+def test_multitrack_uses_ducking_and_loudness_normalization(monkeypatch) -> None:
+    client = TestClient(app)
+    project_id = _create_project(client)
+    audio_dir = PROJECTS_DIR / project_id / "audio"
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    (audio_dir / "scene_1.wav").write_bytes(b"voice")
+    (audio_dir / "music_bed.wav").write_bytes(b"music")
+
+    calls: list[list[str]] = []
+
+    def fake_run_ffmpeg(args, **_kwargs):
+        calls.append(list(args))
+        Path(args[-1]).write_bytes(b"mixed-audio")
+
+    monkeypatch.setattr(video_router, "_run_ffmpeg", fake_run_ffmpeg)
+
+    response = client.post(f"/video/multitrack?project_id={project_id}")
+    assert response.status_code == 200
+    assert response.json()["status"] == "complete"
+    flattened = " ".join(" ".join(call) for call in calls)
+    assert "sidechaincompress" in flattened
+    assert "loudnorm" in flattened
