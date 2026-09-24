@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
 import shutil
 from typing import Iterable, Optional
 
@@ -118,7 +119,12 @@ class StorageClient:
         else:
             path = PROJECTS_DIR / key
             path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, path)
+            temp_path = path.with_name(f".{path.name}.uploading")
+            try:
+                shutil.copyfile(source, temp_path)
+                os.replace(temp_path, path)
+            finally:
+                temp_path.unlink(missing_ok=True)
 
     def read_text(self, key: str) -> str:
         if self.backend == "s3":
