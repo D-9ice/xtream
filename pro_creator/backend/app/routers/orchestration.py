@@ -1,14 +1,9 @@
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
-import tempfile
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Optional
 import asyncio
-import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
@@ -34,24 +29,13 @@ from app.schemas import (
     ImageRequest,
     VideoRequest,
 )
-from app.services.image_engine import generate_image_for_scene
-from app.services.script_engine import generate_script
-from app.services.video_engine import render_video
-from app.services.voice_engine import generate_voice_bytes, generate_voice_for_scene
 from app.services.workflow_service import execute_factory_mode_job, execute_workflow_production_job
 from app.services.credits import has_owner_mode_access
 from app.celery_app import celery_app
 from app import tasks as celery_tasks
-from app.utils.file_manager import (
-    ensure_project_dirs,
-    read_character_voice_profiles,
-    write_scene_metadata,
-    write_script,
-)
 from app.utils.logger import get_logger
 from app.routers.video import export_preset
 from app.tenant import current_tenant_id
-from app.storage import storage_client
 
 router = APIRouter(
     prefix="/orchestration",
@@ -117,189 +101,6 @@ def _factory_mode_available_for_user(session: Session, user) -> bool:
     return bool(user and has_owner_mode_access(session, user))
 
 
-def _run_script(payload: OrchestrationQueueRequest, session: Session) -> None:
-    tenant_id = current_tenant_id()
-    result = generate_script(
-        payload.topic or "Untitled",
-        payload.duration_minutes,
-        payload.tone,
-        genre=payload.genre,
-    )
-    project_path = ensure_project_dirs(payload.project_id)
-    write_script(project_path, result["full_script"])
-    write_scene_metadata(project_path, result["scenes"])
-
-    session.exec(
-        Scene.__table__.delete().where(
-            Scene.project_id == payload.project_id,
-            Scene.tenant_id == tenant_id,
-        )
-    )
-    for scene in result["scenes"]:
-        session.add(Scene(tenant_id=tenant_id, project_id=payload.project_id, text=scene["text"]))
-    session.commit()
-
-
-def _extract_dialogue_lines(scene_text: str) -> list[tuple[str, str]]:
-    dialogue: list[tuple[str, str]] = []
-    for raw_line in (scene_text or "").splitlines():
-        line = raw_line.strip()
-        if not line or ":" not in line:
-            continue
-        if line.lower().startswith(("scene ", "intent:", "narration:", "visuals:")):
-            continue
-        speaker, text = line.split(":", 1)
-        speaker = speaker.strip()
-        text = text.strip()
-        if not speaker or not text:
-            continue
-        # Avoid treating long descriptive labels as speakers.
-        if len(speaker) > 24 or re.search(r"\s{2,}", speaker):
-            continue
-        dialogue.append((speaker, text))
-    return dialogue
-
-
-def _render_dialogue_scene(
-    *,
-    project_id: str,
-    scene_id: int,
-    dialogue: list[tuple[str, str]],
-) -> str:
-    ffmpeg_path = shutil.which("ffmpeg")
-    if not ffmpeg_path:
-        raise HTTPException(status_code=400, detail="ffmpeg is required for dialogue rendering.")
-
-    character_map = {
-        str(item.get("character_id", "")).strip(): item
-        for item in read_character_voice_profiles(project_id)
-        if isinstance(item, dict)
-    }
-
-    with tempfile.TemporaryDirectory(prefix="pro_creator_orch_dialogue_") as temp_dir:
-        temp_path = Path(temp_dir)
-        parts: list[Path] = []
-        idx = 0
-        for speaker, text in dialogue:
-            mapped = character_map.get(speaker, {})
-            audio_bytes, ext, content_type = generate_voice_bytes(
-                project_id=project_id,
-                text=text,
-                voice_profile=mapped.get("voice_profile") or "default",
-                provider=None,
-                override_voice_id=mapped.get("voice_id"),
-            )
-            seg_path = temp_path / f"seg_{idx}.{ext}"
-            seg_path.write_bytes(audio_bytes)
-            parts.append(seg_path)
-            idx += 1
-            pause_path = temp_path / f"pause_{idx}.wav"
-            subprocess.run(
-                [
-                    ffmpeg_path,
-                    "-y",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "anullsrc=r=22050:cl=mono",
-                    "-t",
-                    "0.20",
-                    str(pause_path),
-                ],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            parts.append(pause_path)
-            idx += 1
-
-        concat_path = temp_path / "concat.txt"
-        concat_path.write_text("\n".join([f"file '{p}'" for p in parts]), encoding="utf-8")
-        out_path = temp_path / f"scene_{scene_id}.m4a"
-        subprocess.run(
-            [
-                ffmpeg_path,
-                "-y",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(concat_path),
-                "-c:a",
-                "aac",
-                str(out_path),
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        key = f"{project_id}/audio/scene_{scene_id}.m4a"
-        storage_client.write_bytes(key, out_path.read_bytes(), content_type="audio/mp4")
-        return storage_client.public_url(key)
-
-
-def _run_voice(payload: OrchestrationQueueRequest, session: Session) -> None:
-    tenant_id = current_tenant_id()
-    scenes = session.exec(
-        select(Scene).where(
-            Scene.project_id == payload.project_id,
-            Scene.tenant_id == tenant_id,
-        )
-    ).all()
-    text = payload.voice_text or (scenes[0].text if scenes else "Provide a concise narration for this project.")
-    result = generate_voice_for_scene(payload.project_id, 1, text)
-    if scenes:
-        for scene in scenes:
-            scene_id = scene.id or 1
-            scene_text = scene.text or text
-            dialogue = _extract_dialogue_lines(scene_text)
-            if len(dialogue) >= 2 and len({speaker.lower() for speaker, _ in dialogue}) >= 2:
-                scene.audio_path = _render_dialogue_scene(
-                    project_id=payload.project_id,
-                    scene_id=scene_id,
-                    dialogue=dialogue,
-                )
-            else:
-                scene_result = generate_voice_for_scene(
-                    payload.project_id,
-                    scene_id,
-                    scene_text,
-                )
-                scene.audio_path = scene_result["audio_path"]
-            session.add(scene)
-        session.commit()
-    return result
-
-
-def _run_image(payload: OrchestrationQueueRequest, session: Session) -> None:
-    tenant_id = current_tenant_id()
-    scenes = session.exec(
-        select(Scene).where(
-            Scene.project_id == payload.project_id,
-            Scene.tenant_id == tenant_id,
-        )
-    ).all()
-    prompt = payload.image_prompt or (scenes[0].text if scenes else "Scene visual")
-    result = generate_image_for_scene(payload.project_id, 1, prompt, "cinematic")
-    if scenes:
-        for scene in scenes:
-            scene_result = generate_image_for_scene(
-                payload.project_id,
-                scene.id or 1,
-                scene.text or prompt,
-                "cinematic",
-            )
-            scene.image_path = scene_result["image_path"]
-            session.add(scene)
-        session.commit()
-    return result
-
-
-def _run_video(payload: OrchestrationQueueRequest) -> None:
-    render_video(payload.project_id)
-
-
 def _run_export(payload: OrchestrationQueueRequest) -> ExportPresetResponse:
     return export_preset(
         ExportPresetRequest(project_id=payload.project_id, preset=payload.export_preset)
@@ -319,23 +120,9 @@ def _execute_job(job: OrchestrationJob, session: Session) -> None:
         export_preset=payload.get("export_preset", "social-vertical"),
     )
 
-    if job.kind == "script":
-        _run_script(request, session)
-    elif job.kind == "voice":
-        _run_voice(request, session)
-    elif job.kind == "image":
-        _run_image(request, session)
-    elif job.kind == "render":
-        _run_video(request)
-    elif job.kind == "export":
+    if job.kind == "export":
         _run_export(request)
-    elif job.kind == "full":
-        _run_script(request, session)
-        _run_voice(request, session)
-        _run_image(request, session)
-        _run_video(request)
-        _run_export(request)
-    elif job.kind == "workflow_production":
+    elif job.kind in {"full", "workflow_production"}:
         execute_workflow_production_job(session=session, job=job)
     elif job.kind == "factory_mode":
         user_id = int(payload.get("user_id") or 0)
@@ -349,42 +136,12 @@ def _execute_job(job: OrchestrationJob, session: Session) -> None:
 
 def _dispatch_job(job: OrchestrationJob) -> str:
     payload = _parse_payload(job)
-    if job.kind == "script":
-        result = celery_tasks.generate_script_task.delay(
-            job.project_id,
-            payload.get("topic") or "",
-            payload.get("duration_minutes") or 3,
-            payload.get("tone") or "neutral",
-        )
-    elif job.kind == "voice":
-        result = celery_tasks.generate_voice_task.delay(
-            job.project_id,
-            payload.get("voice_text") or "",
-        )
-    elif job.kind == "image":
-        result = celery_tasks.generate_image_task.delay(
-            job.project_id,
-            payload.get("image_prompt") or "",
-            "cinematic",
-        )
-    elif job.kind == "render":
-        result = celery_tasks.render_video_task.delay(job.project_id)
-    elif job.kind == "export":
+    if job.kind == "export":
         result = celery_tasks.export_preset_task.delay(
             job.project_id,
             payload.get("export_preset") or "youtube",
         )
-    elif job.kind == "full":
-        result = celery_tasks.full_pipeline_task.delay(
-            job.project_id,
-            payload.get("topic") or "",
-            payload.get("duration_minutes") or 3,
-            payload.get("tone") or "neutral",
-            payload.get("export_preset") or "youtube",
-            payload.get("voice_text"),
-            payload.get("image_prompt"),
-        )
-    elif job.kind == "workflow_production":
+    elif job.kind in {"full", "workflow_production"}:
         result = celery_tasks.workflow_production_task.delay(job.id or 0)
     elif job.kind == "factory_mode":
         result = celery_tasks.factory_mode_task.delay(job.id or 0)
@@ -490,6 +247,7 @@ def enqueue_job(
         raise HTTPException(status_code=400, detail="Factory Mode is not enabled for this deployment")
     job = OrchestrationJob(
         tenant_id=tenant_id,
+        user_id=current_user.id,
         project_id=payload.project_id,
         kind=payload.kind,
         status="queued",
@@ -687,7 +445,9 @@ def retry_job(job_id: int, session: Session = Depends(get_session)) -> Orchestra
 
 @router.post("/schedules", response_model=OrchestrationScheduleItem)
 def create_schedule(
-    payload: OrchestrationScheduleRequest, session: Session = Depends(get_session)
+    payload: OrchestrationScheduleRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> OrchestrationScheduleItem:
     tenant_id = current_tenant_id()
     schedule = OrchestrationSchedule(
@@ -717,7 +477,9 @@ def list_schedules(session: Session = Depends(get_session)) -> OrchestrationSche
 
 
 @router.post("/schedules/run", response_model=OrchestrationScheduleResponse)
-def run_schedules(session: Session = Depends(get_session)) -> OrchestrationScheduleResponse:
+def run_schedules(
+    session: Session = Depends(get_session),
+) -> OrchestrationScheduleResponse:
     tenant_id = current_tenant_id()
     now = utc_now_naive()
     schedules = session.exec(
@@ -725,12 +487,23 @@ def run_schedules(session: Session = Depends(get_session)) -> OrchestrationSched
     ).all()
     for schedule in schedules:
         if schedule.enabled and schedule.next_run_at <= now:
+            if not schedule.user_id:
+                schedule.enabled = False
+                session.add(schedule)
+                continue
             job = OrchestrationJob(
                 tenant_id=tenant_id,
                 project_id=schedule.project_id,
-                kind="full",
+                kind="workflow_production",
                 status="queued",
-                payload=json.dumps({"export_preset": "social-vertical"}),
+                payload=json.dumps(
+                    {
+                        "user_id": schedule.user_id,
+                        "export_preset": "social-vertical",
+                        "schedule_id": schedule.id,
+                        "scheduled_for": schedule.next_run_at.isoformat(),
+                    }
+                ),
             )
             session.add(job)
             schedule.last_run_at = now
