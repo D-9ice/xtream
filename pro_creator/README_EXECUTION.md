@@ -23,7 +23,7 @@ but keep product behavior **single-tenant** until the workflows are stable.
 Goal: everything runs in production topology (Docker Compose + Postgres + Redis + S3) with predictable upgrades, safe deletion,
 and a schema that will not require a rewrite to become multi-tenant.
 
-### Phase 1 Status (As Of 2026-02-15)
+### Phase 1 Status (As Of 2026-09-24)
 
 - Migrations framework: Implemented (Alembic scaffolding added; production requires Alembic).
 - Tenant-ready schema (single tenant): Implemented (`tenant_id` default `"default"` + query scoping).
@@ -84,12 +84,15 @@ Acceptance:
 
 ### 5) Production Queue Model (No In-App Background Loops)
 
-Implemented (partial):
+Implemented:
 - In-process runner endpoints are disabled when `ENABLE_CELERY=true`.
-- Remaining Phase 2 / ops item: implement Celery Beat (or a dedicated scheduler service) for schedules if you want schedules to run automatically.
+- Celery Beat is the production schedule authority.
+- Due-schedule dispatch is protected by a Redis distributed lock.
+- Scheduled production uses the same approved workflow/Grok Imagine path as normal production.
+- Factory Mode persists per-title progress checkpoints and resumes only from safe states; ambiguous interrupted projects are retained rather than recreated blindly.
 
 Acceptance:
-- With `ENABLE_CELERY=true`, queue processing happens entirely via worker(s).
+- With `ENABLE_CELERY=true`, persisted queue items dispatch immediately to Celery workers; task id, attempts, cancellation and retry state remain stored on the orchestration job.
 - Schedules run via beat/scheduler, not via an app-process async loop.
 
 ### 6) Auth Hardening (Even Single-Tenant)
@@ -107,7 +110,7 @@ Acceptance:
 Implemented:
 - Compose smoke test starts Redis + MinIO + backend and validates create/script/storage/delete-all.
 - CI runs the smoke test.
-- Optional hardening: add a "full-stack smoke" that also validates Celery worker processing (recommended if production will rely on Celery).
+- Full-stack CI contains Compose/integration coverage for the persistent backend stack and must execute successfully before final production verification.
 
 Acceptance:
 - One command can validate the “production topology” works end-to-end.
@@ -118,9 +121,9 @@ Acceptance:
 
 Goal: reduce surprises before adding multi-tenant complexity.
 
-- Improve provider error handling + retries (OpenAI/XTTS/ElevenLabs).
+- Maintain bounded xAI/Grok provider retries, cancellation, timeout handling, and validated media outputs.
 - Ensure billing/credits are consistent and idempotent for all billable actions.
-- Add “global” frontend error boundary behaviors (401 redirects, helpful error toasts).
+- Maintain the global authentication guard so expired/invalid sessions redirect cleanly instead of leaking protected API errors.
 - Break up the monolithic dashboard component (`frontend/app/page.clean.tsx`) into maintainable modules.
 
 ---

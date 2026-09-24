@@ -320,6 +320,8 @@ export type OrchestrationQueueItem = {
   attempts: number;
   max_attempts: number;
   last_error?: string | null;
+  task_id?: string | null;
+  factory_items?: Array<Record<string, unknown>>;
   created_at: string;
   updated_at: string;
 };
@@ -1298,7 +1300,7 @@ export type CreditPlan = {
   stripe_price_id?: string | null;
   checkout_providers?: Array<"stripe" | "paystack">;
   checkout_enabled?: boolean;
-  access_mode?: "one_time" | "subscription" | string | null;
+  access_mode?: "subscription" | string | null;
   access_days?: number | null;
   description?: string | null;
 };
@@ -1486,7 +1488,7 @@ export async function updateAdminSubscription(
     credits_delta?: number;
     credits_balance?: number;
     renewal_date?: string | null;
-    factory_mode_access?: "none" | "one_time" | "subscription" | string | null;
+    factory_mode_access?: "none" | "subscription" | string | null;
     factory_mode_renewal_date?: string | null;
   }
 ): Promise<CreditBalance> {
@@ -1580,9 +1582,6 @@ export async function updateAdminBillingPricing(payload: {
   studio_price_usd: number;
   studio_base_character_slots: number;
   studio_stripe_price_id?: string | null;
-  factory_one_time_credits: number;
-  factory_one_time_price_usd: number;
-  factory_one_time_stripe_price_id?: string | null;
   factory_subscription_credits: number;
   factory_subscription_price_usd: number;
   factory_subscription_stripe_price_id?: string | null;

@@ -1,10 +1,15 @@
 from datetime import datetime
 import io
+import json
+import ipaddress
+import re
 import shutil
+import socket
 import subprocess
 import tempfile
+from urllib.parse import urljoin, urlparse
 
-from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi import APIRouter, Query, Depends, File, HTTPException, UploadFile
 from PIL import Image, ImageDraw
 from sqlmodel import Session
 
@@ -18,7 +23,13 @@ from app.config import (
     CREDITS_COST_VIDEO_EXPORT,
     CREDITS_COST_VIDEO_RENDER,
     PROJECTS_DIR,
+    VIDEO_IMPORT_CONNECT_TIMEOUT_SECONDS,
+    VIDEO_IMPORT_MAX_BYTES,
+    VIDEO_IMPORT_MAX_REDIRECTS,
+    VIDEO_IMPORT_READ_TIMEOUT_SECONDS,
     XAI_API_KEY,
+    XAI_BASE_URL,
+    XAI_STT_MODEL,
     XAI_VIDEO_MODEL,
 )
 from app.database import get_session
@@ -35,7 +46,7 @@ from app.schemas import (
     ExportPresetResponse,
     ExportStatusEntry,
     ExportStatusResponse,
-    FeatureStubResponse,
+    FeatureOperationResponse,
     ThumbnailGenerateRequest,
     ThumbnailGenerateResponse,
     ThumbnailSetPrimaryRequest,
@@ -47,6 +58,7 @@ from app.schemas import (
 )
 from app.services.video_engine import render_video
 from app.services.lipsync_engine import fallback_segments, generate_lipsync
+from app.services.metrics import VIDEO_EXPORT_TOTAL
 from app.utils.file_manager import read_json_artifact, read_scene_metadata, write_json_artifact
 from app.utils.logger import get_logger
 
@@ -58,6 +70,402 @@ router = APIRouter(
 logger = get_logger(__name__)
 
 _THUMBNAIL_EXTENSIONS = ("png", "jpg", "jpeg")
+_ALLOWED_REMOTE_VIDEO_TYPES = {"application/octet-stream", "binary/octet-stream"}
+
+
+def _validate_public_remote_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Video import URL must use http or https.")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="Credentials in video import URLs are not allowed.")
+    hostname = parsed.hostname.rstrip(".").lower()
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        raise HTTPException(status_code=400, detail="Local/private video import URLs are blocked.")
+    try:
+        addresses = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=400, detail="Video import host could not be resolved.") from exc
+    if not addresses:
+        raise HTTPException(status_code=400, detail="Video import host could not be resolved.")
+    for entry in addresses:
+        raw_address = str(entry[4][0]).split("%", 1)[0]
+        try:
+            address = ipaddress.ip_address(raw_address)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Video import resolved to an invalid address.") from exc
+        if not address.is_global:
+            raise HTTPException(status_code=400, detail="Local/private video import URLs are blocked.")
+
+
+def _open_remote_video(url: str) -> tuple[requests.Response, str]:
+    current_url = url
+    for _ in range(VIDEO_IMPORT_MAX_REDIRECTS + 1):
+        _validate_public_remote_url(current_url)
+        response = requests.get(
+            current_url,
+            stream=True,
+            timeout=(VIDEO_IMPORT_CONNECT_TIMEOUT_SECONDS, VIDEO_IMPORT_READ_TIMEOUT_SECONDS),
+            allow_redirects=False,
+            headers={"Accept": "video/*,application/octet-stream;q=0.8"},
+        )
+        if 300 <= response.status_code < 400:
+            location = response.headers.get("Location")
+            response.close()
+            if not location:
+                raise HTTPException(status_code=400, detail="Video import redirect did not include a destination.")
+            current_url = urljoin(current_url, location)
+            continue
+        try:
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            response.close()
+            raise HTTPException(status_code=400, detail="Remote video could not be downloaded.") from exc
+        return response, current_url
+    raise HTTPException(status_code=400, detail="Video import exceeded the allowed redirect limit.")
+
+
+def _validate_downloaded_video(path: Path) -> None:
+    ffprobe_path = shutil.which("ffprobe")
+    if not ffprobe_path:
+        raise HTTPException(status_code=503, detail="ffprobe is required to validate imported video.")
+    try:
+        probe = subprocess.run(
+            [
+                ffprobe_path,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(status_code=400, detail="Imported media could not be validated.") from exc
+    if probe.returncode != 0 or "video" not in probe.stdout.lower():
+        raise HTTPException(status_code=400, detail="Remote content is not a valid video file.")
+
+
+def _redact_remote_url(url: str) -> str:
+    parsed = urlparse(url)
+    return parsed._replace(query="", fragment="").geturl()
+
+
+def _source_video_key(project_id: str) -> str:
+    candidates = [
+        project_key(project_id, "video/edited.mp4"),
+        project_key(project_id, "video/final.mp4"),
+        project_key(project_id, "video/imported.mp4"),
+    ]
+    key = next((item for item in candidates if storage_client.exists(item)), None)
+    if not key:
+        raise HTTPException(status_code=400, detail="No source video found for this operation.")
+    return key
+
+
+def _ffmpeg_path() -> str:
+    path = shutil.which("ffmpeg")
+    if not path:
+        raise HTTPException(status_code=503, detail="ffmpeg is required for media processing.")
+    return path
+
+
+def _ffprobe_path() -> str:
+    path = shutil.which("ffprobe")
+    if not path:
+        raise HTTPException(status_code=503, detail="ffprobe is required for media validation.")
+    return path
+
+
+def _probe_media(path: Path) -> dict:
+    try:
+        result = subprocess.run(
+            [
+                _ffprobe_path(),
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration:stream=codec_type,width,height",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(status_code=500, detail="Media validation failed.") from exc
+    if result.returncode != 0:
+        raise HTTPException(status_code=400, detail="Media file is unreadable or invalid.")
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=500, detail="Media probe returned invalid metadata.") from exc
+    streams = payload.get("streams") or []
+    video_stream = next((item for item in streams if item.get("codec_type") == "video"), None)
+    if not video_stream:
+        raise HTTPException(status_code=400, detail="Media file does not contain a video stream.")
+    try:
+        duration = float((payload.get("format") or {}).get("duration") or 0.0)
+    except (TypeError, ValueError):
+        duration = 0.0
+    return {
+        "duration": max(0.0, duration),
+        "width": int(video_stream.get("width") or 0),
+        "height": int(video_stream.get("height") or 0),
+        "has_audio": any(item.get("codec_type") == "audio" for item in streams),
+    }
+
+
+def _segments_from_xai_words(words: list[dict], fallback_text: str, duration: float) -> list[dict]:
+    if not words:
+        text = fallback_text.strip()
+        return [
+            {
+                "segment_id": 1,
+                "start": 0.0,
+                "end": round(max(0.0, duration), 2),
+                "text": text,
+            }
+        ] if text else []
+
+    segments: list[dict] = []
+    bucket: list[str] = []
+    bucket_start: float | None = None
+    bucket_end = 0.0
+    for word in words:
+        text = str(word.get("text") or word.get("word") or "").strip()
+        if not text:
+            continue
+        try:
+            start = float(word.get("start") or 0.0)
+            end = float(word.get("end") or start)
+        except (TypeError, ValueError):
+            continue
+        if bucket_start is None:
+            bucket_start = start
+        bucket.append(text)
+        bucket_end = max(bucket_end, end)
+        elapsed = bucket_end - bucket_start
+        sentence_end = text.endswith((".", "!", "?"))
+        if elapsed >= 8.0 or sentence_end:
+            segments.append(
+                {
+                    "segment_id": len(segments) + 1,
+                    "start": round(bucket_start, 2),
+                    "end": round(bucket_end, 2),
+                    "text": " ".join(bucket).strip(),
+                }
+            )
+            bucket = []
+            bucket_start = None
+            bucket_end = 0.0
+    if bucket and bucket_start is not None:
+        segments.append(
+            {
+                "segment_id": len(segments) + 1,
+                "start": round(bucket_start, 2),
+                "end": round(bucket_end, 2),
+                "text": " ".join(bucket).strip(),
+            }
+        )
+    return segments
+
+
+def _transcribe_with_xai(audio_path: Path) -> tuple[list[dict], dict]:
+    if not XAI_API_KEY:
+        raise HTTPException(status_code=503, detail="xAI speech transcription is not configured.")
+    suffix = audio_path.suffix.lower()
+    content_types = {
+        ".wav": "audio/wav",
+        ".mp3": "audio/mpeg",
+        ".ogg": "audio/ogg",
+        ".m4a": "audio/mp4",
+        ".webm": "audio/webm",
+    }
+    try:
+        with audio_path.open("rb") as handle:
+            response = requests.post(
+                f"{XAI_BASE_URL}/stt",
+                headers={"Authorization": f"Bearer {XAI_API_KEY}"},
+                data=[("model", XAI_STT_MODEL), ("format", "true")],
+                files={
+                    "file": (
+                        audio_path.name,
+                        handle,
+                        content_types.get(suffix, "application/octet-stream"),
+                    )
+                },
+                timeout=(10, 300),
+            )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("xAI speech transcription failed: %s", exc)
+        raise HTTPException(status_code=502, detail="xAI speech transcription failed.") from exc
+
+    try:
+        duration = float(payload.get("duration") or 0.0)
+    except (TypeError, ValueError):
+        duration = 0.0
+    segments = _segments_from_xai_words(
+        payload.get("words") or [],
+        str(payload.get("text") or ""),
+        duration,
+    )
+    if not segments:
+        raise HTTPException(status_code=502, detail="xAI speech transcription returned no transcript.")
+    return segments, {
+        "provider": "xai",
+        "model": XAI_STT_MODEL,
+        "language": payload.get("language"),
+        "duration": duration,
+    }
+
+
+def _materialize_video(project_id: str, temp_path: Path) -> tuple[str, Path, dict]:
+    key = _source_video_key(project_id)
+    source = temp_path / "source.mp4"
+    source.write_bytes(storage_client.read_bytes(key))
+    return key, source, _probe_media(source)
+
+
+async def _save_upload_bounded(upload: UploadFile, target: Path) -> int:
+    total = 0
+    try:
+        with target.open("wb") as handle:
+            while True:
+                chunk = await upload.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > VIDEO_IMPORT_MAX_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Recording exceeds the configured media size limit.",
+                    )
+                handle.write(chunk)
+    finally:
+        await upload.close()
+    if total == 0:
+        raise HTTPException(status_code=400, detail="Uploaded recording is empty.")
+    return total
+
+
+def _run_ffmpeg(arguments: list[str], *, timeout: int = 600) -> None:
+    try:
+        result = subprocess.run(
+            [_ffmpeg_path(), "-y", *arguments],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(status_code=500, detail="Media processing failed or timed out.") from exc
+    if result.returncode != 0:
+        logger.error("ffmpeg failed: %s", (result.stderr or "")[-2000:])
+        raise HTTPException(status_code=500, detail="Media processing failed.")
+
+
+def _normalize_ranges(ranges: list[list[float]], duration: float) -> list[tuple[float, float]]:
+    normalized: list[tuple[float, float]] = []
+    for item in ranges:
+        if len(item) != 2:
+            continue
+        try:
+            start = max(0.0, float(item[0]))
+            end = min(duration, float(item[1]))
+        except (TypeError, ValueError):
+            continue
+        if end <= start:
+            continue
+        normalized.append((start, end))
+    normalized.sort()
+    merged: list[tuple[float, float]] = []
+    for start, end in normalized:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _complement_ranges(duration: float, remove_ranges: list[list[float]]) -> list[tuple[float, float]]:
+    removed = _normalize_ranges(remove_ranges, duration)
+    kept: list[tuple[float, float]] = []
+    cursor = 0.0
+    for start, end in removed:
+        if start > cursor:
+            kept.append((cursor, start))
+        cursor = max(cursor, end)
+    if cursor < duration:
+        kept.append((cursor, duration))
+    return [(start, end) for start, end in kept if end - start >= 0.05]
+
+
+def _render_ranges_to_video(source: Path, target: Path, ranges: list[tuple[float, float]]) -> dict:
+    source_meta = _probe_media(source)
+    if not ranges:
+        raise HTTPException(status_code=400, detail="No video duration remains after the requested edit.")
+    segment_paths: list[Path] = []
+    for index, (start, end) in enumerate(ranges, start=1):
+        segment = target.parent / f"segment_{index:03d}.mp4"
+        args = [
+            "-ss",
+            f"{start:.3f}",
+            "-to",
+            f"{end:.3f}",
+            "-i",
+            str(source),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+        ]
+        if source_meta["has_audio"]:
+            args.extend(["-c:a", "aac", "-b:a", "192k"])
+        else:
+            args.append("-an")
+        args.extend(["-movflags", "+faststart", str(segment)])
+        _run_ffmpeg(args)
+        segment_paths.append(segment)
+
+    concat_file = target.parent / "concat.txt"
+    concat_file.write_text(
+        "\n".join(f"file '{segment.as_posix()}'" for segment in segment_paths),
+        encoding="utf-8",
+    )
+    _run_ffmpeg(
+        [
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_file),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(target),
+        ]
+    )
+    return _probe_media(target)
 
 
 def _find_scene_image_key(project_id: str, scene_id: int) -> str | None:
@@ -466,14 +874,45 @@ def import_video_endpoint(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> VideoImportResponse:
-    response = requests.get(payload.url, stream=True, timeout=30)
-    response.raise_for_status()
-    chunks = []
-    for chunk in response.iter_content(chunk_size=1024 * 1024):
-        if chunk:
-            chunks.append(chunk)
-    key = project_key(payload.project_id, "video/imported.mp4")
-    storage_client.write_bytes(key, b"".join(chunks), content_type="video/mp4")
+    response, final_url = _open_remote_video(payload.url)
+    content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+    if content_type and not (content_type.startswith("video/") or content_type in _ALLOWED_REMOTE_VIDEO_TYPES):
+        response.close()
+        raise HTTPException(status_code=415, detail="Remote URL did not return video content.")
+
+    content_length = response.headers.get("Content-Length")
+    if content_length:
+        try:
+            if int(content_length) > VIDEO_IMPORT_MAX_BYTES:
+                response.close()
+                raise HTTPException(status_code=413, detail="Remote video exceeds the configured import size limit.")
+        except ValueError:
+            pass
+
+    temp_path: Path | None = None
+    try:
+        total_bytes = 0
+        with tempfile.NamedTemporaryFile(prefix="procreator-import-", suffix=".video", delete=False) as temp_file:
+            temp_path = Path(temp_file.name)
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                total_bytes += len(chunk)
+                if total_bytes > VIDEO_IMPORT_MAX_BYTES:
+                    raise HTTPException(status_code=413, detail="Remote video exceeds the configured import size limit.")
+                temp_file.write(chunk)
+        if total_bytes == 0:
+            raise HTTPException(status_code=400, detail="Remote video download was empty.")
+        _validate_downloaded_video(temp_path)
+        key = project_key(payload.project_id, "video/imported.mp4")
+        storage_client.write_file(key, temp_path, content_type="video/mp4")
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=400, detail="Remote video download failed.") from exc
+    finally:
+        response.close()
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+
     record_usage_event(
         session=session,
         user=current_user,
@@ -482,103 +921,115 @@ def import_video_endpoint(
         reference_id=payload.project_id,
         provider="remote_url",
         model="n/a",
-        metadata={"url": payload.url},
+        metadata={"url": _redact_remote_url(final_url)},
     )
     return VideoImportResponse(video_path=storage_client.public_url(key))
 
 
-@router.post("/auto-clip", response_model=FeatureStubResponse)
-def auto_clip(project_id: str) -> FeatureStubResponse:
-    scenes = read_scene_metadata(project_id)
-    if not scenes:
-        transcript_path = PROJECTS_DIR / project_id / "video" / "transcript.json"
-        transcript_segments = read_json_artifact(transcript_path).get("segments", [])
-        scenes = [
-            {"id": segment.get("segment_id", idx + 1), "text": segment.get("text", "")}
-            for idx, segment in enumerate(transcript_segments)
-            if segment.get("text")
-        ]
-    if not scenes:
-        raise HTTPException(
-            status_code=400,
-            detail="No scene or transcript data found. Generate script/transcript first.",
-        )
+@router.post("/auto-clip", response_model=FeatureOperationResponse)
+def auto_clip(project_id: str) -> FeatureOperationResponse:
+    transcript_path = PROJECTS_DIR / project_id / "video" / "transcript.json"
+    transcript_segments = read_json_artifact(transcript_path).get("segments", [])
+    with tempfile.TemporaryDirectory(prefix="pro_creator_autoclip_") as temp_dir:
+        temp_path = Path(temp_dir)
+        _, source_path, source_meta = _materialize_video(project_id, temp_path)
+        duration = source_meta["duration"]
+        candidates: list[tuple[float, float, str]] = []
+        for segment in transcript_segments:
+            try:
+                start = float(segment.get("start", 0.0))
+                end = float(segment.get("end", start))
+            except (TypeError, ValueError):
+                continue
+            text = str(segment.get("text", "")).strip()
+            if text and end > start:
+                candidates.append((start, end, text))
+        if not candidates:
+            scenes = read_scene_metadata(project_id)
+            cursor = 0.0
+            for scene in scenes or []:
+                text = str(scene.get("text", "")).strip()
+                clip_duration = max(8.0, min(18.0, len(text.split()) * 0.5 if text else 8.0))
+                candidates.append((cursor, min(duration, cursor + clip_duration), text))
+                cursor += clip_duration
+                if cursor >= duration:
+                    break
+        if not candidates:
+            raise HTTPException(status_code=400, detail="No transcript or scene data found for auto-clipping.")
 
-    clips = []
-    cursor = 0.0
-    for idx, scene in enumerate(scenes or []):
-        duration = max(8.0, min(18.0, len(scene.get("text", "").split()) * 0.5))
-        clips.append(
-            {
-                "clip_id": idx + 1,
-                "start": round(cursor, 2),
-                "end": round(cursor + duration, 2),
-                "reason": "High-information segment",
-            }
-        )
-        cursor += duration
+        clips = []
+        for idx, (start, end, text) in enumerate(candidates[:12], start=1):
+            normalized = _normalize_ranges([[start, end]], duration)
+            if not normalized:
+                continue
+            target = temp_path / f"clip_{idx:03d}.mp4"
+            meta = _render_ranges_to_video(source_path, target, normalized)
+            key = project_key(project_id, f"video/clips/clip_{idx:03d}.mp4")
+            storage_client.write_file(key, target, content_type="video/mp4")
+            clips.append(
+                {
+                    "clip_id": idx,
+                    "start": round(normalized[0][0], 2),
+                    "end": round(normalized[0][1], 2),
+                    "reason": "Transcript/scene segment",
+                    "text": text[:200],
+                    "video_path": storage_client.public_url(key),
+                    "duration": round(meta["duration"], 2),
+                }
+            )
+    if not clips:
+        raise HTTPException(status_code=400, detail="No usable clip ranges were found.")
     artifact_path = PROJECTS_DIR / project_id / "video" / "clips.json"
     write_json_artifact(artifact_path, {"clips": clips})
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
-        detail=f"Auto-clip suggestions saved to {artifact_path}",
+        detail=f"{len(clips)} media clip(s) created.",
     )
 
-
-@router.post("/transcribe", response_model=FeatureStubResponse)
-def transcribe(project_id: str) -> FeatureStubResponse:
+@router.post("/transcribe", response_model=FeatureOperationResponse)
+def transcribe(project_id: str) -> FeatureOperationResponse:
     audio_candidates = [
         project_key(project_id, "audio/scene_1.wav"),
         project_key(project_id, "audio/scene_1.mp3"),
+        project_key(project_id, "audio/scene_1.m4a"),
+        project_key(project_id, "audio/scene_1.ogg"),
     ]
     for key in storage_client.list_keys(f"{project_id}/audio/"):
-        if key.endswith((".wav", ".mp3", ".ogg", ".m4a")):
+        if key.endswith((".wav", ".mp3", ".ogg", ".m4a", ".webm")):
             audio_candidates.append(key)
-
     audio_key = next((key for key in audio_candidates if storage_client.exists(key)), None)
-    segments = []
-
-    if audio_key:
-        try:
-            import importlib
-
-            whisper = importlib.import_module("whisper")
-            model_name = "base"
-            model = whisper.load_model(model_name)
-            with tempfile.TemporaryDirectory(prefix="pro_creator_whisper_") as temp_dir:
-                audio_path = Path(temp_dir) / Path(audio_key).name
-                audio_path.write_bytes(storage_client.read_bytes(audio_key))
-                result = model.transcribe(str(audio_path))
-            for idx, seg in enumerate(result.get("segments", [])):
-                segments.append(
-                    {
-                        "segment_id": idx + 1,
-                        "start": round(seg["start"], 2),
-                        "end": round(seg["end"], 2),
-                        "text": seg["text"].strip(),
-                    }
-                )
-        except Exception:
-            segments = []
-
-    if not segments:
-        segments = fallback_segments(project_id)
-    if not segments:
+    if not audio_key:
         raise HTTPException(
             status_code=400,
-            detail="No transcript source found. Generate voice or provide script first.",
+            detail="No audio source found. Generate or import audio before transcription.",
         )
 
+    with tempfile.TemporaryDirectory(prefix="pro_creator_xai_stt_") as temp_dir:
+        audio_path = Path(temp_dir) / (Path(audio_key).name or "audio.m4a")
+        audio_path.write_bytes(storage_client.read_bytes(audio_key))
+        if not audio_path.stat().st_size:
+            raise HTTPException(status_code=400, detail="Audio source is empty.")
+        segments, metadata = _transcribe_with_xai(audio_path)
+
     transcript_path = PROJECTS_DIR / project_id / "video" / "transcript.json"
-    write_json_artifact(transcript_path, {"segments": segments})
-    return FeatureStubResponse(
+    write_json_artifact(
+        transcript_path,
+        {
+            "segments": segments,
+            "source": "xai_stt",
+            "provider": metadata["provider"],
+            "model": metadata["model"],
+            "language": metadata["language"],
+            "duration": metadata["duration"],
+        },
+    )
+    return FeatureOperationResponse(
         status="complete",
-        detail=f"Transcript saved to {transcript_path}",
+        detail=f"Speech transcript created with {metadata['model']} ({len(segments)} segment(s)).",
     )
 
-
-@router.post("/captions", response_model=FeatureStubResponse)
-def captions(project_id: str) -> FeatureStubResponse:
+@router.post("/captions", response_model=FeatureOperationResponse)
+def captions(project_id: str) -> FeatureOperationResponse:
     transcript_path = PROJECTS_DIR / project_id / "video" / "transcript.json"
     segments = read_json_artifact(transcript_path).get("segments", [])
     if not segments:
@@ -603,14 +1054,14 @@ def captions(project_id: str) -> FeatureStubResponse:
 
     captions_key = project_key(project_id, "video/captions.srt")
     storage_client.write_text(captions_key, "\n".join(lines))
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"Captions saved to {captions_key}",
     )
 
 
-@router.post("/lipsync", response_model=FeatureStubResponse)
-def lipsync(project_id: str) -> FeatureStubResponse:
+@router.post("/lipsync", response_model=FeatureOperationResponse)
+def lipsync(project_id: str) -> FeatureOperationResponse:
     payload = generate_lipsync(project_id)
     if payload.get("source") == "disabled" or not payload.get("visemes"):
         raise HTTPException(
@@ -618,90 +1069,160 @@ def lipsync(project_id: str) -> FeatureStubResponse:
             detail="Lip sync data could not be generated. Ensure transcript/audio assets exist.",
         )
     lipsync_path = PROJECTS_DIR / project_id / "video" / "lipsync.json"
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"Lip sync data saved to {lipsync_path} ({payload.get('source')})",
     )
 
 
-@router.post("/multitrack", response_model=FeatureStubResponse)
-def multitrack(project_id: str) -> FeatureStubResponse:
+@router.post("/multitrack", response_model=FeatureOperationResponse)
+def multitrack(project_id: str) -> FeatureOperationResponse:
     audio_keys = sorted(
-        key for key in storage_client.list_keys(f"{project_id}/audio/") if key.endswith((".wav", ".mp3", ".ogg", ".m4a"))
+        key for key in storage_client.list_keys(f"{project_id}/audio/")
+        if key.endswith((".wav", ".mp3", ".ogg", ".m4a"))
     )
-    if not audio_keys:
-        raise HTTPException(
-            status_code=400,
-            detail="No audio tracks found. Generate voice before multitrack planning.",
-        )
+    voice_keys = [key for key in audio_keys if not any(token in key.lower() for token in ("music", "bed", "ambient"))]
+    music_keys = [key for key in audio_keys if key not in voice_keys]
+    if not voice_keys:
+        raise HTTPException(status_code=400, detail="No voice audio tracks found.")
 
-    tracks = []
-    for idx, key in enumerate(audio_keys, start=1):
+    with tempfile.TemporaryDirectory(prefix="pro_creator_multitrack_") as temp_dir:
+        temp_path = Path(temp_dir)
+        voice_files: list[Path] = []
+        for idx, key in enumerate(voice_keys, start=1):
+            path = temp_path / f"voice_{idx:03d}{Path(key).suffix or '.m4a'}"
+            path.write_bytes(storage_client.read_bytes(key))
+            voice_files.append(path)
+
+        concat_file = temp_path / "voice_concat.txt"
+        concat_file.write_text(
+            "\n".join(f"file '{path.as_posix()}'" for path in voice_files),
+            encoding="utf-8",
+        )
+        narration = temp_path / "narration.m4a"
+        _run_ffmpeg([
+            "-f", "concat", "-safe", "0", "-i", str(concat_file),
+            "-vn", "-c:a", "aac", "-b:a", "192k", str(narration),
+        ])
+
+        output = temp_path / "multitrack_mix.m4a"
+        if music_keys:
+            music = temp_path / f"music{Path(music_keys[0]).suffix or '.m4a'}"
+            music.write_bytes(storage_client.read_bytes(music_keys[0]))
+            _run_ffmpeg([
+                "-i", str(narration),
+                "-stream_loop", "-1", "-i", str(music),
+                "-filter_complex",
+                "[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice];"
+                "[1:a]volume=0.35[bg];"
+                "[bg][voice]sidechaincompress=threshold=0.04:ratio=8:attack=20:release=250[ducked];"
+                "[voice][ducked]amix=inputs=2:duration=first:dropout_transition=2,"
+                "loudnorm=I=-16:TP=-1.5:LRA=11[a]",
+                "-map", "[a]", "-c:a", "aac", "-b:a", "192k", str(output),
+            ])
+        else:
+            _run_ffmpeg([
+                "-i", str(narration),
+                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+                "-c:a", "aac", "-b:a", "192k", str(output),
+            ])
+
+        output_key = project_key(project_id, "audio/multitrack_mix.m4a")
+        storage_client.write_file(output_key, output, content_type="audio/mp4")
+
+    tracks = [
+        {
+            "track_id": idx,
+            "type": "voice",
+            "source": storage_client.public_url(key),
+            "gain_db": -2,
+        }
+        for idx, key in enumerate(voice_keys, start=1)
+    ]
+    if music_keys:
         tracks.append(
             {
-                "track_id": idx,
-                "type": "voice",
-                "source": storage_client.public_url(key),
-                "gain_db": -2,
+                "track_id": len(tracks) + 1,
+                "type": "music",
+                "source": storage_client.public_url(music_keys[0]),
+                "gain_db": -18,
             }
         )
-    tracks.append(
-        {
-            "track_id": len(tracks) + 1,
-            "type": "music",
-            "source": "library://ambient-bed-01",
-            "gain_db": -18,
-            "duck_under_voice_db": -10,
-        }
-    )
-
     multitrack_path = PROJECTS_DIR / project_id / "audio" / "multitrack.json"
-    write_json_artifact(multitrack_path, {"tracks": tracks})
-    return FeatureStubResponse(
+    write_json_artifact(
+        multitrack_path,
+        {"tracks": tracks, "mixed_output": storage_client.public_url(output_key)},
+    )
+    return FeatureOperationResponse(
         status="complete",
-        detail=f"Multitrack plan saved to {multitrack_path}",
+        detail=f"Mixed audio master created at {storage_client.public_url(output_key)}",
     )
 
+@router.post("/scene-detect", response_model=FeatureOperationResponse)
+def scene_detect(project_id: str) -> FeatureOperationResponse:
+    with tempfile.TemporaryDirectory(prefix="pro_creator_scene_detect_") as temp_dir:
+        temp_path = Path(temp_dir)
+        _, source_path, meta = _materialize_video(project_id, temp_path)
+        try:
+            result = subprocess.run(
+                [
+                    _ffmpeg_path(),
+                    "-i",
+                    str(source_path),
+                    "-filter:v",
+                    "select='gt(scene,0.35)',metadata=print",
+                    "-an",
+                    "-f",
+                    "null",
+                    "-",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise HTTPException(status_code=500, detail="Scene detection failed or timed out.") from exc
+        if result.returncode != 0:
+            logger.error("scene detection ffmpeg failed: %s", (result.stderr or "")[-2000:])
+            raise HTTPException(status_code=500, detail="Scene detection failed.")
 
-@router.post("/scene-detect", response_model=FeatureStubResponse)
-def scene_detect(project_id: str) -> FeatureStubResponse:
-    scenes = read_scene_metadata(project_id)
-    if not scenes and not storage_client.exists(project_key(project_id, "video/imported.mp4")) and not storage_client.exists(project_key(project_id, "video/final.mp4")):
-        raise HTTPException(
-            status_code=400,
-            detail="No source video or scene data found for scene detection.",
-        )
-
-    if not scenes:
-        transcript_path = PROJECTS_DIR / project_id / "video" / "transcript.json"
-        segments = read_json_artifact(transcript_path).get("segments", [])
-        scenes = [
-            {
-                "id": idx + 1,
-                "start": segment.get("start", idx * 10.0),
-                "end": segment.get("end", (idx + 1) * 10.0),
-            }
-            for idx, segment in enumerate(segments)
-        ]
-    if not scenes:
-        scenes = [{"id": 1, "start": 0.0, "end": 12.0}]
-    else:
-        scenes = [
-            {
-                "scene_id": scene.get("id", idx + 1),
-                "start": round(idx * 12.0, 2),
-                "end": round((idx + 1) * 12.0, 2),
-                "confidence": 0.8,
-            }
-            for idx, scene in enumerate(scenes)
-        ]
+        output = (result.stdout or "") + "\n" + (result.stderr or "")
+        timestamps = [0.0]
+        scores: dict[float, float] = {}
+        current_time: float | None = None
+        for line in output.splitlines():
+            time_match = re.search(r"pts_time:([0-9.]+)", line)
+            if time_match:
+                current_time = float(time_match.group(1))
+                if 0.0 < current_time < meta["duration"]:
+                    timestamps.append(current_time)
+            score_match = re.search(r"lavfi\.scene_score=([0-9.]+)", line)
+            if score_match and current_time is not None:
+                scores[round(current_time, 3)] = float(score_match.group(1))
+        timestamps.append(meta["duration"])
+        timestamps = sorted(set(round(value, 3) for value in timestamps if value >= 0.0))
+        scenes = []
+        for idx in range(len(timestamps) - 1):
+            start, end = timestamps[idx], timestamps[idx + 1]
+            if end - start < 0.05:
+                continue
+            scenes.append(
+                {
+                    "scene_id": idx + 1,
+                    "start": start,
+                    "end": end,
+                    "confidence": scores.get(round(start, 3)),
+                    "method": "ffmpeg_scene_change",
+                    "threshold": 0.35,
+                }
+            )
     scene_path = PROJECTS_DIR / project_id / "video" / "scene_detection.json"
     write_json_artifact(scene_path, {"scenes": scenes})
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
-        detail=f"Scene detection saved to {scene_path}",
+        detail=f"{len(scenes)} scene interval(s) detected from source media.",
     )
-
 
 @router.get("/artifacts/{project_id}/transcript")
 def get_transcript(project_id: str) -> dict:
@@ -741,11 +1262,10 @@ def get_captions(project_id: str) -> dict:
     return {"captions": storage_client.read_text(key)}
 
 
-@router.post("/export", response_model=ExportPresetResponse)
-def export_preset(
+def _export_preset_impl(
     payload: ExportPresetRequest,
-    session: Session | None = Depends(get_session),
-    current_user: User | None = Depends(get_current_user),
+    session: Session | None = None,
+    current_user: User | None = None,
 ) -> ExportPresetResponse:
     presets = {
         "youtube": (1920, 1080),
@@ -753,66 +1273,64 @@ def export_preset(
         "instagram": (1080, 1350),
         "facebook": (1280, 720),
         "x": (1920, 1080),
+        # Internal scheduler alias; not exposed as a new UI preset.
+        "social-vertical": (1080, 1920),
     }
-    width, height = presets.get(payload.preset, (1280, 720))
-    source_key = project_key(payload.project_id, "video/final.mp4")
-    if not storage_client.exists(source_key):
-        source_key = project_key(payload.project_id, "video/imported.mp4")
-    if not storage_client.exists(source_key):
-        raise HTTPException(
-            status_code=400,
-            detail="No source video found. Render or import a video before exporting.",
-        )
+    if payload.preset not in presets:
+        raise HTTPException(status_code=400, detail="Unsupported export preset.")
+    width, height = presets[payload.preset]
 
     with tempfile.TemporaryDirectory(prefix="pro_creator_export_") as temp_dir:
         temp_path = Path(temp_dir)
-        source_path = temp_path / "source.mp4"
+        _, source_path, _ = _materialize_video(payload.project_id, temp_path)
         target_path = temp_path / f"{payload.preset}.mp4"
-
-        if storage_client.exists(source_key):
-            source_path.write_bytes(storage_client.read_bytes(source_key))
-
-        if source_path.exists():
-            # Use a bounded ffmpeg subprocess instead of ffmpeg-python to avoid
-            # unbounded hangs during export.
-            ffmpeg_path = shutil.which("ffmpeg")
-            if ffmpeg_path:
-                try:
-                    subprocess.run(
-                        [
-                            ffmpeg_path,
-                            "-y",
-                            "-i",
-                            str(source_path),
-                            "-vf",
-                            f"scale={width}:{height}",
-                            "-c:v",
-                            "libx264",
-                            "-preset",
-                            "ultrafast",
-                            "-crf",
-                            "28",
-                            "-c:a",
-                            "aac",
-                            "-movflags",
-                            "+faststart",
-                            str(target_path),
-                        ],
-                        check=True,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        timeout=30,
-                    )
-                except Exception:
-                    target_path.write_bytes(source_path.read_bytes())
-            else:
-                target_path.write_bytes(source_path.read_bytes())
-        export_key = project_key(payload.project_id, f"video/exports/{payload.preset}.mp4")
-        storage_client.write_bytes(
-            export_key,
-            target_path.read_bytes(),
-            content_type="video/mp4",
+        filter_graph = (
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},setsar=1"
         )
+        _run_ffmpeg(
+            [
+                "-i",
+                str(source_path),
+                "-vf",
+                filter_graph,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-movflags",
+                "+faststart",
+                str(target_path),
+            ]
+        )
+        meta = _probe_media(target_path)
+        if meta["width"] != width or meta["height"] != height or meta["duration"] <= 0:
+            raise HTTPException(status_code=500, detail="Export validation failed.")
+        export_key = project_key(payload.project_id, f"video/exports/{payload.preset}.mp4")
+        storage_client.write_file(export_key, target_path, content_type="video/mp4")
+        metadata_key = project_key(payload.project_id, f"video/exports/{payload.preset}.json")
+        storage_client.write_text(
+            metadata_key,
+            json.dumps(
+                {
+                    "preset": payload.preset,
+                    "width": meta["width"],
+                    "height": meta["height"],
+                    "duration": meta["duration"],
+                    "validated": True,
+                },
+                sort_keys=True,
+            ),
+        )
+
     if isinstance(session, Session) and isinstance(current_user, User):
         consume_credits(
             session=session,
@@ -826,6 +1344,20 @@ def export_preset(
         )
 
     return ExportPresetResponse(export_path=storage_client.public_url(export_key))
+
+@router.post("/export", response_model=ExportPresetResponse)
+def export_preset(
+    payload: ExportPresetRequest,
+    session: Session | None = Depends(get_session),
+    current_user: User | None = Depends(get_current_user),
+) -> ExportPresetResponse:
+    try:
+        result = _export_preset_impl(payload, session=session, current_user=current_user)
+    except Exception:
+        VIDEO_EXPORT_TOTAL.labels(preset=payload.preset, status="failed").inc()
+        raise
+    VIDEO_EXPORT_TOTAL.labels(preset=payload.preset, status="complete").inc()
+    return result
 
 
 @router.post("/export/batch", response_model=ExportBatchResponse)
@@ -856,7 +1388,14 @@ def export_status(
 
     for preset in requested:
         key = project_key(project_id, f"video/exports/{preset}.mp4")
+        metadata_key = project_key(project_id, f"video/exports/{preset}.json")
         if storage_client.exists(key):
+            verified = False
+            if storage_client.exists(metadata_key):
+                try:
+                    verified = bool(json.loads(storage_client.read_text(metadata_key)).get("validated"))
+                except (json.JSONDecodeError, AttributeError):
+                    verified = False
             if storage_client.backend == "local":
                 path = PROJECTS_DIR / key
                 stat = path.stat()
@@ -868,7 +1407,7 @@ def export_status(
             entries.append(
                 ExportStatusEntry(
                     preset=preset,
-                    status="complete",
+                    status="complete" if verified else "unverified",
                     path=storage_client.public_url(key),
                     size_bytes=size_bytes,
                     updated_at=updated_at,
@@ -879,38 +1418,62 @@ def export_status(
 
     return ExportStatusResponse(project_id=project_id, exports=entries)
 
-
 @router.post("/edit-by-text", response_model=EditByTextResponse)
 def edit_by_text(payload: EditByTextRequest) -> EditByTextResponse:
     transcript_path = PROJECTS_DIR / payload.project_id / "video" / "transcript.json"
     transcript = read_json_artifact(transcript_path)
     segments = transcript.get("segments", [])
+    if not segments:
+        raise HTTPException(status_code=400, detail="Transcript not found. Run transcription first.")
 
-    def overlaps(segment: dict, ranges: list[list[float]]) -> bool:
-        start = segment.get("start", 0)
-        end = segment.get("end", 0)
-        for r in ranges:
-            if len(r) != 2:
-                continue
-            if end >= r[0] and start <= r[1]:
-                return True
-        return False
+    with tempfile.TemporaryDirectory(prefix="pro_creator_text_edit_") as temp_dir:
+        temp_path = Path(temp_dir)
+        _, source_path, meta = _materialize_video(payload.project_id, temp_path)
+        keep_ranges = _complement_ranges(meta["duration"], payload.remove_ranges)
+        target = temp_path / "edited.mp4"
+        output_meta = _render_ranges_to_video(source_path, target, keep_ranges)
+        output_key = project_key(payload.project_id, "video/edited.mp4")
+        storage_client.write_file(output_key, target, content_type="video/mp4")
 
-    filtered = [seg for seg in segments if not overlaps(seg, payload.remove_ranges)]
+    original_path = PROJECTS_DIR / payload.project_id / "video" / "transcript_original.json"
+    if not original_path.exists():
+        write_json_artifact(original_path, transcript)
+
+    normalized_removed = _normalize_ranges(payload.remove_ranges, meta["duration"])
+
+    def overlaps(segment: dict) -> bool:
+        try:
+            start = float(segment.get("start", 0))
+            end = float(segment.get("end", 0))
+        except (TypeError, ValueError):
+            return False
+        return any(end > cut_start and start < cut_end for cut_start, cut_end in normalized_removed)
+
+    filtered = [seg for seg in segments if not overlaps(seg)]
     write_json_artifact(transcript_path, {"segments": filtered})
-    return EditByTextResponse(segments_remaining=len(filtered))
+    write_json_artifact(
+        PROJECTS_DIR / payload.project_id / "video" / "edit_by_text.json",
+        {
+            "remove_ranges": [[start, end] for start, end in normalized_removed],
+            "keep_ranges": [[start, end] for start, end in keep_ranges],
+            "video_path": storage_client.public_url(output_key),
+            "duration": output_meta["duration"],
+        },
+    )
+    return EditByTextResponse(
+        segments_remaining=len(filtered),
+        video_path=storage_client.public_url(output_key),
+    )
 
-
-@router.post("/magic-cut", response_model=FeatureStubResponse)
-def magic_cut(project_id: str) -> FeatureStubResponse:
+@router.post("/magic-cut", response_model=FeatureOperationResponse)
+def magic_cut(project_id: str) -> FeatureOperationResponse:
     transcript_path = PROJECTS_DIR / project_id / "video" / "transcript.json"
     transcript = read_json_artifact(transcript_path)
     segments = transcript.get("segments", [])
-
     if not segments:
         segments = fallback_segments(project_id)
-        if segments:
-            write_json_artifact(transcript_path, {"segments": segments})
+    if not segments:
+        raise HTTPException(status_code=400, detail="Transcript data is required for Magic Cut.")
 
     kept_segments = []
     removed_segments = []
@@ -919,25 +1482,20 @@ def magic_cut(project_id: str) -> FeatureStubResponse:
         start = float(seg.get("start", 0.0))
         end = float(seg.get("end", start))
         duration = max(0.0, end - start)
-        word_count = len(text.split())
-        keep = word_count >= 3 and duration >= 0.35
-        if keep:
-            kept_segments.append(seg)
-        else:
-            removed_segments.append(seg)
+        keep = len(text.split()) >= 3 and duration >= 0.35
+        (kept_segments if keep else removed_segments).append(seg)
 
-    keep_ranges = [
-        [round(float(seg.get("start", 0.0)), 2), round(float(seg.get("end", 0.0)), 2)]
-        for seg in kept_segments
-    ]
-    total_kept = sum(
-        max(0.0, float(seg.get("end", 0.0)) - float(seg.get("start", 0.0)))
-        for seg in kept_segments
-    )
-    total_original = sum(
-        max(0.0, float(seg.get("end", 0.0)) - float(seg.get("start", 0.0)))
-        for seg in segments
-    )
+    with tempfile.TemporaryDirectory(prefix="pro_creator_magic_cut_") as temp_dir:
+        temp_path = Path(temp_dir)
+        _, source_path, meta = _materialize_video(project_id, temp_path)
+        keep_ranges = _normalize_ranges(
+            [[float(seg.get("start", 0.0)), float(seg.get("end", 0.0))] for seg in kept_segments],
+            meta["duration"],
+        )
+        target = temp_path / "magic_cut.mp4"
+        output_meta = _render_ranges_to_video(source_path, target, keep_ranges)
+        output_key = project_key(project_id, "video/magic_cut.mp4")
+        storage_client.write_file(output_key, target, content_type="video/mp4")
 
     artifact_path = PROJECTS_DIR / project_id / "video" / "magic_cut.json"
     write_json_artifact(
@@ -947,67 +1505,103 @@ def magic_cut(project_id: str) -> FeatureStubResponse:
             "original_segments": len(segments),
             "kept_segments": len(kept_segments),
             "removed_segments": removed_segments,
-            "keep_ranges": keep_ranges,
-            "duration_seconds_original": round(total_original, 2),
-            "duration_seconds_kept": round(total_kept, 2),
+            "keep_ranges": [[start, end] for start, end in keep_ranges],
+            "output_path": storage_client.public_url(output_key),
+            "duration_seconds_kept": round(output_meta["duration"], 2),
         },
     )
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
-        detail=f"Magic cut analysis saved to {artifact_path}",
+        detail=f"Magic Cut media created at {storage_client.public_url(output_key)}",
     )
 
-
-@router.post("/screen-record", response_model=FeatureStubResponse)
-def screen_record(project_id: str) -> FeatureStubResponse:
-    scenes = read_scene_metadata(project_id)
-    timeline = []
-    cursor = 0.0
-    for idx, scene in enumerate(scenes or []):
-        text = str(scene.get("text", "")).strip()
-        duration = max(6.0, min(20.0, len(text.split()) * 0.45 if text else 8.0))
-        timeline.append(
-            {
-                "scene_id": scene.get("id", idx + 1),
-                "start": round(cursor, 2),
-                "end": round(cursor + duration, 2),
-                "layout": "screen+webcam",
-                "webcam_position": "bottom-right",
-                "notes": text[:160] if text else "Narration-driven scene",
-            }
+@router.post("/screen-record", response_model=FeatureOperationResponse)
+async def screen_record(
+    project_id: str,
+    screen: UploadFile | None = File(default=None),
+    webcam: UploadFile | None = File(default=None),
+) -> FeatureOperationResponse:
+    if screen is None:
+        raise HTTPException(
+            status_code=400,
+            detail="A captured screen recording file is required.",
         )
-        cursor += duration
 
-    if not timeline:
-        timeline = [
+    with tempfile.TemporaryDirectory(prefix="pro_creator_screen_record_") as temp_dir:
+        temp_path = Path(temp_dir)
+        screen_ext = Path(screen.filename or "screen.webm").suffix or ".webm"
+        screen_path = temp_path / f"screen{screen_ext}"
+        await _save_upload_bounded(screen, screen_path)
+        screen_meta = _probe_media(screen_path)
+
+        webcam_path: Path | None = None
+        webcam_meta: dict | None = None
+        if webcam is not None:
+            webcam_ext = Path(webcam.filename or "webcam.webm").suffix or ".webm"
+            webcam_path = temp_path / f"webcam{webcam_ext}"
+            await _save_upload_bounded(webcam, webcam_path)
+            webcam_meta = _probe_media(webcam_path)
+
+        output = temp_path / "screen_record.mp4"
+        if webcam_path is not None:
+            audio_input = "0:a?" if screen_meta["has_audio"] else ("1:a?" if webcam_meta and webcam_meta["has_audio"] else None)
+            args = [
+                "-i", str(screen_path),
+                "-i", str(webcam_path),
+                "-filter_complex",
+                "[1:v][0:v]scale2ref=w=main_w*0.24:h=ow/mdar[cam][base];"
+                "[base][cam]overlay=W-w-24:H-h-24:shortest=1[v]",
+                "-map", "[v]",
+            ]
+            if audio_input:
+                args.extend(["-map", audio_input])
+            args.extend([
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "20",
+                "-pix_fmt", "yuv420p",
+            ])
+            if audio_input:
+                args.extend(["-c:a", "aac", "-b:a", "192k"])
+            args.extend(["-movflags", "+faststart", str(output)])
+            _run_ffmpeg(args)
+        else:
+            args = [
+                "-i", str(screen_path),
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "20",
+                "-pix_fmt", "yuv420p",
+            ]
+            if screen_meta["has_audio"]:
+                args.extend(["-c:a", "aac", "-b:a", "192k"])
+            else:
+                args.append("-an")
+            args.extend(["-movflags", "+faststart", str(output)])
+            _run_ffmpeg(args)
+
+        output_meta = _probe_media(output)
+        output_key = project_key(project_id, "video/screen_record.mp4")
+        storage_client.write_file(output_key, output, content_type="video/mp4")
+        write_json_artifact(
+            PROJECTS_DIR / project_id / "video" / "screen_record.json",
             {
-                "scene_id": 1,
-                "start": 0.0,
-                "end": 10.0,
-                "layout": "screen+webcam",
-                "webcam_position": "bottom-right",
-                "notes": "Default recording segment",
-            }
-        ]
+                "project_id": project_id,
+                "video_path": storage_client.public_url(output_key),
+                "duration": output_meta["duration"],
+                "width": output_meta["width"],
+                "height": output_meta["height"],
+                "webcam_overlay": webcam_path is not None,
+            },
+        )
 
-    artifact_path = PROJECTS_DIR / project_id / "video" / "screen_record_plan.json"
-    write_json_artifact(
-        artifact_path,
-        {
-            "project_id": project_id,
-            "resolution": "1920x1080",
-            "fps": 30,
-            "timeline": timeline,
-        },
-    )
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
-        detail=f"Screen recording plan saved to {artifact_path}",
+        detail=f"Screen recording created at {storage_client.public_url(output_key)}",
     )
 
-
-@router.post("/templates", response_model=FeatureStubResponse)
-def templates(project_id: str) -> FeatureStubResponse:
+@router.post("/templates", response_model=FeatureOperationResponse)
+def templates(project_id: str) -> FeatureOperationResponse:
     script_key = project_key(project_id, "script.txt")
     script = storage_client.read_text(script_key).lower()
     if any(token in script for token in ["tutorial", "how to", "walkthrough"]):
@@ -1020,11 +1614,39 @@ def templates(project_id: str) -> FeatureStubResponse:
         selected = "cinematic"
 
     template_catalog = [
-        {"id": "cinematic", "aspect_ratio": "16:9", "transition": "crossfade"},
-        {"id": "tutorial", "aspect_ratio": "16:9", "transition": "cut"},
-        {"id": "promo", "aspect_ratio": "9:16", "transition": "zoom"},
-        {"id": "talking-head", "aspect_ratio": "1:1", "transition": "slide"},
+        {"id": "cinematic", "aspect_ratio": "16:9", "width": 1920, "height": 1080},
+        {"id": "tutorial", "aspect_ratio": "16:9", "width": 1920, "height": 1080},
+        {"id": "promo", "aspect_ratio": "9:16", "width": 1080, "height": 1920},
+        {"id": "talking-head", "aspect_ratio": "1:1", "width": 1080, "height": 1080},
     ]
+    selected_template = next(item for item in template_catalog if item["id"] == selected)
+    width = int(selected_template["width"])
+    height = int(selected_template["height"])
+
+    with tempfile.TemporaryDirectory(prefix="pro_creator_template_") as temp_dir:
+        temp_path = Path(temp_dir)
+        _, source_path, _ = _materialize_video(project_id, temp_path)
+        output = temp_path / f"{selected}.mp4"
+        _run_ffmpeg([
+            "-i", str(source_path),
+            "-vf",
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},setsar=1",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(output),
+        ])
+        meta = _probe_media(output)
+        if meta["width"] != width or meta["height"] != height or meta["duration"] <= 0:
+            raise HTTPException(status_code=500, detail="Template media validation failed.")
+        output_key = project_key(project_id, f"video/templates/{selected}.mp4")
+        storage_client.write_file(output_key, output, content_type="video/mp4")
+
     artifact_path = PROJECTS_DIR / project_id / "video" / "template_plan.json"
     write_json_artifact(
         artifact_path,
@@ -1032,16 +1654,20 @@ def templates(project_id: str) -> FeatureStubResponse:
             "project_id": project_id,
             "selected_template": selected,
             "available_templates": template_catalog,
+            "output_path": storage_client.public_url(output_key),
+            "validated": True,
+            "width": width,
+            "height": height,
         },
     )
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
-        detail=f"Template selection saved to {artifact_path}",
+        detail=f"Template media created at {storage_client.public_url(output_key)}",
     )
 
 
-@router.post("/export-presets", response_model=FeatureStubResponse)
-def export_presets(project_id: str) -> FeatureStubResponse:
+@router.post("/export-presets", response_model=FeatureOperationResponse)
+def export_presets(project_id: str) -> FeatureOperationResponse:
     presets = [
         {"preset": "youtube", "resolution": "1920x1080", "fps": 30, "audio": "aac"},
         {"preset": "tiktok", "resolution": "1080x1920", "fps": 30, "audio": "aac"},
@@ -1067,7 +1693,7 @@ def export_presets(project_id: str) -> FeatureStubResponse:
             "presets": presets,
         },
     )
-    return FeatureStubResponse(
-        status="complete",
-        detail=f"Export presets saved to {artifact_path}",
+    return FeatureOperationResponse(
+        status="ready",
+        detail=f"Export preset catalog saved to {artifact_path}; use /video/export to render a preset.",
     )

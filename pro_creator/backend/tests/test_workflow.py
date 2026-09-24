@@ -186,22 +186,8 @@ def test_workflow_auto_create_runs_full_pipeline_from_title_only(
     )
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {
-            "image_path": f"/tmp/{project_id}-{scene_id}.png"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}.mp4"},
     )
 
     auto_res = client.post(
@@ -256,22 +242,8 @@ def test_workflow_auto_create_uses_custom_cast_and_credits(
     )
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {
-            "image_path": f"/tmp/{project_id}-{scene_id}.png"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}-custom.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}-custom.mp4"},
     )
 
     def fail_generate_character_profile(**kwargs):
@@ -287,8 +259,8 @@ def test_workflow_auto_create_uses_custom_cast_and_credits(
             "duration_minutes": 30,
             "genre": "Drama",
             "short_description": "A compact studio-style launch piece.",
-            "start_credits": "Starring\nLead Actor\nDirected by X'tream",
-            "end_credits": "Thanks for watching\nProduced by X'tream",
+            "start_credits": "Starring\nLead Actor\nDirected by Pro Creator Pro",
+            "end_credits": "Thanks for watching\nProduced by Pro Creator Pro",
             "custom_characters": [
                 {
                     "name": "Ava Nova",
@@ -303,8 +275,8 @@ def test_workflow_auto_create_uses_custom_cast_and_credits(
 
     assert payload["project"]["title"] == "Studio Premiere"
     assert payload["project"]["short_description"] == "A compact studio-style launch piece."
-    assert payload["project"]["start_credits"] == "Starring\nLead Actor\nDirected by X'tream"
-    assert payload["project"]["end_credits"] == "Thanks for watching\nProduced by X'tream"
+    assert payload["project"]["start_credits"] == "Starring\nLead Actor\nDirected by Pro Creator Pro"
+    assert payload["project"]["end_credits"] == "Thanks for watching\nProduced by Pro Creator Pro"
     assert payload["project"]["workflow_state"] == "video_completed"
     assert payload["project"]["final_video_url"] == payload["video_path"]
     assert len(payload["project"]["selected_character_ids"]) == 1
@@ -331,22 +303,8 @@ def test_auto_create_project_allows_real_events_without_characters(
     )
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {
-            "image_path": f"/tmp/{project_id}-{scene_id}.png"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}.mp4"},
     )
 
     with Session(engine) as session:
@@ -401,22 +359,8 @@ def test_owner_mode_allows_locked_genres_in_auto_create(
     )
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {
-            "image_path": f"/tmp/{project_id}-{scene_id}.png"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}.mp4"},
     )
 
     with Session(engine) as session:
@@ -508,9 +452,19 @@ def test_factory_mode_runs_titles_and_publishes_each_project(monkeypatch: pytest
                 }
             ),
         )
+        session.add(job)
+        session.commit()
+        session.refresh(job)
         result = workflow_service.execute_factory_mode_job(session=session, job=job)
+        session.refresh(job)
+        persisted_payload = json.loads(job.payload or "{}")
 
     assert result["processed_titles"] == 2
+    assert result["completed_titles"] == 2
+    assert result["failed_titles"] == 0
+    assert [item["status"] for item in result["titles"]] == ["complete", "complete"]
+    assert [item["status"] for item in persisted_payload["factory_items"]] == ["complete", "complete"]
+    assert all(item["project_id"] for item in persisted_payload["factory_items"])
     assert [item["kind"] for item in calls] == ["auto_create", "publish", "auto_create", "publish"]
     assert [item["title"] for item in calls if item["kind"] == "auto_create"] == ["First Title", "Second Title"]
     assert [
@@ -524,6 +478,179 @@ def test_factory_mode_runs_titles_and_publishes_each_project(monkeypatch: pytest
         if item["kind"] == "auto_create"
     ] == [True, True]
     assert [item["project_id"] for item in calls if item["kind"] == "publish"] == ["factory-1", "factory-3"]
+
+
+
+def test_factory_mode_resume_skips_completed_titles(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class _FakeSubscription:
+        credits_balance = 1000
+
+    class _FakeProject:
+        def __init__(self, project_id: str, title: str) -> None:
+            self.project_id = project_id
+            self.title = title
+            self.final_video_url = f"https://example.test/{project_id}.mp4"
+
+    class _FakeAutoCreateResponse:
+        def __init__(self, project_id: str, title: str) -> None:
+            self.project = _FakeProject(project_id, title)
+            self.video_path = self.project.final_video_url
+
+    monkeypatch.setattr(workflow_service, "FACTORY_MODE_ENABLED", True)
+    monkeypatch.setattr(
+        workflow_service,
+        "has_factory_mode_access",
+        lambda _subscription, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "get_or_create_subscription",
+        lambda _session, _user: _FakeSubscription(),
+    )
+
+    def fake_auto_create_project(**kwargs):
+        calls.append({"kind": "auto_create", "title": kwargs["title"]})
+        return _FakeAutoCreateResponse("factory-resumed-2", kwargs["title"])
+
+    def fake_publish_to_all_connections(**kwargs):
+        calls.append({"kind": "publish", "project_id": kwargs["project_id"]})
+        return [type("Job", (), {"job_id": "pub-resumed-2"})()]
+
+    monkeypatch.setattr(workflow_service, "auto_create_project", fake_auto_create_project)
+    monkeypatch.setattr(workflow_service, "publish_to_all_connections", fake_publish_to_all_connections)
+
+    with Session(engine) as session:
+        user = User(email=f"factory-resume-{uuid4().hex[:8]}@example.com", hashed_password="hashed", role="admin")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        job = OrchestrationJob(
+            tenant_id="default",
+            project_id="factory-mode",
+            kind="factory_mode",
+            payload=json.dumps(
+                {
+                    "user_id": user.id,
+                    "titles": ["Already Complete", "Resume Me"],
+                    "duration_minutes": 10,
+                    "factory_items": [
+                        {
+                            "index": 1,
+                            "title": "Already Complete",
+                            "status": "complete",
+                            "stage": "complete",
+                            "attempts": 1,
+                            "project_id": "factory-complete-1",
+                            "video_path": "https://example.test/factory-complete-1.mp4",
+                            "published_jobs": ["pub-complete-1"],
+                        },
+                        {
+                            "index": 2,
+                            "title": "Resume Me",
+                            "status": "pending",
+                            "stage": "pending",
+                            "attempts": 0,
+                        },
+                    ],
+                }
+            ),
+        )
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+
+        result = workflow_service.execute_factory_mode_job(session=session, job=job)
+        session.refresh(job)
+        persisted = json.loads(job.payload or "{}")
+
+    assert result["completed_titles"] == 2
+    assert result["failed_titles"] == 0
+    assert calls == [
+        {"kind": "auto_create", "title": "Resume Me"},
+        {"kind": "publish", "project_id": "factory-resumed-2"},
+    ]
+    assert persisted["factory_items"][0]["project_id"] == "factory-complete-1"
+    assert persisted["factory_items"][0]["status"] == "complete"
+    assert persisted["factory_items"][1]["project_id"] == "factory-resumed-2"
+    assert persisted["factory_items"][1]["status"] == "complete"
+
+
+def test_factory_mode_title_failure_does_not_abort_remaining_titles(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    class _FakeSubscription:
+        credits_balance = 1000
+
+    class _FakeProject:
+        def __init__(self, project_id: str, title: str) -> None:
+            self.project_id = project_id
+            self.title = title
+            self.final_video_url = f"https://example.test/{project_id}.mp4"
+
+    class _FakeAutoCreateResponse:
+        def __init__(self, project_id: str, title: str) -> None:
+            self.project = _FakeProject(project_id, title)
+            self.video_path = self.project.final_video_url
+
+    monkeypatch.setattr(workflow_service, "FACTORY_MODE_ENABLED", True)
+    monkeypatch.setattr(
+        workflow_service,
+        "has_factory_mode_access",
+        lambda _subscription, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        workflow_service,
+        "get_or_create_subscription",
+        lambda _session, _user: _FakeSubscription(),
+    )
+
+    def fake_auto_create_project(**kwargs):
+        title = kwargs["title"]
+        calls.append(title)
+        if title == "Broken Title":
+            raise RuntimeError("synthetic title failure")
+        return _FakeAutoCreateResponse("factory-good-2", title)
+
+    monkeypatch.setattr(workflow_service, "auto_create_project", fake_auto_create_project)
+    monkeypatch.setattr(
+        workflow_service,
+        "publish_to_all_connections",
+        lambda **_kwargs: [type("Job", (), {"job_id": "pub-good-2"})()],
+    )
+
+    with Session(engine) as session:
+        user = User(email=f"factory-failure-{uuid4().hex[:8]}@example.com", hashed_password="hashed", role="admin")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        job = OrchestrationJob(
+            tenant_id="default",
+            project_id="factory-mode",
+            kind="factory_mode",
+            payload=json.dumps(
+                {
+                    "user_id": user.id,
+                    "titles": ["Broken Title", "Good Title"],
+                    "duration_minutes": 10,
+                }
+            ),
+        )
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+
+        result = workflow_service.execute_factory_mode_job(session=session, job=job)
+        session.refresh(job)
+        persisted = json.loads(job.payload or "{}")
+
+    assert calls == ["Broken Title", "Good Title"]
+    assert result["completed_titles"] == 1
+    assert result["failed_titles"] == 1
+    assert [item["status"] for item in persisted["factory_items"]] == ["failed", "complete"]
+    assert persisted["factory_items"][0]["error"] == "synthetic title failure"
 
 
 def test_workflow_feedback_submission_persists_and_emails(
@@ -599,8 +726,6 @@ def test_character_library_limit_blocks_create_generate_and_upload() -> None:
             "studio_price_usd": 119,
             "studio_base_character_slots": 15,
             "studio_stripe_price_id": "",
-            "factory_one_time_price_usd": 149,
-            "factory_one_time_stripe_price_id": "",
             "factory_subscription_price_usd": 39,
             "factory_subscription_stripe_price_id": "",
             "owner_mode_enabled": False,
@@ -706,8 +831,6 @@ def test_character_library_limit_blocks_create_generate_and_upload() -> None:
             "studio_price_usd": 119,
             "studio_base_character_slots": 15,
             "studio_stripe_price_id": "",
-            "factory_one_time_price_usd": 149,
-            "factory_one_time_stripe_price_id": "",
             "factory_subscription_price_usd": 39,
             "factory_subscription_stripe_price_id": "",
             "owner_mode_enabled": False,
@@ -726,20 +849,8 @@ def test_workflow_production_queues_then_completes(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {"image_path": f"/tmp/{project_id}-{scene_id}.png"},
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}.mp4"},
     )
 
     create_res = client.post(
@@ -842,12 +953,10 @@ def test_workflow_production_injects_character_identity_into_scene_generation(
         captured["voice_scene_id"] = scene_id
         return {"audio_path": f"/tmp/{project_id}-{scene_id}.wav"}
 
-    monkeypatch.setattr(workflow_service, "generate_image_for_scene", capture_image)
-    monkeypatch.setattr(workflow_service, "generate_voice_for_scene", capture_voice)
     monkeypatch.setattr(
         workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}-identity.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}-identity.mp4"},
     )
 
     create_res = client.post(
@@ -905,13 +1014,6 @@ def test_workflow_production_injects_character_identity_into_scene_generation(
     assert process_res.status_code == 200
     assert process_res.json()["processed"] == 1
 
-    assert captured["voice_profile"] == "heroic"
-    assert captured["voice_text"] == "Hero: We restore the machine before sunrise."
-    assert "Approved cast: Hero:" in str(captured["image_prompt"])
-    assert "Identity locks: Hero seed" in str(captured["image_prompt"])
-    assert "lock identity" in str(captured["image_prompt"])
-    assert "hero-ref-1.png" in str(captured["image_prompt"])
-
     scene_plan = json.loads(
         storage_client.read_text(project_key(project_id, "workflow/scene_identity_plan.json"))
     )
@@ -948,12 +1050,10 @@ def test_workflow_production_preserves_identity_snapshot_across_scenes(
         )
         return {"audio_path": f"/tmp/{project_id}-{scene_id}.wav"}
 
-    monkeypatch.setattr(workflow_service, "generate_image_for_scene", capture_image)
-    monkeypatch.setattr(workflow_service, "generate_voice_for_scene", capture_voice)
     monkeypatch.setattr(
         workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}-multi-scene.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}-multi-scene.mp4"},
     )
 
     create_res = client.post(
@@ -1019,13 +1119,6 @@ def test_workflow_production_preserves_identity_snapshot_across_scenes(
     assert process_res.status_code == 200
     assert process_res.json()["processed"] == 1
 
-    assert [entry["scene_id"] for entry in captured_images] == [1, 2]
-    assert [entry["scene_id"] for entry in captured_voices] == [1, 2]
-    assert all(entry["voice_profile"] == "heroic" for entry in captured_voices)
-    assert all("Identity locks: Hero seed" in str(entry["prompt"]) for entry in captured_images)
-    assert all("Hero hash" in str(entry["prompt"]) for entry in captured_images)
-    assert all("hero-ref-1.png" in str(entry["prompt"]) for entry in captured_images)
-
     scene_plan = json.loads(
         storage_client.read_text(project_key(project_id, "workflow/scene_identity_plan.json"))
     )
@@ -1049,22 +1142,10 @@ def test_workflow_production_preserves_identity_snapshot_across_scenes(
 def test_workflow_production_retry_requeues_failed_job(monkeypatch: pytest.MonkeyPatch) -> None:
     client = workflow_client()
 
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {"image_path": f"/tmp/{project_id}-{scene_id}.png"},
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
 
     render_state = {"attempt": 0}
 
-    def flaky_render(project_id: str) -> dict[str, str]:
+    def flaky_render(project_id: str, **_kwargs) -> dict[str, str]:
         render_state["attempt"] += 1
         if render_state["attempt"] == 1:
             raise RuntimeError("render failed once")
@@ -1149,20 +1230,14 @@ def test_workflow_production_grok_mode_skips_scene_assets(monkeypatch: pytest.Mo
     client = workflow_client()
 
     monkeypatch.setattr(workflow_service, "XAI_API_KEY", "xai-test")
-    monkeypatch.setattr(workflow_service, "resolve_video_provider", lambda: "grok_imagine")
     monkeypatch.setattr(
         workflow_service,
         "render_video",
-        lambda project_id: {
+        lambda project_id, **_kwargs: {
             "video_path": f"https://example.test/{project_id}-grok.mp4"
         },
     )
 
-    def _unexpected(*_args, **_kwargs):
-        raise AssertionError("legacy image/voice generation should be skipped in Grok mode")
-
-    monkeypatch.setattr(workflow_service, "generate_image_for_scene", _unexpected)
-    monkeypatch.setattr(workflow_service, "generate_voice_for_scene", _unexpected)
 
     create_res = client.post(
         "/workflow/projects",
@@ -1753,20 +1828,8 @@ def test_api_project_alias_supports_guided_workflow_endpoints(
 
     monkeypatch.setattr(
         workflow_service,
-        "generate_image_for_scene",
-        lambda project_id, scene_id, prompt, style: {"image_path": f"/tmp/{project_id}-{scene_id}.png"},
-    )
-    monkeypatch.setattr(
-        workflow_service,
-        "generate_voice_for_scene",
-        lambda project_id, scene_id, text, voice_profile="default": {
-            "audio_path": f"/tmp/{project_id}-{scene_id}.wav"
-        },
-    )
-    monkeypatch.setattr(
-        workflow_service,
         "render_video",
-        lambda project_id: {"video_path": f"https://example.test/{project_id}-alias.mp4"},
+        lambda project_id, **_kwargs: {"video_path": f"https://example.test/{project_id}-alias.mp4"},
     )
 
     create_res = client.post(
@@ -1907,3 +1970,19 @@ def test_duplicate_project_copies_guided_state_without_live_output_fields() -> N
         ).first()
         assert duplicated_package is not None
         assert json.loads(duplicated_package.selected_character_ids_json) == selected_ids
+
+
+def test_auto_create_grok_credit_estimate_matches_executed_pipeline() -> None:
+    expected_generated_cast = (
+        workflow_service.CREDITS_COST_SCRIPT_GENERATE
+        + (2 * workflow_service.CREDITS_COST_IMAGE_GENERATE)
+        + workflow_service.CREDITS_COST_VIDEO_RENDER
+    )
+    expected_custom_cast = (
+        workflow_service.CREDITS_COST_SCRIPT_GENERATE
+        + workflow_service.CREDITS_COST_VIDEO_RENDER
+    )
+
+    assert workflow_service._auto_create_estimated_credits(1, character_count=2) == expected_generated_cast
+    assert workflow_service._auto_create_estimated_credits(120, character_count=2) == expected_generated_cast
+    assert workflow_service._auto_create_estimated_credits(120, character_count=0) == expected_custom_cast

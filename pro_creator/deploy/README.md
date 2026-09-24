@@ -41,17 +41,15 @@ docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --profile
 - `/metrics` is blocked at the edge by default in production.
 - Frontend runtime URLs should be set with `NEXT_PUBLIC_API_BASE` and `NEXT_PUBLIC_PROJECTS_BASE`.
 - Asset URLs should be stored in Spaces (`S3_PUBLIC_URL`).
-- Set `TTS_PROVIDER` to `xtts` or `elevenlabs` and provide the matching env vars.
-- To enable the humanized script generator, set `OPENAI_API_KEY` and optionally `SCRIPT_PROVIDER=openai`.
-- To enable billing/credit purchases, set Stripe variables (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRICE_ID_*`).
+- xAI/Grok is the supported generation stack; configure the required `XAI_*` and `GROK_IMAGINE_*` values before startup.
+- To enable billing/credit purchases, configure Paystack and/or Stripe production credentials and price IDs as documented in `.env.production.example`.
 - For branded receipt email delivery, use a transactional SMTP service such as Amazon SES and fill the `EMAIL_SMTP_*` values.
-- The production compose file includes an `xtts` service running on port `8020` (override `XTTS_IMAGE` if needed).
 - Postgres is included in the production override and used via `DATABASE_URL`.
 - Redis and Celery are included in the production override and are enabled via `REDIS_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, and `ENABLE_CELERY=true`.
 - Use `deploy/BACKUP_RESTORE.md` for backup and recovery procedures.
 - Secrets can come from direct env vars, `*_FILE` mounted files, or AWS Secrets Manager (`*_AWS_SECRET_ID`).
 - Admin dashboard access uses `ADMIN_DASHBOARD_PASSWORD` (separate from user login password).
-- `ADMIN_2FA_ENABLED` exists as a scaffold flag; keep it `false` until OTP verification is implemented.
+- Optional owner-dashboard TOTP is supported through `ADMIN_2FA_ENABLED=true` with a configured `ADMIN_2FA_TOTP_SECRET`.
 - Observability profile exposes localhost-only ports:
   - Prometheus: `127.0.0.1:9090`
   - Alertmanager: `127.0.0.1:9093`

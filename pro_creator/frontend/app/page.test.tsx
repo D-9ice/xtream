@@ -438,20 +438,6 @@ vi.mock("../lib/api", () => ({
         checkout_enabled: true,
       },
       {
-        id: "factory_one_time",
-        name: "Factory Mode One-Time",
-        kind: "factory_access",
-        access_mode: "one_time",
-        access_days: null,
-        description: "Unlimited autonomous production access without expiration.",
-        credits: 0,
-        price_usd: 149,
-        popular: false,
-        stripe_price_id: "price_factory_one_time",
-        checkout_providers: ["stripe", "paystack"],
-        checkout_enabled: true,
-      },
-      {
         id: "factory_subscription",
         name: "Factory Mode Subscription",
         kind: "factory_access",
@@ -569,7 +555,7 @@ describe("Workflow home page", () => {
       expect(navButton(/Overview/i)).toBeInTheDocument();
     });
 
-    ["Auto-Create", "Download", "Factory Mode", "Library", "Manual-Create", "Overview", "Playback", "Projects", "Publish", "Transaction Records", "X'treamers"].forEach((label) => {
+    ["Auto-Create", "Download", "Factory Mode", "Library", "Manual-Create", "Overview", "Playback", "Projects", "Publish", "Transaction Records", "ProCreators"].forEach((label) => {
       expect(navButton(new RegExp(label, "i"))).toBeInTheDocument();
     });
     expect(navButton(/User Feedback/i)).toBeInTheDocument();
@@ -710,10 +696,10 @@ describe("Workflow home page", () => {
       target: { value: "Drama" },
     });
     fireEvent.change(screen.getByLabelText(/^Start Credits/i), {
-      target: { value: "Starring\nLead Actor\nDirected by X'tream" },
+      target: { value: "Starring\nLead Actor\nDirected by Pro Creator Pro" },
     });
     fireEvent.change(screen.getByLabelText(/^End Credits/i), {
-      target: { value: "Thanks for watching\nProduced by X'tream" },
+      target: { value: "Thanks for watching\nProduced by Pro Creator Pro" },
     });
 
     fireEvent.click(screen.getByRole("button", { name: /Add Character/i }));
@@ -737,8 +723,8 @@ describe("Workflow home page", () => {
           duration_minutes: 10,
           genre: "Drama",
           short_description: "A compact studio-style launch piece.",
-          start_credits: "Starring\nLead Actor\nDirected by X'tream",
-          end_credits: "Thanks for watching\nProduced by X'tream",
+          start_credits: "Starring\nLead Actor\nDirected by Pro Creator Pro",
+          end_credits: "Thanks for watching\nProduced by Pro Creator Pro",
           custom_characters: [
             {
               name: "Ava Nova",
@@ -907,13 +893,12 @@ describe("Workflow home page", () => {
     fireEvent.click(creditButton);
 
     expect(await screen.findByText(/Factory Mode Access/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Select Factory Mode One-Time access/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Select Factory Mode One-Time access/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Select Factory Mode Subscription access/i })).toBeInTheDocument();
-    expect(screen.getByText(/^Unlock$/i)).toBeInTheDocument();
     expect(screen.getByText(/^Subscribe$/i)).toBeInTheDocument();
   }, 20000);
 
-  it("allows the user to select Factory Mode access in the credit purchase panel", async () => {
+  it("allows the user to select the Factory Mode subscription", async () => {
     render(<HomePage />);
 
     const creditButton = await screen.findByRole("button", {
@@ -921,13 +906,13 @@ describe("Workflow home page", () => {
     });
     fireEvent.click(creditButton);
 
-    const factoryOneTimeCard = await screen.findByRole("button", {
-      name: /Select Factory Mode One-Time access/i,
+    const factorySubscriptionCard = await screen.findByRole("button", {
+      name: /Select Factory Mode Subscription access/i,
     });
-    fireEvent.click(factoryOneTimeCard);
+    fireEvent.click(factorySubscriptionCard);
 
-    expect(factoryOneTimeCard).toHaveAttribute("aria-pressed", "true");
-    expect(await screen.findByText("$149")).toBeInTheDocument();
+    expect(factorySubscriptionCard).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByText("$39")).toBeInTheDocument();
   }, 20000);
 
   it("shows recent receipts inside the credit purchase panel", async () => {
@@ -1146,17 +1131,17 @@ describe("Workflow home page", () => {
     expect(await screen.findByText(/Feedback sent\./i)).toBeInTheDocument();
   }, 20000);
 
-  it("shows the X'treamers community tab and posts a discussion", async () => {
+  it("shows the ProCreators community tab and posts a discussion", async () => {
     render(<HomePage />);
 
     await waitFor(() => {
       expect(navButton(/Auto-Create/i)).toBeInTheDocument();
     });
 
-    const communityTab = navButton(/X'treamers/i);
+    const communityTab = navButton(/ProCreators/i);
     fireEvent.click(communityTab);
 
-    expect(await screen.findByRole("heading", { name: /X'treamers/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /ProCreators/i })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/Topic/i), {
       target: { value: "Feature idea" },
@@ -1173,7 +1158,7 @@ describe("Workflow home page", () => {
       });
     });
 
-    expect(await screen.findByText(/Posted to X'treamers\./i)).toBeInTheDocument();
+    expect(await screen.findByText(/Posted to ProCreators\./i)).toBeInTheDocument();
   }, 20000);
 
   it("lets the user applaud a community post", async () => {
@@ -1195,7 +1180,7 @@ describe("Workflow home page", () => {
       expect(navButton(/Auto-Create/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(navButton(/X'treamers/i));
+    fireEvent.click(navButton(/ProCreators/i));
 
     expect(await screen.findByText(/0 applause/i)).toBeInTheDocument();
 
@@ -1215,7 +1200,7 @@ describe("Workflow home page", () => {
       expect(navButton(/Auto-Create/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(navButton(/X'treamers/i));
+    fireEvent.click(navButton(/ProCreators/i));
 
     expect(await screen.findByText(/Pinned topics/i)).toBeInTheDocument();
 

@@ -119,13 +119,7 @@ FACTORY_MODE_ENABLED = os.getenv(
     os.getenv("NEXT_PUBLIC_FACTORY_MODE_ENABLED", "false"),
 ).lower() == "true"
 
-# Voice/TTS and provider routing are fixed to xAI/Grok.
-TTS_PROVIDER = "xai"
-SCRIPT_PROVIDER = "xai"
-IMAGE_PROVIDER = "xai"
-VOICE_PROVIDER_DEFAULT = "xai"
-VIDEO_PROVIDER_DEFAULT = "grok_imagine"
-
+# xAI / Grok is the authoritative production generation stack.
 # xAI / Grok
 XAI_API_KEY = _env_file_or_aws("XAI_API_KEY", "").strip()
 XAI_BASE_URL = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1").rstrip("/")
@@ -133,12 +127,25 @@ XAI_TEXT_MODEL = os.getenv("XAI_TEXT_MODEL", "grok-4.20-beta-latest-non-reasonin
 XAI_IMAGE_MODEL = os.getenv("XAI_IMAGE_MODEL", "grok-imagine-image").strip()
 XAI_VIDEO_MODEL = os.getenv("XAI_VIDEO_MODEL", "grok-imagine-video").strip()
 XAI_TTS_VOICE_ID = os.getenv("XAI_TTS_VOICE_ID", "eve").strip()
-XAI_TTS_MODEL = XAI_TTS_VOICE_ID
+VOICE_CLONE_MAX_BYTES = max(1_048_576, int(os.getenv("VOICE_CLONE_MAX_BYTES", str(25 * 1024 * 1024))))
+XAI_STT_MODEL = os.getenv("XAI_STT_MODEL", "grok-voice-transcribe-2.0").strip()
 GROK_IMAGINE_TARGET_SEGMENT_SECONDS = max(10, int(os.getenv("GROK_IMAGINE_TARGET_SEGMENT_SECONDS", "15")))
 GROK_IMAGINE_INITIAL_CHUNK_SECONDS = max(1, min(15, int(os.getenv("GROK_IMAGINE_INITIAL_CHUNK_SECONDS", "15"))))
 GROK_IMAGINE_EXTENSION_CHUNK_SECONDS = max(1, min(10, int(os.getenv("GROK_IMAGINE_EXTENSION_CHUNK_SECONDS", "10"))))
 GROK_IMAGINE_ASPECT_RATIO = os.getenv("GROK_IMAGINE_ASPECT_RATIO", "16:9").strip()
 GROK_IMAGINE_RESOLUTION = os.getenv("GROK_IMAGINE_RESOLUTION", "720p").strip()
+GROK_IMAGINE_POLL_TIMEOUT_SECONDS = max(
+    60,
+    int(os.getenv("GROK_IMAGINE_POLL_TIMEOUT_SECONDS", "1800")),
+)
+GROK_IMAGINE_POLL_INTERVAL_SECONDS = max(
+    1,
+    int(os.getenv("GROK_IMAGINE_POLL_INTERVAL_SECONDS", "5")),
+)
+GROK_IMAGINE_MAX_CLIP_BYTES = max(
+    50 * 1024 * 1024,
+    int(os.getenv("GROK_IMAGINE_MAX_CLIP_BYTES", str(2 * 1024 * 1024 * 1024))),
+)
 
 FFMPEG_SCENE_RENDER_TIMEOUT_SECONDS = max(
     30,
@@ -149,6 +156,23 @@ FFMPEG_CONCAT_TIMEOUT_SECONDS = max(
     int(os.getenv("FFMPEG_CONCAT_TIMEOUT_SECONDS", "300")),
 )
 
+VIDEO_IMPORT_MAX_BYTES = max(
+    50 * 1024 * 1024,
+    int(os.getenv("VIDEO_IMPORT_MAX_BYTES", str(2 * 1024 * 1024 * 1024))),
+)
+VIDEO_IMPORT_CONNECT_TIMEOUT_SECONDS = max(
+    1,
+    int(os.getenv("VIDEO_IMPORT_CONNECT_TIMEOUT_SECONDS", "10")),
+)
+VIDEO_IMPORT_READ_TIMEOUT_SECONDS = max(
+    5,
+    int(os.getenv("VIDEO_IMPORT_READ_TIMEOUT_SECONDS", "60")),
+)
+VIDEO_IMPORT_MAX_REDIRECTS = max(
+    0,
+    min(10, int(os.getenv("VIDEO_IMPORT_MAX_REDIRECTS", "5"))),
+)
+
 # Billing / Stripe / Paystack
 STRIPE_SECRET_KEY = _env_file_or_aws("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = _env_file_or_aws("STRIPE_WEBHOOK_SECRET", "")
@@ -157,8 +181,6 @@ STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "http://localhost:3000/?check
 STRIPE_PRICE_ID_MODERATE = os.getenv("STRIPE_PRICE_ID_MODERATE", "")
 STRIPE_PRICE_ID_PRO = os.getenv("STRIPE_PRICE_ID_PRO", "")
 STRIPE_PRICE_ID_STUDIO = os.getenv("STRIPE_PRICE_ID_STUDIO", "")
-FACTORY_MODE_ONE_TIME_PRICE_USD = max(0, int(os.getenv("FACTORY_MODE_ONE_TIME_PRICE_USD", "149")))
-FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID = os.getenv("FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID", "")
 FACTORY_MODE_SUBSCRIPTION_PRICE_USD = max(0, int(os.getenv("FACTORY_MODE_SUBSCRIPTION_PRICE_USD", "39")))
 FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID = os.getenv("FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID", "")
 FACTORY_MODE_SUBSCRIPTION_PERIOD_DAYS = max(1, int(os.getenv("FACTORY_MODE_SUBSCRIPTION_PERIOD_DAYS", "30")))
@@ -231,6 +253,8 @@ RATE_LIMIT_ANALYTICS_MAX_BODY_BYTES = int(os.getenv("RATE_LIMIT_ANALYTICS_MAX_BO
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 PROVIDER_RETRY_ATTEMPTS = max(1, int(os.getenv("PROVIDER_RETRY_ATTEMPTS", "2")))
 PROVIDER_RETRY_BACKOFF_SECONDS = float(os.getenv("PROVIDER_RETRY_BACKOFF_SECONDS", "0.25"))
+SOCIAL_PUBLISH_MAX_ATTEMPTS = max(1, min(5, int(os.getenv("SOCIAL_PUBLISH_MAX_ATTEMPTS", "3"))))
+SOCIAL_PUBLISH_RETRY_BACKOFF_SECONDS = max(0.25, float(os.getenv("SOCIAL_PUBLISH_RETRY_BACKOFF_SECONDS", "1.0")))
 
 # Validation behavior
 STRICT_PROVIDER_VALIDATION = os.getenv("STRICT_PROVIDER_VALIDATION", "false").lower() == "true"
@@ -295,7 +319,6 @@ def validate_external_service_config() -> None:
             STRIPE_PRICE_ID_MODERATE.strip(),
             STRIPE_PRICE_ID_PRO.strip(),
             STRIPE_PRICE_ID_STUDIO.strip(),
-            FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID.strip(),
             FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID.strip(),
         ]
     )

@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from typing import Callable
 
 import requests
 
@@ -15,17 +16,44 @@ from app.config import (
     GROK_IMAGINE_ASPECT_RATIO,
     GROK_IMAGINE_EXTENSION_CHUNK_SECONDS,
     GROK_IMAGINE_INITIAL_CHUNK_SECONDS,
+    GROK_IMAGINE_MAX_CLIP_BYTES,
+    GROK_IMAGINE_POLL_INTERVAL_SECONDS,
+    GROK_IMAGINE_POLL_TIMEOUT_SECONDS,
     GROK_IMAGINE_RESOLUTION,
     GROK_IMAGINE_TARGET_SEGMENT_SECONDS,
+    PROVIDER_RETRY_ATTEMPTS,
+    PROVIDER_RETRY_BACKOFF_SECONDS,
     XAI_API_KEY,
     XAI_BASE_URL,
     XAI_VIDEO_MODEL,
 )
 from app.storage import project_key, storage_client
+from app.services.metrics import GROK_RENDER_SECONDS, GROK_RENDER_TOTAL, GROK_RETRY_TOTAL
 from app.utils.file_manager import read_scene_metadata, read_script
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class _RetryableGenerationError(RuntimeError):
+    pass
+
+
+class RenderCancelled(RuntimeError):
+    """Raised when a caller requests cancellation during Grok rendering."""
+
+
+def _check_cancelled(cancel_check: Callable[[], bool] | None) -> None:
+    if cancel_check is not None and cancel_check():
+        raise RenderCancelled("Grok Imagine rendering was cancelled.")
+
+
+def _sleep_with_cancel(seconds: float, cancel_check: Callable[[], bool] | None) -> None:
+    deadline = time.time() + max(0.0, seconds)
+    while time.time() < deadline:
+        _check_cancelled(cancel_check)
+        time.sleep(min(0.5, max(0.0, deadline - time.time())))
+    _check_cancelled(cancel_check)
 
 
 def _run_ffmpeg_command(*, args: list[str], timeout_seconds: int, phase: str) -> None:
@@ -222,16 +250,28 @@ def _start_video_generation(
     return request_id
 
 
-def _poll_video_url(request_id: str) -> str:
-    deadline = time.time() + 1800
+def _poll_video_url(request_id: str, cancel_check: Callable[[], bool] | None = None) -> str:
+    deadline = time.time() + GROK_IMAGINE_POLL_TIMEOUT_SECONDS
+    last_poll_error: Exception | None = None
     while time.time() < deadline:
-        response = requests.get(
-            f"{XAI_BASE_URL}/videos/{request_id}",
-            headers=_xai_headers(),
-            timeout=60,
-        )
-        response.raise_for_status()
-        payload = response.json()
+        _check_cancelled(cancel_check)
+        try:
+            response = requests.get(
+                f"{XAI_BASE_URL}/videos/{request_id}",
+                headers=_xai_headers(),
+                timeout=60,
+            )
+            if response.status_code == 429 or response.status_code >= 500:
+                last_poll_error = RuntimeError(f"xAI poll HTTP {response.status_code}")
+                _sleep_with_cancel(GROK_IMAGINE_POLL_INTERVAL_SECONDS, cancel_check)
+                continue
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.ConnectionError, requests.Timeout, ValueError) as exc:
+            last_poll_error = exc
+            _sleep_with_cancel(GROK_IMAGINE_POLL_INTERVAL_SECONDS, cancel_check)
+            continue
+
         status = str(payload.get("status") or payload.get("state") or "").lower()
         if status in {"done", "succeeded", "completed", "success"}:
             video = payload.get("video")
@@ -253,15 +293,82 @@ def _poll_video_url(request_id: str) -> str:
                     return first.strip()
             raise RuntimeError(f"xAI video generation completed without a result URL: {payload}")
         if status in {"failed", "expired", "cancelled", "error"}:
+            error = payload.get("error")
+            error_code = ""
+            if isinstance(error, dict):
+                error_code = str(error.get("code") or "").lower()
+            if error_code in {"service_unavailable", "internal_error"}:
+                raise _RetryableGenerationError(
+                    f"xAI video generation failed transiently [{error_code}] for request {request_id}"
+                )
             raise RuntimeError(f"xAI video generation failed: {payload}")
-        time.sleep(4)
-    raise TimeoutError(f"xAI video generation timed out after 1800s for request {request_id}")
+        _sleep_with_cancel(GROK_IMAGINE_POLL_INTERVAL_SECONDS, cancel_check)
+
+    suffix = f"; last poll error: {last_poll_error}" if last_poll_error else ""
+    raise TimeoutError(
+        f"xAI video generation timed out after {GROK_IMAGINE_POLL_TIMEOUT_SECONDS}s "
+        f"for request {request_id}{suffix}"
+    )
 
 
-def _download_video(url: str, target_path: Path) -> None:
-    response = requests.get(url, timeout=240)
-    response.raise_for_status()
-    target_path.write_bytes(response.content)
+def _validate_video_file(path: Path) -> None:
+    ffprobe_path = shutil.which("ffprobe")
+    if not ffprobe_path:
+        raise RuntimeError("ffprobe is required to validate Grok Imagine output.")
+    try:
+        result = subprocess.run(
+            [
+                ffprobe_path,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError("Grok Imagine video validation failed.") from exc
+    if result.returncode != 0 or "video" not in result.stdout.lower():
+        raise RuntimeError("Grok Imagine returned an invalid video file.")
+
+
+def _download_video(url: str, target_path: Path, cancel_check: Callable[[], bool] | None = None) -> None:
+    last_error: Exception | None = None
+    attempts = max(1, PROVIDER_RETRY_ATTEMPTS)
+    for attempt in range(1, attempts + 1):
+        _check_cancelled(cancel_check)
+        total = 0
+        try:
+            with requests.get(url, stream=True, timeout=(10, 240)) as response:
+                response.raise_for_status()
+                with target_path.open("wb") as handle:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        _check_cancelled(cancel_check)
+                        if not chunk:
+                            continue
+                        total += len(chunk)
+                        if total > GROK_IMAGINE_MAX_CLIP_BYTES:
+                            raise RuntimeError("Grok Imagine clip exceeded the configured size limit.")
+                        handle.write(chunk)
+            if total == 0:
+                raise RuntimeError("Grok Imagine returned an empty video file.")
+            _validate_video_file(target_path)
+            return
+        except (requests.RequestException, RuntimeError) as exc:
+            last_error = exc
+            target_path.unlink(missing_ok=True)
+            if attempt < attempts:
+                GROK_RETRY_TOTAL.labels(phase="download", reason=type(exc).__name__).inc()
+                _sleep_with_cancel(PROVIDER_RETRY_BACKOFF_SECONDS * attempt, cancel_check)
+    raise RuntimeError(f"Failed to download Grok Imagine video: {last_error}")
 
 
 def _extract_last_frame(ffmpeg_path: str, video_path: Path, frame_path: Path) -> None:
@@ -329,6 +436,7 @@ def _render_segment(
     total_segments: int,
     temp_path: Path,
     initial_frame_bytes: bytes | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[Path, bytes | None]:
     clip_paths: list[Path] = []
     prompt_image: bytes | None = initial_frame_bytes
@@ -341,6 +449,7 @@ def _render_segment(
     )
     chunk_plan = _duration_plan(GROK_IMAGINE_TARGET_SEGMENT_SECONDS)
     for chunk_index, chunk_seconds in enumerate(chunk_plan, start=1):
+        _check_cancelled(cancel_check)
         prompt = segment_prompt
         if prompt_image is not None:
             prompt = (
@@ -349,14 +458,46 @@ def _render_segment(
                 + "Continue from the provided source frame. "
                 "Preserve pose, lighting, and identity while advancing the action."
             )
-        request_id = _start_video_generation(
-            prompt=prompt,
-            duration=chunk_seconds,
-            prompt_image_bytes=prompt_image,
-        )
-        clip_url = _poll_video_url(request_id)
         clip_path = temp_path / f"segment_{scene_index}_{chunk_index}.mp4"
-        _download_video(clip_url, clip_path)
+        generation_attempts = max(1, PROVIDER_RETRY_ATTEMPTS)
+        last_generation_error: Exception | None = None
+        for generation_attempt in range(1, generation_attempts + 1):
+            _check_cancelled(cancel_check)
+            try:
+                request_id = _start_video_generation(
+                    prompt=prompt,
+                    duration=chunk_seconds,
+                    prompt_image_bytes=prompt_image,
+                )
+                logger.info(
+                    "Started Grok Imagine request %s for project=%s scene=%s chunk=%s",
+                    request_id,
+                    project_id,
+                    scene_index,
+                    chunk_index,
+                )
+                clip_url = _poll_video_url(request_id, cancel_check=cancel_check)
+                _download_video(clip_url, clip_path, cancel_check=cancel_check)
+                last_generation_error = None
+                break
+            except _RetryableGenerationError as exc:
+                last_generation_error = exc
+                if generation_attempt < generation_attempts:
+                    GROK_RETRY_TOTAL.labels(phase="generation", reason=type(exc).__name__).inc()
+                    _sleep_with_cancel(PROVIDER_RETRY_BACKOFF_SECONDS * generation_attempt, cancel_check)
+                    continue
+                raise
+            except requests.HTTPError as exc:
+                status_code = exc.response.status_code if exc.response is not None else None
+                if status_code in {429, 500, 502, 503, 504} and generation_attempt < generation_attempts:
+                    last_generation_error = exc
+                    GROK_RETRY_TOTAL.labels(phase="generation", reason=f"http_{status_code}").inc()
+                    _sleep_with_cancel(PROVIDER_RETRY_BACKOFF_SECONDS * generation_attempt, cancel_check)
+                    continue
+                raise
+        if last_generation_error is not None:
+            raise last_generation_error
+        _check_cancelled(cancel_check)
         clip_paths.append(clip_path)
         if chunk_index < len(chunk_plan):
             frame_path = temp_path / f"segment_{scene_index}_{chunk_index}.png"
@@ -374,7 +515,8 @@ def _render_segment(
     return final_segment_path, final_frame_path.read_bytes()
 
 
-def render_grok_imagine_video(project_id: str) -> dict:
+def _render_grok_imagine_video_impl(project_id: str, cancel_check: Callable[[], bool] | None = None) -> dict:
+    _check_cancelled(cancel_check)
     api_key = XAI_API_KEY.strip()
     if not api_key:
         raise RuntimeError("XAI_API_KEY is required for Grok Imagine video rendering.")
@@ -401,6 +543,7 @@ def render_grok_imagine_video(project_id: str) -> dict:
         scene_count = len(render_sequence)
         previous_frame_bytes: bytes | None = None
         for scene_index, (_, scene_text) in enumerate(render_sequence, start=1):
+            _check_cancelled(cancel_check)
             segment_path, previous_frame_bytes = _render_segment(
                 ffmpeg_path=ffmpeg_path,
                 project_id=project_id,
@@ -410,9 +553,11 @@ def render_grok_imagine_video(project_id: str) -> dict:
                 total_segments=scene_count,
                 temp_path=temp_path,
                 initial_frame_bytes=previous_frame_bytes,
+                cancel_check=cancel_check,
             )
             segment_paths.append(segment_path)
 
+        _check_cancelled(cancel_check)
         if not segment_paths:
             raise ValueError("Grok Imagine rendering produced no clips.")
 
@@ -422,8 +567,11 @@ def render_grok_imagine_video(project_id: str) -> dict:
         else:
             _concat_videos(ffmpeg_path, segment_paths, final_path)
 
+        _check_cancelled(cancel_check)
+        _validate_video_file(final_path)
+        _check_cancelled(cancel_check)
         video_key = project_key(project_id, "video/final.mp4")
-        storage_client.write_bytes(video_key, final_path.read_bytes(), content_type="video/mp4")
+        storage_client.write_file(video_key, final_path, content_type="video/mp4")
 
         plan_key = project_key(project_id, "workflow/grok_imagine_plan.json")
         storage_client.write_text(
@@ -441,3 +589,20 @@ def render_grok_imagine_video(project_id: str) -> dict:
 
     logger.info("Rendered Grok Imagine video for project %s", project_id)
     return {"video_path": storage_client.public_url(video_key)}
+
+
+def render_grok_imagine_video(project_id: str, cancel_check: Callable[[], bool] | None = None) -> dict:
+    started = time.monotonic()
+    try:
+        result = _render_grok_imagine_video_impl(project_id, cancel_check=cancel_check)
+    except RenderCancelled:
+        GROK_RENDER_TOTAL.labels(status="cancelled").inc()
+        raise
+    except Exception:
+        GROK_RENDER_TOTAL.labels(status="failed").inc()
+        raise
+    else:
+        GROK_RENDER_TOTAL.labels(status="complete").inc()
+        return result
+    finally:
+        GROK_RENDER_SECONDS.observe(max(0.0, time.monotonic() - started))

@@ -104,12 +104,12 @@ const MAIN_NAV_ITEMS: Array<{ id: NavItem; label: string }> = [
 
 const FOOTER_NAV_ITEMS: Array<{ id: NavItem; label: string }> = [
   { id: "feedback", label: "User Feedback" },
-  { id: "community", label: "X'treamers" },
+  { id: "community", label: "Community" },
 ];
 
 const ALL_NAV_ITEMS = [...MAIN_NAV_ITEMS, ...FOOTER_NAV_ITEMS];
 const NAV_ITEMS = MAIN_NAV_ITEMS;
-const XTREAM_LOGO_SRC = "/xtream-logo.png";
+const PROCREATOR_LOGO_SRC = "/procreator-pro-logo.png";
 const VIDEO_READY_MESSAGE = "VIDEO READY";
 const FACTORY_MODE_ENABLED = process.env.NEXT_PUBLIC_FACTORY_MODE_ENABLED === "true";
 
@@ -295,24 +295,19 @@ function factoryAccessPlanLabel(plan: CreditPlan): string {
   if (!isFactoryAccessPlan(plan)) {
     return `${plan.credits.toLocaleString()} credits`;
   }
-  if (plan.access_mode === "subscription") {
-    const durationDays = plan.access_days ?? 30;
-    return `${durationDays}-day access`;
-  }
-  return "Extended access";
+  const durationDays = plan.access_days ?? 30;
+  return `${durationDays}-day access`;
 }
 
 function selectedBillingPlanSummary(plan: CreditPlan): string {
   if (!isFactoryAccessPlan(plan)) {
-    return `${plan.credits.toLocaleString()} credits for $${plan.price_usd}. Choose your payment route, then continue.`;
+    return `${plan.credits.toLocaleString()} credits for ${plan.price_usd}. Choose your payment route, then continue.`;
   }
-  const accessMode = plan.access_mode === "subscription" ? "subscription" : "one-time";
-  const accessLabel = accessMode === "subscription" ? `${plan.access_days ?? 30}-day` : "extended";
-  return `Factory Mode ${accessLabel} access for $${plan.price_usd}. Choose your payment route, then continue.`;
+  return `Factory Mode ${plan.access_days ?? 30}-day subscription access for ${plan.price_usd}. Choose your payment route, then continue.`;
 }
 
 function factoryAccessPurchaseLabel(plan: CreditPlan): string {
-  return plan.access_mode === "subscription" ? "Subscribe" : "Unlock";
+  return isFactoryAccessPlan(plan) ? "Subscribe" : "Buy";
 }
 
 function factoryModeAccessIsActive(summary: CreditBalance | null): boolean {
@@ -2582,7 +2577,7 @@ export default function WorkflowHomePage() {
         throw new Error("Write a message before posting.");
       }
       await createCommunityPost({ subject, message });
-      setCommunityStatus("Posted to X'treamers.");
+      setCommunityStatus("Posted to Community.");
       setCommunityMessage("");
       await refreshCommunityPosts();
     } catch (err) {
@@ -4717,7 +4712,7 @@ export default function WorkflowHomePage() {
     const pinnedTopics = [
       {
         subject: "Feature ideas",
-        message: "Share one feature that would make X'treamers better for your workflow.",
+        message: "Share one feature that would make the Community better for your workflow.",
       },
       {
         subject: "Production tips",
@@ -4735,9 +4730,9 @@ export default function WorkflowHomePage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Community</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">X&apos;treamers</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-white">ProCreators</h2>
               <p className="mt-2 max-w-2xl text-sm text-slate-400">
-                A place for X&apos;treamers users to join the discussion, share feature ideas, and swap production notes.
+                A place for Pro Creator users to join the discussion, share feature ideas, and swap production notes.
               </p>
             </div>
             <div className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs uppercase tracking-[0.2em] text-slate-400">
@@ -4855,7 +4850,7 @@ export default function WorkflowHomePage() {
                   ))
                 ) : (
                   <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-6 text-sm text-slate-400">
-                    Be the first to start a discussion in X&apos;treamer.
+                    Be the first to start a discussion in the ProCreators community.
                   </div>
                 )}
               </div>
@@ -4986,7 +4981,7 @@ export default function WorkflowHomePage() {
               <p className="text-xs uppercase tracking-[0.25em] text-amber-100/80">Access required</p>
               <h3 className="mt-2 text-lg font-semibold text-white">Unlock Factory Mode</h3>
               <p className="mt-2 max-w-2xl text-sm text-amber-50/80">
-                Factory Mode is deployed but locked until you purchase one-time access or a subscription in Credits & Plans.
+                Factory Mode is deployed but locked until you activate a subscription in Credits & Plans.
               </p>
               <button
                 className="mt-4 rounded-full border border-amber-300/40 bg-amber-300/10 px-4 py-2 text-sm font-semibold text-amber-50"
@@ -5133,7 +5128,7 @@ export default function WorkflowHomePage() {
           <aside className="absolute right-0 top-0 flex h-full w-[min(88vw,17rem)] flex-col overflow-y-auto border-l border-slate-800 bg-slate-950/95 p-5 shadow-2xl shadow-black/40">
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col">
-                <img className="h-[183px] w-auto -translate-y-[47px] object-contain" src={XTREAM_LOGO_SRC} alt="X'tream" />
+                <img className="h-[183px] w-auto -translate-y-[47px] object-contain" src={PROCREATOR_LOGO_SRC} alt="Pro Creator Pro" />
                 <p className="relative -top-[110px] mt-[3px] text-[11px] font-bold uppercase tracking-[0.35em] text-white">
                   Production Dashboard
                 </p>
@@ -5191,7 +5186,7 @@ export default function WorkflowHomePage() {
           className={playbackMode ? "hidden" : "hidden h-full w-[15rem] shrink-0 flex-col border-r border-slate-900/80 bg-slate-950/85 p-4 lg:flex"}
         >
           <div>
-            <img className="h-[187px] w-auto -translate-y-[47px] object-contain" src={XTREAM_LOGO_SRC} alt="X'tream" />
+            <img className="h-[187px] w-auto -translate-y-[47px] object-contain" src={PROCREATOR_LOGO_SRC} alt="Pro Creator Pro" />
             <p className="relative -top-[110px] mt-[3px] text-[11px] font-bold uppercase tracking-[0.35em] text-white">
               Production Dashboard
             </p>
@@ -5413,7 +5408,7 @@ export default function WorkflowHomePage() {
                   <div>
                     <h3 className="text-lg font-semibold text-white">Factory Mode Access</h3>
                     <p className="mt-1 text-sm text-slate-400">
-                      Choose Extended Access or a renewable subscription.
+                      Choose the renewable Factory Mode subscription.
                     </p>
                   </div>
                 </div>

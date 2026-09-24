@@ -1,5 +1,8 @@
 from uuid import uuid4
+import io
 import shutil
+
+from PIL import Image
 
 from fastapi.testclient import TestClient
 from jose import jwt
@@ -7,18 +10,65 @@ from jose import jwt
 from app.config import JWT_ALGORITHM, JWT_SECRET
 from app.main import app
 from app.routers import video as video_router
+from app.routers import script as script_router
+from app.routers import image as image_router
+from app.routers import voice as voice_router
 from app.storage import project_key, storage_client
-from app.services import image_engine
 
 
 def _auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_auth_project_pipeline_and_export_flow(monkeypatch) -> None:
+def test_auth_project_pipeline_and_export_flow(monkeypatch, tmp_path) -> None:
     client = TestClient(app)
-    monkeypatch.setattr(video_router, "XAI_API_KEY", "")
-    monkeypatch.setattr(image_engine, "XAI_API_KEY", "")
+    image_buffer = io.BytesIO()
+    Image.new("RGB", (64, 64), color=(32, 48, 64)).save(image_buffer, format="PNG")
+    png_bytes = image_buffer.getvalue()
+
+    def _fake_generate_script(topic, duration_minutes, tone, genre=None, **_kwargs):
+        return {
+            "full_script": "Scene 1\nIntent: validation\nNarration:\nTest narration.\nVisuals:\nStudio.",
+            "scenes": [{"id": 1, "text": "Scene 1\nIntent: validation\nNarration:\nTest narration.\nVisuals:\nStudio."}],
+        }
+
+    def _fake_generate_image(project_id, scene_id, prompt, style):
+        key = project_key(project_id, f"images/scene_{scene_id}.png")
+        storage_client.write_bytes(key, png_bytes, content_type="image/png")
+        return {"image_path": storage_client.public_url(key)}
+
+    def _fake_generate_voice(project_id, scene_id, text, voice_profile=None):
+        key = project_key(project_id, f"audio/scene_{scene_id}.mp3")
+        storage_client.write_bytes(key, b"mock-audio", content_type="audio/mpeg")
+        return {"audio_path": storage_client.public_url(key), "duration_seconds": 2.0}
+
+    monkeypatch.setattr(script_router, "generate_script", _fake_generate_script)
+    monkeypatch.setattr(image_router, "generate_image_for_scene", _fake_generate_image)
+    monkeypatch.setattr(voice_router, "generate_voice_for_scene", _fake_generate_voice)
+    monkeypatch.setattr(video_router, "generate_image_bytes", lambda **_kwargs: (png_bytes, "xai"))
+
+    source_path = tmp_path / "source.mp4"
+    source_path.write_bytes(b"source-video")
+    monkeypatch.setattr(
+        video_router,
+        "_materialize_video",
+        lambda _project_id, _temp_path: (
+            "project/video/final.mp4",
+            source_path,
+            {"duration": 2.0, "width": 1920, "height": 1080, "has_audio": True},
+        ),
+    )
+
+    def _fake_run_ffmpeg(args, **_kwargs):
+        from pathlib import Path
+        Path(args[-1]).write_bytes(b"export-video")
+
+    monkeypatch.setattr(video_router, "_run_ffmpeg", _fake_run_ffmpeg)
+    monkeypatch.setattr(
+        video_router,
+        "_probe_media",
+        lambda _path: {"duration": 2.0, "width": 1920, "height": 1080, "has_audio": True},
+    )
 
     def _fake_render_video(project_id: str) -> dict[str, str]:
         key = project_key(project_id, "video/final.mp4")

@@ -1,9 +1,13 @@
+import pytest
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.config import PROJECTS_DIR
 from app.main import app
 import app.services.grok_imagine_engine as grok_imagine_engine
-from app.utils.file_manager import read_json_artifact
+import app.routers.video as video_router
+from app.utils.file_manager import read_json_artifact, write_json_artifact
 
 
 def _create_project(client: TestClient) -> str:
@@ -15,9 +19,31 @@ def _create_project(client: TestClient) -> str:
     return response.json()["project_id"]
 
 
-def test_video_feature_routes_generate_artifacts() -> None:
+def test_template_route_creates_media_and_export_catalog_is_informational(monkeypatch, tmp_path) -> None:
     client = TestClient(app)
     project_id = _create_project(client)
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source-video")
+
+    monkeypatch.setattr(
+        video_router,
+        "_materialize_video",
+        lambda _project_id, _temp_path: (
+            "project/video/final.mp4",
+            source,
+            {"duration": 4.0, "width": 1920, "height": 1080, "has_audio": True},
+        ),
+    )
+
+    def fake_run_ffmpeg(args, **_kwargs):
+        Path(args[-1]).write_bytes(b"template-video")
+
+    monkeypatch.setattr(video_router, "_run_ffmpeg", fake_run_ffmpeg)
+    monkeypatch.setattr(
+        video_router,
+        "_probe_media",
+        lambda _path: {"duration": 4.0, "width": 1920, "height": 1080, "has_audio": True},
+    )
 
     template_res = client.post(f"/video/templates?project_id={project_id}")
     assert template_res.status_code == 200
@@ -25,20 +51,14 @@ def test_video_feature_routes_generate_artifacts() -> None:
 
     presets_res = client.post(f"/video/export-presets?project_id={project_id}")
     assert presets_res.status_code == 200
-    assert presets_res.json()["status"] == "complete"
-
-    screen_res = client.post(f"/video/screen-record?project_id={project_id}")
-    assert screen_res.status_code == 200
-    assert screen_res.json()["status"] == "complete"
-
-    magic_res = client.post(f"/video/magic-cut?project_id={project_id}")
-    assert magic_res.status_code == 200
-    assert magic_res.json()["status"] == "complete"
+    assert presets_res.json()["status"] == "ready"
 
     template_artifact = read_json_artifact(
         PROJECTS_DIR / project_id / "video" / "template_plan.json"
     )
     assert template_artifact.get("selected_template")
+    assert template_artifact.get("output_path")
+    assert template_artifact.get("validated") is True
 
     export_artifact = read_json_artifact(
         PROJECTS_DIR / project_id / "video" / "export_presets.json"
@@ -46,15 +66,48 @@ def test_video_feature_routes_generate_artifacts() -> None:
     assert export_artifact.get("presets")
     assert export_artifact.get("recommended")
 
-    screen_artifact = read_json_artifact(
-        PROJECTS_DIR / project_id / "video" / "screen_record_plan.json"
-    )
-    assert screen_artifact.get("timeline")
 
-    magic_cut_artifact = read_json_artifact(
-        PROJECTS_DIR / project_id / "video" / "magic_cut.json"
+def test_screen_record_requires_real_captured_media() -> None:
+    client = TestClient(app)
+    project_id = _create_project(client)
+    response = client.post(f"/video/screen-record?project_id={project_id}")
+    assert response.status_code == 400
+    assert "captured screen recording" in response.json()["detail"]
+
+
+def test_screen_record_processes_uploaded_media(monkeypatch) -> None:
+    client = TestClient(app)
+    project_id = _create_project(client)
+
+    monkeypatch.setattr(
+        video_router,
+        "_probe_media",
+        lambda _path: {"duration": 2.0, "width": 1280, "height": 720, "has_audio": True},
     )
-    assert magic_cut_artifact.get("project_id") == project_id
+
+    def fake_run_ffmpeg(args, **_kwargs):
+        Path(args[-1]).write_bytes(b"processed-video")
+
+    monkeypatch.setattr(video_router, "_run_ffmpeg", fake_run_ffmpeg)
+
+    response = client.post(
+        f"/video/screen-record?project_id={project_id}",
+        files={"screen": ("screen.webm", b"captured-screen", "video/webm")},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "complete"
+    artifact = read_json_artifact(
+        PROJECTS_DIR / project_id / "video" / "screen_record.json"
+    )
+    assert artifact["webcam_overlay"] is False
+    assert artifact["video_path"]
+
+
+def test_magic_cut_requires_transcript_and_media() -> None:
+    client = TestClient(app)
+    project_id = _create_project(client)
+    response = client.post(f"/video/magic-cut?project_id={project_id}")
+    assert response.status_code == 400
 
 
 def test_export_requires_source_video() -> None:
@@ -67,6 +120,15 @@ def test_export_requires_source_video() -> None:
     )
     assert response.status_code == 400
     assert "No source video found" in response.json()["detail"]
+
+
+def test_grok_poll_honors_cancellation_before_network(monkeypatch) -> None:
+    def unexpected_get(*_args, **_kwargs):
+        raise AssertionError("network polling must not run after cancellation")
+
+    monkeypatch.setattr(grok_imagine_engine.requests, "get", unexpected_get)
+    with pytest.raises(grok_imagine_engine.RenderCancelled):
+        grok_imagine_engine._poll_video_url("request-cancelled", cancel_check=lambda: True)
 
 
 def test_grok_imagine_segments_chain_last_frame_into_next_segment(
@@ -94,6 +156,7 @@ def test_grok_imagine_segments_chain_last_frame_into_next_segment(
         total_segments,
         temp_path,
         initial_frame_bytes=None,
+        cancel_check=None,
     ):
         calls.append(initial_frame_bytes)
         segment_path = temp_path / f"segment_{scene_index}.mp4"
@@ -106,9 +169,10 @@ def test_grok_imagine_segments_chain_last_frame_into_next_segment(
 
     monkeypatch.setattr(grok_imagine_engine, "_render_segment", fake_render_segment)
     monkeypatch.setattr(grok_imagine_engine, "_concat_videos", fake_concat_videos)
+    monkeypatch.setattr(grok_imagine_engine, "_validate_video_file", lambda _path: None)
     monkeypatch.setattr(
         grok_imagine_engine.storage_client,
-        "write_bytes",
+        "write_file",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
@@ -162,6 +226,7 @@ def test_grok_imagine_includes_start_and_end_credits_sequences(
         total_segments,
         temp_path,
         initial_frame_bytes=None,
+        cancel_check=None,
     ):
         scene_texts.append(scene_text)
         segment_path = temp_path / f"segment_{scene_index}.mp4"
@@ -174,9 +239,10 @@ def test_grok_imagine_includes_start_and_end_credits_sequences(
 
     monkeypatch.setattr(grok_imagine_engine, "_render_segment", fake_render_segment)
     monkeypatch.setattr(grok_imagine_engine, "_concat_videos", fake_concat_videos)
+    monkeypatch.setattr(grok_imagine_engine, "_validate_video_file", lambda _path: None)
     monkeypatch.setattr(
         grok_imagine_engine.storage_client,
-        "write_bytes",
+        "write_file",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
@@ -197,3 +263,66 @@ def test_grok_imagine_includes_start_and_end_credits_sequences(
     assert scene_texts[-1].startswith("__CREDITS_END__")
     assert len(scene_texts) == 4
     assert result["video_path"].startswith("public://")
+
+
+def test_internal_social_vertical_export_alias_is_real_media_output(monkeypatch, tmp_path) -> None:
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source-video")
+
+    monkeypatch.setattr(
+        video_router,
+        "_materialize_video",
+        lambda _project_id, _temp_path: (
+            "project/video/final.mp4",
+            source,
+            {"duration": 4.0, "width": 1920, "height": 1080, "has_audio": True},
+        ),
+    )
+
+    def fake_run_ffmpeg(args, **_kwargs):
+        Path(args[-1]).write_bytes(b"vertical-export")
+
+    monkeypatch.setattr(video_router, "_run_ffmpeg", fake_run_ffmpeg)
+    monkeypatch.setattr(
+        video_router,
+        "_probe_media",
+        lambda _path: {"duration": 4.0, "width": 1080, "height": 1920, "has_audio": True},
+    )
+    monkeypatch.setattr(video_router.storage_client, "write_file", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(video_router.storage_client, "write_text", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        video_router.storage_client,
+        "public_url",
+        lambda key: f"public://{key}",
+    )
+
+    response = video_router.export_preset(
+        video_router.ExportPresetRequest(project_id="scheduled-project", preset="social-vertical"),
+        session=None,
+        current_user=None,
+    )
+    assert response.export_path.endswith("/video/exports/social-vertical.mp4")
+
+
+def test_multitrack_uses_ducking_and_loudness_normalization(monkeypatch) -> None:
+    client = TestClient(app)
+    project_id = _create_project(client)
+    audio_dir = PROJECTS_DIR / project_id / "audio"
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    (audio_dir / "scene_1.wav").write_bytes(b"voice")
+    (audio_dir / "music_bed.wav").write_bytes(b"music")
+
+    calls: list[list[str]] = []
+
+    def fake_run_ffmpeg(args, **_kwargs):
+        calls.append(list(args))
+        Path(args[-1]).write_bytes(b"mixed-audio")
+
+    monkeypatch.setattr(video_router, "_run_ffmpeg", fake_run_ffmpeg)
+
+    response = client.post(f"/video/multitrack?project_id={project_id}")
+    assert response.status_code == 200
+    assert response.json()["status"] == "complete"
+    flattened = " ".join(" ".join(call) for call in calls)
+    assert "sidechaincompress" in flattened
+    assert "loudnorm" in flattened

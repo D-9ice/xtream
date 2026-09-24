@@ -8,7 +8,7 @@ Pro Creator is a modular AI-powered content creation platform with a production-
 - **Async jobs** with Celery + Redis
 - **Storage abstraction** for local or S3-compatible backends
 - **Next.js frontend** with editor, automation, and voice workflows
-- **xAI/Grok-first generation** for script, speech, images, and video, with legacy provider overrides still available
+- **xAI/Grok generation** as the supported provider path, with Grok Imagine producing synchronized audiovisual video
 - **Lip sync artifacts** (viseme timelines) for downstream animation (Rhubarb optional)
 - **Deployment assets** for single-VM production (Caddy + Spaces)
 
@@ -106,25 +106,16 @@ Set:
 
 ```zsh
 XAI_API_KEY=<your_xai_key>
-SCRIPT_PROVIDER=xai
-IMAGE_PROVIDER=xai
-TTS_PROVIDER=xai
-VIDEO_PROVIDER_DEFAULT=grok_imagine
 ```
 
 ### xAI / Grok Imagine mode
 
-The backend uses xAI as the unified provider path for script, image, voice, and final video generation.
-The video renderer chains short clips by feeding the last frame of each clip into the next one.
+The backend uses xAI as the supported provider path for script, image and voice features. Final production uses Grok Imagine as the authoritative synchronized audiovisual renderer. The renderer chains short clips by feeding the last frame of each clip into the next one.
 
 Configure:
 
 ```zsh
 XAI_API_KEY=<your_xai_key>
-SCRIPT_PROVIDER=xai
-IMAGE_PROVIDER=xai
-TTS_PROVIDER=xai
-VIDEO_PROVIDER_DEFAULT=grok_imagine
 ```
 
 Optional tuning:
@@ -185,11 +176,13 @@ cd pro_creator
 
 Report output is written to `artifacts/stress-report.json`.
 
-## Next steps
+## Operational status
 
-- Add dedicated monitoring dashboards (Grafana/Prometheus)
-- Expand orchestration templates and reporting
-- Harden production secrets management
+- Prometheus/Grafana/Alertmanager monitoring covers API health, Celery queue depth, Grok rendering, Factory Mode, social publishing, exports, and storage failures.
+- Production scheduling runs through Celery Beat with a distributed Redis lock.
+- Celery-backed orchestration jobs dispatch immediately when queued; retry and cancellation state is persisted.
+- Factory Mode persists per-title checkpoints so completed work is not recreated after a worker interruption.
+- Android remains a development-only companion scaffold.
 
 ## Execution roadmap
 

@@ -18,8 +18,6 @@ DEFAULT_SETTINGS = {
     "plan_studio_credits": 6000,
     "plan_studio_price_usd": 119,
     "plan_studio_stripe_price_id": None,
-    "factory_one_time_price_usd": 149,
-    "factory_one_time_stripe_price_id": None,
     "factory_subscription_price_usd": 39,
     "factory_subscription_stripe_price_id": None,
     "owner_mode_enabled": False,

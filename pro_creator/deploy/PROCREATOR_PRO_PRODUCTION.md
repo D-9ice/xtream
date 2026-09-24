@@ -3,7 +3,7 @@
 ## Target topology
 
 - Vercel: Next.js frontend only (`pro_creator/frontend`)
-- Persistent backend host: FastAPI + FFmpeg + Celery worker
+- Persistent backend host: FastAPI + FFmpeg + Celery worker + Celery Beat scheduler
 - Postgres: production database
 - Redis: Celery broker/result backend
 - S3-compatible object storage: generated project/media assets
@@ -78,6 +78,8 @@ XAI_TEXT_MODEL=grok-4.20-beta-latest-non-reasoning
 XAI_IMAGE_MODEL=grok-imagine-image
 XAI_VIDEO_MODEL=grok-imagine-video
 XAI_TTS_VOICE_ID=eve
+SOCIAL_PUBLISH_MAX_ATTEMPTS=3
+SOCIAL_PUBLISH_RETRY_BACKOFF_SECONDS=1.0
 PAYSTACK_SECRET_KEY=<secret-if-paystack-enabled>
 PAYSTACK_CALLBACK_URL=https://<vercel-production-domain>/?checkout=success&provider=paystack
 ```
@@ -91,13 +93,15 @@ Do not mark production complete until all of the following pass:
 1. Frontend install, lint, tests and production build.
 2. Backend tests and production startup validation.
 3. Postgres migration to latest Alembic revision.
-4. Redis/Celery worker connectivity.
+4. Redis/Celery worker + Celery Beat connectivity, immediate queue dispatch, cooperative cancellation, retry bounds, and due-schedule dispatch.
 5. S3-compatible read/write test.
 6. xAI provider smoke test.
 7. Browser smoke test through the Vercel production URL.
 8. Auth/admin access test.
 9. Script -> character -> production queue -> completed media end-to-end test.
 10. Payment callback test for each enabled payment provider.
+11. Prometheus/Grafana metrics verification for Grok, queue depth, Factory Mode, social publishing, exports, and storage.
+12. Factory Mode restart verification confirming completed title checkpoints are skipped and unfinished safe checkpoints resume without duplicate project creation or charging.
 
 ## Naming
 

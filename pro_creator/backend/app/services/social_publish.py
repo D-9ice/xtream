@@ -11,6 +11,7 @@ from typing import Any, Iterable
 from urllib.parse import parse_qsl, quote, urlparse
 
 import requests
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
@@ -20,11 +21,14 @@ from app.config import (
     OWNER_EMAIL_ALLOWLIST,
     SOCIAL_TIKTOK_CLIENT_KEY,
     SOCIAL_TIKTOK_CLIENT_SECRET,
+    SOCIAL_PUBLISH_MAX_ATTEMPTS,
+    SOCIAL_PUBLISH_RETRY_BACKOFF_SECONDS,
     SOCIAL_YOUTUBE_CLIENT_ID,
     SOCIAL_YOUTUBE_CLIENT_SECRET,
 )
 from app.models import Project, SocialAccountConnection, SocialPublishJob, User, utc_now
 from app.services.credits import consume_credits
+from app.services.metrics import SOCIAL_PUBLISH_TOTAL
 from app.storage import project_key, storage_client
 
 PLATFORM_KEYS = {"youtube", "instagram", "facebook", "x", "tiktok"}
@@ -56,7 +60,8 @@ def _clean_metadata(metadata: dict[str, str] | None) -> dict[str, str]:
     return cleaned
 
 
-def _derive_stream(secret: str, salt: str, length: int) -> bytes:
+def _derive_legacy_stream(secret: str, salt: str, length: int) -> bytes:
+    """Compatibility only: decrypt pre-hardening token rows."""
     seed = hashlib.sha256(f"{secret}::{salt}".encode("utf-8")).digest()
     out = bytearray()
     counter = 0
@@ -67,28 +72,41 @@ def _derive_stream(secret: str, salt: str, length: int) -> bytes:
     return bytes(out[:length])
 
 
+def _social_fernet() -> Fernet:
+    # Preserve the existing JWT-secret dependency so deployed connections survive
+    # without introducing an unsynchronised second secret during this migration.
+    digest = hashlib.sha256(f"procreator-social-v2::{JWT_SECRET}".encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
 def _encrypt_secret(value: str | None) -> str | None:
     clean = _clean_optional_text(value)
     if clean is None:
         return None
-    salt = hashlib.sha256(f"{JWT_SECRET}:{time.time_ns()}".encode("utf-8")).hexdigest()[:32]
-    raw = clean.encode("utf-8")
-    stream = _derive_stream(JWT_SECRET, salt, len(raw))
-    cipher = bytes(a ^ b for a, b in zip(raw, stream))
-    return f"{salt}:{base64.urlsafe_b64encode(cipher).decode('utf-8')}"
+    token = _social_fernet().encrypt(clean.encode("utf-8")).decode("ascii")
+    return f"v2:{token}"
+
+
+def _decrypt_legacy_secret(value: str) -> str | None:
+    try:
+        salt, encoded = value.split(":", 1)
+        cipher = base64.urlsafe_b64decode(encoded.encode("utf-8"))
+        stream = _derive_legacy_stream(JWT_SECRET, salt, len(cipher))
+        plain = bytes(a ^ b for a, b in zip(cipher, stream))
+        return plain.decode("utf-8")
+    except Exception:
+        return None
 
 
 def _decrypt_secret(value: str | None) -> str | None:
     if not value:
         return None
-    try:
-        salt, encoded = value.split(":", 1)
-        cipher = base64.urlsafe_b64decode(encoded.encode("utf-8"))
-        stream = _derive_stream(JWT_SECRET, salt, len(cipher))
-        plain = bytes(a ^ b for a, b in zip(cipher, stream))
-        return plain.decode("utf-8")
-    except Exception:
-        return None
+    if value.startswith("v2:"):
+        try:
+            return _social_fernet().decrypt(value[3:].encode("ascii")).decode("utf-8")
+        except (InvalidToken, ValueError, UnicodeDecodeError):
+            return None
+    return _decrypt_legacy_secret(value)
 
 
 def _json_text(value: Any, default: Any) -> str:
@@ -189,6 +207,62 @@ def _build_message(project: Project, message: str | None, title: str | None) -> 
     return primary
 
 
+def _publish_fingerprint(
+    *,
+    tenant_id: str,
+    user_id: int,
+    project_id: str,
+    connection_id: str,
+    message: str,
+) -> str:
+    canonical = "\n".join(
+        [
+            tenant_id,
+            str(user_id),
+            project_id,
+            connection_id,
+            message.strip(),
+        ]
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _matching_publish_jobs(
+    *,
+    session: Session,
+    current_user: User,
+    project_id: str,
+    connection_id: str,
+    platform: str,
+    fingerprint: str,
+) -> list[SocialPublishJob]:
+    tenant_id = getattr(current_user, "tenant_id", "default")
+    jobs = session.exec(
+        select(SocialPublishJob).where(
+            SocialPublishJob.tenant_id == tenant_id,
+            SocialPublishJob.user_id == (current_user.id or 0),
+            SocialPublishJob.project_id == project_id,
+            SocialPublishJob.connection_id == connection_id,
+            SocialPublishJob.platform == platform,
+        ).order_by(SocialPublishJob.created_at.desc())
+    ).all()
+    return [
+        job
+        for job in jobs
+        if str(_parse_json(job.payload_json, {}).get("idempotency_key") or "") == fingerprint
+    ]
+
+
+def _publish_failure_status(exc: Exception) -> str:
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+        return "uncertain"
+    if isinstance(exc, requests.HTTPError):
+        status_code = exc.response.status_code if exc.response is not None else None
+        if status_code is None or status_code >= 500:
+            return "uncertain"
+    return "failed"
+
+
 def _create_job(
     *,
     session: Session,
@@ -223,6 +297,7 @@ def _finish_job(
     error_message: str | None = None,
 ) -> SocialPublishJob:
     job.status = status
+    SOCIAL_PUBLISH_TOTAL.labels(platform=job.platform, status=status).inc()
     job.published_url = published_url
     job.remote_post_id = remote_post_id
     job.error_message = error_message
@@ -1008,6 +1083,47 @@ def _publish_to_tiktok(
     return publish_id, published_url
 
 
+def _rate_limit_retry_delay(exc: Exception, attempt: int) -> float | None:
+    """Return a safe retry delay only when the remote request was explicitly rate-limited.
+
+    Timeouts, connection failures, and 5xx responses are deliberately not retried
+    here because the remote platform may already have accepted the post.
+    """
+    if not isinstance(exc, requests.HTTPError) or exc.response is None:
+        return None
+    if exc.response.status_code != 429:
+        return None
+    retry_after = exc.response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return min(60.0, max(0.25, float(retry_after)))
+        except (TypeError, ValueError):
+            pass
+    return min(
+        60.0,
+        SOCIAL_PUBLISH_RETRY_BACKOFF_SECONDS * (2 ** max(0, attempt - 1)),
+    )
+
+
+def _publish_remote_once(
+    *,
+    project: Project,
+    connection: SocialAccountConnection,
+    message: str,
+) -> tuple[str, str | None]:
+    if connection.platform == "youtube":
+        return _publish_to_youtube(project=project, connection=connection, message=message)
+    if connection.platform == "instagram":
+        return _publish_to_instagram(project=project, connection=connection, message=message)
+    if connection.platform == "facebook":
+        return _publish_to_facebook(project=project, connection=connection, message=message)
+    if connection.platform == "x":
+        return _publish_to_x(project=project, connection=connection, message=message)
+    if connection.platform == "tiktok":
+        return _publish_to_tiktok(project=project, connection=connection, message=message)
+    raise RuntimeError(f"Unsupported platform: {connection.platform}")
+
+
 def _publish_connection(
     *,
     session: Session,
@@ -1016,12 +1132,42 @@ def _publish_connection(
     connection: SocialAccountConnection,
     message: str,
 ) -> SocialPublishJob:
+    tenant_id = getattr(current_user, "tenant_id", "default")
+    fingerprint = _publish_fingerprint(
+        tenant_id=tenant_id,
+        user_id=current_user.id or 0,
+        project_id=project.project_id,
+        connection_id=connection.connection_id,
+        message=message,
+    )
+    matching_jobs = _matching_publish_jobs(
+        session=session,
+        current_user=current_user,
+        project_id=project.project_id,
+        connection_id=connection.connection_id,
+        platform=connection.platform,
+        fingerprint=fingerprint,
+    )
+    for existing in matching_jobs:
+        if existing.status in {"complete", "queued", "processing", "uncertain"}:
+            return existing
+
+    previous_attempts = 0
+    for existing in matching_jobs:
+        payload = _parse_json(existing.payload_json, {})
+        try:
+            previous_attempts = max(previous_attempts, int(payload.get("attempt") or 0))
+        except (TypeError, ValueError):
+            continue
+
     publish_connection = _resolve_publish_connection(session, current_user, connection)
     publish_connection = _refresh_connection_access_token_if_needed(session, publish_connection)
     payload = {
         "message": message,
         "platform": publish_connection.platform,
         "account_identifier": publish_connection.account_identifier,
+        "idempotency_key": fingerprint,
+        "attempt": previous_attempts + 1,
     }
     job = _create_job(
         session=session,
@@ -1031,41 +1177,41 @@ def _publish_connection(
         connection_id=connection.connection_id,
         payload=payload,
     )
+    job.status = "processing"
+    job.updated_at = _utc_now()
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
     try:
         if not connection.enabled and _connection_has_publish_credentials(connection):
             raise RuntimeError("Connection is disabled")
-        if publish_connection.platform == "youtube":
-            remote_id, published_url = _publish_to_youtube(
-                project=project,
-                connection=publish_connection,
-                message=message,
-            )
-        elif publish_connection.platform == "instagram":
-            remote_id, published_url = _publish_to_instagram(
-                project=project,
-                connection=publish_connection,
-                message=message,
-            )
-        elif publish_connection.platform == "facebook":
-            remote_id, published_url = _publish_to_facebook(
-                project=project,
-                connection=publish_connection,
-                message=message,
-            )
-        elif publish_connection.platform == "x":
-            remote_id, published_url = _publish_to_x(
-                project=project,
-                connection=publish_connection,
-                message=message,
-            )
-        elif publish_connection.platform == "tiktok":
-            remote_id, published_url = _publish_to_tiktok(
-                project=project,
-                connection=publish_connection,
-                message=message,
-            )
-        else:
-            raise RuntimeError(f"Unsupported platform: {publish_connection.platform}")
+        remote_id = ""
+        published_url: str | None = None
+        last_error: Exception | None = None
+        transport_attempts = 0
+        for transport_attempt in range(1, SOCIAL_PUBLISH_MAX_ATTEMPTS + 1):
+            transport_attempts = transport_attempt
+            try:
+                remote_id, published_url = _publish_remote_once(
+                    project=project,
+                    connection=publish_connection,
+                    message=message,
+                )
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                delay = _rate_limit_retry_delay(exc, transport_attempt)
+                if delay is None or transport_attempt >= SOCIAL_PUBLISH_MAX_ATTEMPTS:
+                    raise
+                time.sleep(delay)
+        if last_error is not None:
+            raise last_error
+        payload["transport_attempts"] = transport_attempts
+        job.payload_json = _json_text(payload, {})
+        session.add(job)
+        session.commit()
         consume_credits(
             session=session,
             user=current_user,
@@ -1084,8 +1230,12 @@ def _publish_connection(
             published_url=published_url,
         )
     except Exception as exc:
-        return _finish_job(session=session, job=job, status="failed", error_message=str(exc))
-
+        return _finish_job(
+            session=session,
+            job=job,
+            status=_publish_failure_status(exc),
+            error_message=str(exc),
+        )
 
 def publish_to_connections(
     *,

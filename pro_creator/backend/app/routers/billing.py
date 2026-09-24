@@ -18,8 +18,6 @@ from app.config import (
     ADMIN_2FA_TOTP_SECRET,
     ADMIN_DASHBOARD_PASSWORD,
     ENVIRONMENT,
-    FACTORY_MODE_ONE_TIME_PRICE_USD,
-    FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID,
     FACTORY_MODE_SUBSCRIPTION_PERIOD_DAYS,
     FACTORY_MODE_SUBSCRIPTION_PRICE_USD,
     FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID,
@@ -117,8 +115,6 @@ def _default_stripe_price_id(plan_id: str) -> str | None:
         return STRIPE_PRICE_ID_PRO or None
     if plan_id == "studio":
         return STRIPE_PRICE_ID_STUDIO or None
-    if plan_id == "factory_one_time":
-        return FACTORY_MODE_ONE_TIME_STRIPE_PRICE_ID or None
     if plan_id == "factory_subscription":
         return FACTORY_MODE_SUBSCRIPTION_STRIPE_PRICE_ID or None
     return None
@@ -242,21 +238,16 @@ def _is_factory_access_plan(plan: CreditPlan) -> bool:
 
 
 def _factory_access_mode(plan: CreditPlan) -> str:
-    return (getattr(plan, "access_mode", None) or "one_time").strip().lower()
+    return (getattr(plan, "access_mode", None) or "subscription").strip().lower()
 
 
 def _factory_access_period_days(plan: CreditPlan) -> int:
-    if _factory_access_mode(plan) == "subscription":
-        return max(1, int(getattr(plan, "access_days", None) or FACTORY_MODE_SUBSCRIPTION_PERIOD_DAYS))
-    return 0
+    return max(1, int(getattr(plan, "access_days", None) or FACTORY_MODE_SUBSCRIPTION_PERIOD_DAYS))
 
 
 def _factory_access_item_description(plan: CreditPlan) -> str:
-    access_mode = _factory_access_mode(plan)
-    if access_mode == "subscription":
-        duration_days = _factory_access_period_days(plan)
-        return f"Factory Mode subscription access for {duration_days} days"
-    return f"Factory Mode Extended Access with {plan.credits} configured credits"
+    duration_days = _factory_access_period_days(plan)
+    return f"Factory Mode subscription access for {duration_days} days"
 
 
 def _grant_factory_purchase(
@@ -1234,9 +1225,6 @@ def update_admin_billing_settings(
             studio_price_usd=payload.studio_price_usd,
             studio_base_character_slots=payload.studio_base_character_slots,
             studio_stripe_price_id=payload.studio_stripe_price_id,
-            factory_one_time_credits=payload.factory_one_time_credits,
-            factory_one_time_price_usd=payload.factory_one_time_price_usd,
-            factory_one_time_stripe_price_id=payload.factory_one_time_stripe_price_id,
             factory_subscription_credits=payload.factory_subscription_credits,
             factory_subscription_price_usd=payload.factory_subscription_price_usd,
             factory_subscription_stripe_price_id=payload.factory_subscription_stripe_price_id,
@@ -1306,8 +1294,8 @@ def update_user_subscription(
     current_factory_access = (subscription.factory_mode_access or "none").strip().lower()
     if payload.factory_mode_access is not None or payload.factory_mode_renewal_date is not None:
         requested_access = (payload.factory_mode_access or subscription.factory_mode_access or "none").strip().lower()
-        if requested_access not in {"none", "one_time", "subscription"}:
-            raise HTTPException(status_code=400, detail="factory_mode_access must be none, one_time, or subscription")
+        if requested_access not in {"none", "subscription"}:
+            raise HTTPException(status_code=400, detail="factory_mode_access must be none or subscription")
         if requested_access == "none":
             if current_factory_access != "none" or subscription.factory_mode_status != "inactive":
                 subscription = revoke_factory_mode_access(
@@ -1336,7 +1324,7 @@ def update_user_subscription(
                         "email": email,
                         "factory_mode_access": requested_access,
                     },
-                    renewal_days=FACTORY_MODE_SUBSCRIPTION_PERIOD_DAYS if requested_access == "subscription" else None,
+                    renewal_days=FACTORY_MODE_SUBSCRIPTION_PERIOD_DAYS,
                 )
             if requested_access == "subscription" and payload.factory_mode_renewal_date is not None:
                 subscription.factory_mode_renewal_date = payload.factory_mode_renewal_date

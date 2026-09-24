@@ -313,9 +313,10 @@ class EditByTextRequest(BaseModel):
 
 class EditByTextResponse(BaseModel):
     segments_remaining: int
+    video_path: Optional[str] = None
 
 
-class FeatureStubResponse(BaseModel):
+class FeatureOperationResponse(BaseModel):
     status: str
     detail: str
 
@@ -407,6 +408,7 @@ class OrchestrationQueueItem(BaseModel):
     max_attempts: int
     last_error: Optional[str] = None
     task_id: Optional[str] = None
+    factory_items: List[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -434,7 +436,7 @@ class OrchestrationRunnerStatus(BaseModel):
 
 class OrchestrationScheduleRequest(BaseModel):
     project_id: str
-    cadence_days: int = 1
+    cadence_days: int = Field(default=1, ge=1, le=3650)
 
 
 class OrchestrationScheduleItem(BaseModel):
@@ -633,9 +635,6 @@ class AdminBillingSettingsUpdateRequest(BaseModel):
     studio_price_usd: int
     studio_base_character_slots: int
     studio_stripe_price_id: Optional[str] = None
-    factory_one_time_credits: int
-    factory_one_time_price_usd: int
-    factory_one_time_stripe_price_id: Optional[str] = None
     factory_subscription_credits: int
     factory_subscription_price_usd: int
     factory_subscription_stripe_price_id: Optional[str] = None

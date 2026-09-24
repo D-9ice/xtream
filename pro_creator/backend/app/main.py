@@ -1,8 +1,4 @@
 from contextlib import asynccontextmanager
-from collections import defaultdict, deque
-from threading import Lock
-from time import time
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -33,6 +29,8 @@ from app.database import init_db
 from app.seed import seed_admin_user
 from app.routers import auth, billing, community, editor, image, orchestration, project, script, social, video, voice, workflow, analytics
 from app.tenant import current_tenant_id, reset_current_tenant_id, set_current_tenant_id
+from app.services.rate_limit import rate_limit_hit
+from app.services.metrics import refresh_celery_queue_depth
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -73,26 +71,11 @@ if STORAGE_BACKEND == "local":
     app.mount("/projects", StaticFiles(directory=PROJECTS_DIR), name="projects")
 
 
-_rate_limit_lock = Lock()
-_rate_limit_store: dict[str, deque[float]] = defaultdict(deque)
 http_requests_total = Counter(
     "http_requests_total",
     "Total HTTP requests",
     ["method", "path", "status"],
 )
-
-
-def _rate_limit_hit(key: str, limit: int) -> bool:
-    now = time()
-    floor = now - RATE_LIMIT_WINDOW_SECONDS
-    with _rate_limit_lock:
-        bucket = _rate_limit_store[key]
-        while bucket and bucket[0] < floor:
-            bucket.popleft()
-        if len(bucket) >= limit:
-            return True
-        bucket.append(now)
-    return False
 
 
 @app.middleware("http")
@@ -139,17 +122,17 @@ async def rate_limit_middleware(request: Request, call_next):
             return response
 
         if method == "POST" and path in auth_paths:
-            if _rate_limit_hit(f"auth:{tenant_id}:{ip}:{path}", RATE_LIMIT_AUTH_REQUESTS):
+            if rate_limit_hit(f"auth:{tenant_id}:{ip}:{path}", RATE_LIMIT_AUTH_REQUESTS):
                 response = JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
                 http_requests_total.labels(method=method, path=path, status="429").inc()
                 return response
         elif method == "POST" and path in analytics_paths:
-            if _rate_limit_hit(f"analytics:{tenant_id}:{ip}", RATE_LIMIT_ANALYTICS_REQUESTS):
+            if rate_limit_hit(f"analytics:{tenant_id}:{ip}", RATE_LIMIT_ANALYTICS_REQUESTS):
                 response = JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
                 http_requests_total.labels(method=method, path=path, status="429").inc()
                 return response
         elif method == "POST" and path.startswith(heavy_prefixes):
-            if _rate_limit_hit(f"heavy:{tenant_id}:{ip}", RATE_LIMIT_HEAVY_REQUESTS):
+            if rate_limit_hit(f"heavy:{tenant_id}:{ip}", RATE_LIMIT_HEAVY_REQUESTS):
                 response = JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
                 http_requests_total.labels(method=method, path=path, status="429").inc()
                 return response
@@ -195,6 +178,7 @@ def health() -> dict:
 
 @app.get("/metrics")
 def metrics() -> Response:
+    refresh_celery_queue_depth()
     response = Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
     for header_name, header_value in SECURITY_HEADERS.items():
         response.headers.setdefault(header_name, header_value)

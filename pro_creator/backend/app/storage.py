@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
+import os
+import shutil
 from typing import Iterable, Optional
 
 import boto3
@@ -21,8 +24,22 @@ from app.config import (
     STORAGE_BACKEND,
 )
 from app.utils.logger import get_logger
+from app.services.metrics import STORAGE_FAILURE_TOTAL
 
 logger = get_logger(__name__)
+
+
+def _observe_storage(operation: str):
+    def decorator(func):
+        @wraps(func)
+        def wrapped(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+            except Exception:
+                STORAGE_FAILURE_TOTAL.labels(backend=self.backend, operation=operation).inc()
+                raise
+        return wrapped
+    return decorator
 
 
 @dataclass
@@ -53,6 +70,7 @@ class StorageClient:
         else:
             self._s3 = None
 
+    @_observe_storage("ensure_bucket")
     def _ensure_bucket(self) -> None:
         if self.backend != "s3" or self._bucket_ready:
             return
@@ -83,6 +101,7 @@ class StorageClient:
         (project_path / "scenes.json").touch(exist_ok=True)
         return project_path
 
+    @_observe_storage("write_text")
     def write_text(self, key: str, content: str) -> None:
         if self.backend == "s3":
             self._ensure_bucket()
@@ -92,6 +111,7 @@ class StorageClient:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
 
+    @_observe_storage("write_bytes")
     def write_bytes(self, key: str, content: bytes, content_type: Optional[str] = None) -> None:
         if self.backend == "s3":
             self._ensure_bucket()
@@ -102,6 +122,30 @@ class StorageClient:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
 
+    @_observe_storage("write_file")
+    def write_file(self, key: str, source_path: Path, content_type: Optional[str] = None) -> None:
+        """Stream a local file into configured storage without loading it fully into memory."""
+        source = Path(source_path)
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        if self.backend == "s3":
+            self._ensure_bucket()
+            extra = {"ContentType": content_type} if content_type else None
+            if extra:
+                self._s3.upload_file(str(source), S3_BUCKET, key, ExtraArgs=extra)
+            else:
+                self._s3.upload_file(str(source), S3_BUCKET, key)
+        else:
+            path = PROJECTS_DIR / key
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = path.with_name(f".{path.name}.uploading")
+            try:
+                shutil.copyfile(source, temp_path)
+                os.replace(temp_path, path)
+            finally:
+                temp_path.unlink(missing_ok=True)
+
+    @_observe_storage("read_text")
     def read_text(self, key: str) -> str:
         if self.backend == "s3":
             self._ensure_bucket()
@@ -118,6 +162,7 @@ class StorageClient:
             return ""
         return path.read_text()
 
+    @_observe_storage("read_bytes")
     def read_bytes(self, key: str) -> bytes:
         if self.backend == "s3":
             self._ensure_bucket()
@@ -134,16 +179,21 @@ class StorageClient:
             return b""
         return path.read_bytes()
 
+    @_observe_storage("exists")
     def exists(self, key: str) -> bool:
         if self.backend == "s3":
             self._ensure_bucket()
             try:
                 self._s3.head_object(Bucket=S3_BUCKET, Key=key)
                 return True
-            except Exception:
-                return False
+            except ClientError as exc:
+                code = (exc.response or {}).get("Error", {}).get("Code")
+                if str(code) in {"NoSuchKey", "NotFound", "404"}:
+                    return False
+                raise
         return (PROJECTS_DIR / key).exists()
 
+    @_observe_storage("delete_prefix")
     def delete_prefix(self, prefix: str) -> None:
         if self.backend == "s3":
             self._ensure_bucket()
@@ -161,6 +211,7 @@ class StorageClient:
                     if item.is_dir():
                         item.rmdir()
 
+    @_observe_storage("delete_key")
     def delete_key(self, key: str) -> None:
         if self.backend == "s3":
             self._ensure_bucket()
@@ -185,6 +236,7 @@ class StorageClient:
                 if item.is_file():
                     yield str(item.relative_to(PROJECTS_DIR))
 
+    @_observe_storage("public_url")
     def public_url(self, key: str) -> str:
         if self.backend == "s3":
             if S3_PUBLIC_URL:

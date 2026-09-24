@@ -1,4 +1,4 @@
-"""Add X'treamers community posts.
+"""Add community posts.
 
 Revision ID: 0011_xtreamer_community_posts
 Revises: 0010_auto_create_studio_controls

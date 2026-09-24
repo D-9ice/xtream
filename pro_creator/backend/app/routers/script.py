@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from app.auth import get_current_user
-from app.config import CREDITS_COST_SCRIPT_GENERATE, CREDITS_COST_SCRIPT_IMPORT
+from app.config import CREDITS_COST_SCRIPT_GENERATE, CREDITS_COST_SCRIPT_IMPORT, XAI_TEXT_MODEL
 from app.database import get_session
 from app.models import Scene, User
 from app.schemas import (
@@ -15,10 +15,8 @@ from app.schemas import (
 )
 from app.services.credits import (
     consume_credits,
-    get_or_create_subscription,
     record_usage_event,
 )
-from app.services.provider_routing import resolve_script_route
 from app.services.script_engine import generate_script
 from app.tenant import current_tenant_id
 from app.utils.file_manager import (
@@ -44,15 +42,11 @@ def generate_script_endpoint(
     current_user: User = Depends(get_current_user),
 ) -> ScriptResponse:
     tenant_id = current_tenant_id()
-    subscription = get_or_create_subscription(session, current_user)
-    script_provider, script_model = resolve_script_route(subscription.plan_name)
     try:
         result = generate_script(
             payload.topic,
             payload.duration_minutes,
             payload.tone,
-            script_provider=script_provider,
-            model_name=script_model,
             genre=payload.genre,
         )
     except Exception as exc:
@@ -74,8 +68,8 @@ def generate_script_endpoint(
         reason="script generation",
         action="script.generate",
         reference_id=payload.project_id,
-        provider=script_provider,
-        model=script_model,
+        provider="xai",
+        model=XAI_TEXT_MODEL,
         metadata={"duration_minutes": payload.duration_minutes, "tone": payload.tone},
     )
 

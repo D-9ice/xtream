@@ -111,6 +111,7 @@ class OrchestrationJob(SQLModel, table=True):
 class OrchestrationSchedule(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     tenant_id: str = Field(default="default", index=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
     project_id: str = Field(index=True)
     cadence_days: int = Field(default=1)
     next_run_at: datetime

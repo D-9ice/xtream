@@ -1,3 +1,4 @@
+import pytest
 import base64
 
 import requests
@@ -22,7 +23,7 @@ class _FakeResponse:
             raise RuntimeError(f"HTTP {self.status_code}")
 
 
-def test_script_xai_timeout_falls_back_to_template(monkeypatch):
+def test_script_xai_timeout_fails_explicitly(monkeypatch):
     monkeypatch.setattr(script_engine, "XAI_API_KEY", "xai-test")
     monkeypatch.setattr(script_engine, "XAI_BASE_URL", "https://api.x.ai/v1")
     monkeypatch.setattr(script_engine, "XAI_TEXT_MODEL", "grok-4.20-beta-latest-non-reasoning")
@@ -33,9 +34,8 @@ def test_script_xai_timeout_falls_back_to_template(monkeypatch):
         raise requests.Timeout("simulated timeout")
 
     monkeypatch.setattr(script_engine.requests, "post", _always_timeout)
-    out = script_engine.generate_script("Title: Test Prompt: create something", 1, "neutral")
-    assert isinstance(out.get("full_script"), str)
-    assert out.get("scenes")
+    with pytest.raises(RuntimeError, match="xAI script generation failed"):
+        script_engine.generate_script("Title: Test Prompt: create something", 1, "neutral")
 
 
 def test_image_xai_retries_then_succeeds(monkeypatch):
@@ -59,14 +59,13 @@ def test_image_xai_retries_then_succeeds(monkeypatch):
         prompt="cinematic city",
         style="cinematic",
         scene_id=1,
-        provider="xai",
     )
     assert provider == "xai"
     assert image == png_bytes
     assert calls["count"] >= 2
 
 
-def test_voice_xai_timeout_uses_tone_fallback(monkeypatch):
+def test_voice_xai_timeout_fails_explicitly(monkeypatch):
     monkeypatch.setattr(voice_engine, "XAI_API_KEY", "xai-test")
     monkeypatch.setattr(voice_engine, "XAI_TTS_VOICE_ID", "voice")
     monkeypatch.setattr(voice_engine, "PROVIDER_RETRY_ATTEMPTS", 2)
@@ -76,6 +75,5 @@ def test_voice_xai_timeout_uses_tone_fallback(monkeypatch):
         raise requests.Timeout("simulated timeout")
 
     monkeypatch.setattr(voice_engine.requests, "post", _always_timeout)
-    audio = voice_engine._generate_with_xai_tts("hello world", "voice")
-    assert isinstance(audio, (bytes, bytearray))
-    assert len(audio) > 100
+    with pytest.raises(RuntimeError, match="xAI TTS generation failed"):
+        voice_engine._generate_with_xai_tts("hello world", "voice")

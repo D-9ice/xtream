@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlmodel import Session, select
 
 from app.auth import get_current_user
-from app.config import CREDITS_COST_VOICE_GENERATE
+from app.config import CREDITS_COST_VOICE_GENERATE, VOICE_CLONE_MAX_BYTES
 from app.database import get_session
 from app.models import Scene, User
 from app.schemas import (
@@ -103,7 +103,6 @@ def _render_scene_dialogue_audio(
                 project_id=project_id,
                 text=line_text,
                 voice_profile=voice_profile,
-                provider=None,
                 override_voice_id=voice_id,
             )
             segment_path = temp_path / f"line_{item_index}.{ext}"
@@ -181,7 +180,6 @@ def generate_voice_endpoint(
         1,
         payload.text,
         payload.voice_profile,
-        None,
     )
     if scenes:
         for scene in scenes:
@@ -190,7 +188,6 @@ def generate_voice_endpoint(
                 scene.id or 1,
                 scene.text or payload.text,
                 payload.voice_profile,
-                None,
             )
             scene.audio_path = scene_result["audio_path"]
             session.add(scene)
@@ -223,9 +220,21 @@ async def clone_voice_endpoint(
     current_user: User = Depends(get_current_user),
 ) -> VoiceCloneResponse:
     ensure_project_dirs(project_id)
-    content = await sample.read()
+    content = await sample.read(VOICE_CLONE_MAX_BYTES + 1)
+    if len(content) > VOICE_CLONE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Voice reference sample exceeds the configured upload limit.")
+    if not content:
+        raise HTTPException(status_code=400, detail="Voice reference sample is empty.")
+    try:
+        clone_result = clone_voice_profile(
+            profile_name,
+            content,
+            filename=sample.filename or "reference.wav",
+            content_type=sample.content_type or "audio/wav",
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     profile_path = save_voice_profile(project_id, profile_name, content)
-    clone_result = clone_voice_profile(profile_name, content, None)
     update_voice_profile_metadata(
         project_id,
         profile_name,

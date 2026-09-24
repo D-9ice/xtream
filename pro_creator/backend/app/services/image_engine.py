@@ -1,25 +1,20 @@
 import base64
-import io
 from typing import Any
 import time
 
 import requests
 
 from app.config import (
-    ENVIRONMENT,
     PROVIDER_RETRY_ATTEMPTS,
     PROVIDER_RETRY_BACKOFF_SECONDS,
     XAI_API_KEY,
     XAI_BASE_URL,
     XAI_IMAGE_MODEL,
 )
-from app.services.provider_routing import resolve_image_provider
 from app.storage import project_key, storage_client
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
-ALLOW_LOCAL_PLACEHOLDERS = ENVIRONMENT != "production"
-
 
 def _quality_image_prompt(prompt: str, style: str) -> str:
     base = (prompt or "").strip() or "cinematic scene"
@@ -56,9 +51,7 @@ def _extract_image_bytes(payload: dict[str, Any]) -> bytes | None:
 def _generate_xai_image(prompt: str, style: str, scene_id: int = 1) -> bytes:
     api_key = XAI_API_KEY.strip()
     if not api_key:
-        if ALLOW_LOCAL_PLACEHOLDERS:
-            return _generate_local_placeholder(prompt, scene_id)
-        raise RuntimeError("XAI_API_KEY is required for image generation in production")
+        raise RuntimeError("XAI_API_KEY is required for image generation")
 
     request_url = f"{XAI_BASE_URL}/images/generations"
     headers = {
@@ -85,25 +78,7 @@ def _generate_xai_image(prompt: str, style: str, scene_id: int = 1) -> bytes:
             last_error = str(exc)
         if attempt < attempts:
             time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
-    if ALLOW_LOCAL_PLACEHOLDERS:
-        logger.warning("xAI image generation failed, falling back to local placeholder: %s", last_error)
-        return _generate_local_placeholder(prompt, scene_id)
     raise RuntimeError(f"xAI image generation failed: {last_error}")
-
-
-def _generate_local_placeholder(prompt: str, scene_id: int) -> bytes:
-    from PIL import Image, ImageDraw
-
-    canvas = Image.new("RGB", (1024, 576), color=(18, 24, 38))
-    draw = ImageDraw.Draw(canvas)
-    draw.rectangle([(40, 40), (984, 536)], outline=(34, 211, 238), width=3)
-    title = f"Scene {scene_id}"
-    subtitle = prompt[:80]
-    draw.text((80, 80), title, fill=(226, 232, 240))
-    draw.text((80, 140), subtitle, fill=(148, 163, 184))
-    buffer = io.BytesIO()
-    canvas.save(buffer, format="PNG")
-    return buffer.getvalue()
 
 
 def generate_image_for_scene(
@@ -111,13 +86,11 @@ def generate_image_for_scene(
     scene_id: int,
     prompt: str,
     style: str,
-    provider: str | None = None,
 ) -> dict:
     image_bytes, selected_provider = generate_image_bytes(
         prompt=prompt,
         style=style,
         scene_id=scene_id,
-        provider=provider,
     )
     key = project_key(project_id, f"images/scene_{scene_id}.png")
     storage_client.write_bytes(key, image_bytes, content_type="image/png")
@@ -134,16 +107,8 @@ def generate_image_bytes(
     prompt: str,
     style: str,
     scene_id: int = 1,
-    provider: str | None = None,
 ) -> tuple[bytes, str]:
-    selected_provider = (provider or resolve_image_provider()).strip().lower()
-    if selected_provider in {"xai", "grok"}:
-        image_bytes = _generate_xai_image(prompt, style, scene_id=scene_id)
-    else:
-        if not ALLOW_LOCAL_PLACEHOLDERS:
-            raise RuntimeError(f"Unsupported image provider in production: {selected_provider}")
-        image_bytes = _generate_local_placeholder(prompt, scene_id)
-    return image_bytes, selected_provider
+    return _generate_xai_image(prompt, style, scene_id=scene_id), "xai"
 
 
 
