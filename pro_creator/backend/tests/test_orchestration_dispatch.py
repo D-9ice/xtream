@@ -1,9 +1,11 @@
 import json
 
 from fastapi.testclient import TestClient
+from sqlmodel import Session, select
 
 from app.main import app
-from app.models import OrchestrationJob
+from app.database import engine
+from app.models import OrchestrationJob, OrchestrationSchedule
 from app.routers import orchestration
 import app.tasks as tasks
 
@@ -106,3 +108,67 @@ def test_schedule_runner_skips_when_distributed_lock_is_held(monkeypatch) -> Non
         "count": 0,
         "skipped": "scheduler_lock_held",
     }
+
+
+
+def test_schedule_creation_persists_owner_user_id() -> None:
+    client = TestClient(app)
+    project_id = "schedule-owner-test"
+    response = client.post(
+        "/orchestration/schedules",
+        json={"project_id": project_id, "cadence_days": 1},
+    )
+    assert response.status_code == 200
+    with Session(engine) as session:
+        schedule = session.exec(
+            select(OrchestrationSchedule).where(
+                OrchestrationSchedule.project_id == project_id
+            )
+        ).first()
+        assert schedule is not None
+        assert schedule.user_id is not None
+
+
+def test_generic_queue_cancel_sets_persisted_cancel_request(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(orchestration, "ENABLE_CELERY", True)
+
+    queued = client.post(
+        "/orchestration/queue",
+        json={
+            "project_id": "cancel-test-project",
+            "kind": "workflow_production",
+            "topic": "Cancel test",
+            "duration_minutes": 1,
+            "tone": "neutral",
+        },
+    )
+    assert queued.status_code == 200
+    job_id = queued.json()["id"]
+
+    cancelled = client.post(f"/orchestration/queue/{job_id}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+    with Session(engine) as session:
+        job = session.get(OrchestrationJob, job_id)
+        assert job is not None
+        payload = json.loads(job.payload or "{}")
+        assert payload["cancel_requested"] is True
+
+
+def test_workflow_task_cancel_check_reads_payload() -> None:
+    job = OrchestrationJob(
+        id=999,
+        project_id="cancel-payload-test",
+        kind="workflow_production",
+        status="processing",
+        payload=json.dumps({"cancel_requested": True}),
+    )
+
+    class _Session:
+        @staticmethod
+        def refresh(_job):
+            return None
+
+    assert tasks._workflow_job_cancel_requested(_Session(), job) is True
