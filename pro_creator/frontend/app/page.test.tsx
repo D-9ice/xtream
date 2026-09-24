@@ -438,20 +438,6 @@ vi.mock("../lib/api", () => ({
         checkout_enabled: true,
       },
       {
-        id: "factory_one_time",
-        name: "Factory Mode One-Time",
-        kind: "factory_access",
-        access_mode: "one_time",
-        access_days: null,
-        description: "Unlimited autonomous production access without expiration.",
-        credits: 0,
-        price_usd: 149,
-        popular: false,
-        stripe_price_id: "price_factory_one_time",
-        checkout_providers: ["stripe", "paystack"],
-        checkout_enabled: true,
-      },
-      {
         id: "factory_subscription",
         name: "Factory Mode Subscription",
         kind: "factory_access",
@@ -907,13 +893,12 @@ describe("Workflow home page", () => {
     fireEvent.click(creditButton);
 
     expect(await screen.findByText(/Factory Mode Access/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Select Factory Mode One-Time access/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Select Factory Mode One-Time access/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Select Factory Mode Subscription access/i })).toBeInTheDocument();
-    expect(screen.getByText(/^Unlock$/i)).toBeInTheDocument();
     expect(screen.getByText(/^Subscribe$/i)).toBeInTheDocument();
   }, 20000);
 
-  it("allows the user to select Factory Mode access in the credit purchase panel", async () => {
+  it("allows the user to select the Factory Mode subscription", async () => {
     render(<HomePage />);
 
     const creditButton = await screen.findByRole("button", {
@@ -921,13 +906,13 @@ describe("Workflow home page", () => {
     });
     fireEvent.click(creditButton);
 
-    const factoryOneTimeCard = await screen.findByRole("button", {
-      name: /Select Factory Mode One-Time access/i,
+    const factorySubscriptionCard = await screen.findByRole("button", {
+      name: /Select Factory Mode Subscription access/i,
     });
-    fireEvent.click(factoryOneTimeCard);
+    fireEvent.click(factorySubscriptionCard);
 
-    expect(factoryOneTimeCard).toHaveAttribute("aria-pressed", "true");
-    expect(await screen.findByText("$149")).toBeInTheDocument();
+    expect(factorySubscriptionCard).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByText("$39")).toBeInTheDocument();
   }, 20000);
 
   it("shows recent receipts inside the credit purchase panel", async () => {
