@@ -264,6 +264,37 @@ services:
       timeout: 10s
       retries: 5
 
+  beat:
+    restart: unless-stopped
+    command: celery -A app.celery_app.celery_app beat -l info
+    volumes:
+      - ./deploy:/app/deploy:ro
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL_FILE: ${DATABASE_URL_FILE:-}
+      DATABASE_URL_AWS_SECRET_ID: ${DATABASE_URL_AWS_SECRET_ID:-}
+      DATABASE_URL_AWS_SECRET_KEY: ${DATABASE_URL_AWS_SECRET_KEY:-}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ENABLE_CELERY: "true"
+      DEFAULT_TENANT_ID: "${DEFAULT_TENANT_ID:-default}"
+      TENANT_HEADER_NAME: "${TENANT_HEADER_NAME:-X-Tenant-ID}"
+      AWS_SECRETS_ENABLED: ${AWS_SECRETS_ENABLED:-false}
+      AWS_SECRETS_REGION: ${AWS_SECRETS_REGION:-us-east-1}
+      AWS_SECRET_PREFIX: ${AWS_SECRET_PREFIX:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
   frontend:
     restart: unless-stopped
     environment:
