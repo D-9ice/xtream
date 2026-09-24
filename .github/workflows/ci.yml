@@ -18,8 +18,9 @@ jobs:
           python-version: "3.11"
       - name: Install deps
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          set -o pipefail
+          python -m pip install --upgrade pip 2>&1 | tee pip-upgrade.log
+          pip install -r requirements.txt 2>&1 | tee pip-install.log
       - name: Tests
         env:
           ENVIRONMENT: development
@@ -31,7 +32,19 @@ jobs:
           ADMIN_EMAIL: admin@procreator.local
           ADMIN_PASSWORD: LocalAdminPass123!
         run: |
-          pytest -q
+          set -o pipefail
+          pytest -q --junitxml=pytest-results.xml 2>&1 | tee pytest.log
+      - name: Upload backend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-ci-diagnostics
+          path: |
+            pro_creator/backend/pip-upgrade.log
+            pro_creator/backend/pip-install.log
+            pro_creator/backend/pytest.log
+            pro_creator/backend/pytest-results.xml
+          if-no-files-found: ignore
 
   frontend:
     runs-on: ubuntu-latest
@@ -46,13 +59,32 @@ jobs:
           cache: "npm"
           cache-dependency-path: pro_creator/frontend/package-lock.json
       - name: Install deps
-        run: npm ci
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee npm-ci.log
       - name: Lint
-        run: npm run lint
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee lint.log
       - name: Tests
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test.log
       - name: Production build
         env:
           PRO_CREATOR_BACKEND_ORIGIN: https://api.example.com
           NEXT_PUBLIC_API_BASE: https://api.example.com
-        run: npm run build
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build.log
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-ci-diagnostics
+          path: |
+            pro_creator/frontend/npm-ci.log
+            pro_creator/frontend/lint.log
+            pro_creator/frontend/test.log
+            pro_creator/frontend/build.log
+          if-no-files-found: ignore
