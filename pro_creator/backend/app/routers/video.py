@@ -46,7 +46,7 @@ from app.schemas import (
     ExportPresetResponse,
     ExportStatusEntry,
     ExportStatusResponse,
-    FeatureStubResponse,
+    FeatureOperationResponse,
     ThumbnailGenerateRequest,
     ThumbnailGenerateResponse,
     ThumbnailSetPrimaryRequest,
@@ -926,8 +926,8 @@ def import_video_endpoint(
     return VideoImportResponse(video_path=storage_client.public_url(key))
 
 
-@router.post("/auto-clip", response_model=FeatureStubResponse)
-def auto_clip(project_id: str) -> FeatureStubResponse:
+@router.post("/auto-clip", response_model=FeatureOperationResponse)
+def auto_clip(project_id: str) -> FeatureOperationResponse:
     transcript_path = PROJECTS_DIR / project_id / "video" / "transcript.json"
     transcript_segments = read_json_artifact(transcript_path).get("segments", [])
     with tempfile.TemporaryDirectory(prefix="pro_creator_autoclip_") as temp_dir:
@@ -981,13 +981,13 @@ def auto_clip(project_id: str) -> FeatureStubResponse:
         raise HTTPException(status_code=400, detail="No usable clip ranges were found.")
     artifact_path = PROJECTS_DIR / project_id / "video" / "clips.json"
     write_json_artifact(artifact_path, {"clips": clips})
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"{len(clips)} media clip(s) created.",
     )
 
-@router.post("/transcribe", response_model=FeatureStubResponse)
-def transcribe(project_id: str) -> FeatureStubResponse:
+@router.post("/transcribe", response_model=FeatureOperationResponse)
+def transcribe(project_id: str) -> FeatureOperationResponse:
     audio_candidates = [
         project_key(project_id, "audio/scene_1.wav"),
         project_key(project_id, "audio/scene_1.mp3"),
@@ -1023,13 +1023,13 @@ def transcribe(project_id: str) -> FeatureStubResponse:
             "duration": metadata["duration"],
         },
     )
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"Speech transcript created with {metadata['model']} ({len(segments)} segment(s)).",
     )
 
-@router.post("/captions", response_model=FeatureStubResponse)
-def captions(project_id: str) -> FeatureStubResponse:
+@router.post("/captions", response_model=FeatureOperationResponse)
+def captions(project_id: str) -> FeatureOperationResponse:
     transcript_path = PROJECTS_DIR / project_id / "video" / "transcript.json"
     segments = read_json_artifact(transcript_path).get("segments", [])
     if not segments:
@@ -1054,14 +1054,14 @@ def captions(project_id: str) -> FeatureStubResponse:
 
     captions_key = project_key(project_id, "video/captions.srt")
     storage_client.write_text(captions_key, "\n".join(lines))
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"Captions saved to {captions_key}",
     )
 
 
-@router.post("/lipsync", response_model=FeatureStubResponse)
-def lipsync(project_id: str) -> FeatureStubResponse:
+@router.post("/lipsync", response_model=FeatureOperationResponse)
+def lipsync(project_id: str) -> FeatureOperationResponse:
     payload = generate_lipsync(project_id)
     if payload.get("source") == "disabled" or not payload.get("visemes"):
         raise HTTPException(
@@ -1069,14 +1069,14 @@ def lipsync(project_id: str) -> FeatureStubResponse:
             detail="Lip sync data could not be generated. Ensure transcript/audio assets exist.",
         )
     lipsync_path = PROJECTS_DIR / project_id / "video" / "lipsync.json"
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"Lip sync data saved to {lipsync_path} ({payload.get('source')})",
     )
 
 
-@router.post("/multitrack", response_model=FeatureStubResponse)
-def multitrack(project_id: str) -> FeatureStubResponse:
+@router.post("/multitrack", response_model=FeatureOperationResponse)
+def multitrack(project_id: str) -> FeatureOperationResponse:
     audio_keys = sorted(
         key for key in storage_client.list_keys(f"{project_id}/audio/")
         if key.endswith((".wav", ".mp3", ".ogg", ".m4a"))
@@ -1153,13 +1153,13 @@ def multitrack(project_id: str) -> FeatureStubResponse:
         multitrack_path,
         {"tracks": tracks, "mixed_output": storage_client.public_url(output_key)},
     )
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"Mixed audio master created at {storage_client.public_url(output_key)}",
     )
 
-@router.post("/scene-detect", response_model=FeatureStubResponse)
-def scene_detect(project_id: str) -> FeatureStubResponse:
+@router.post("/scene-detect", response_model=FeatureOperationResponse)
+def scene_detect(project_id: str) -> FeatureOperationResponse:
     with tempfile.TemporaryDirectory(prefix="pro_creator_scene_detect_") as temp_dir:
         temp_path = Path(temp_dir)
         _, source_path, meta = _materialize_video(project_id, temp_path)
@@ -1219,7 +1219,7 @@ def scene_detect(project_id: str) -> FeatureStubResponse:
             )
     scene_path = PROJECTS_DIR / project_id / "video" / "scene_detection.json"
     write_json_artifact(scene_path, {"scenes": scenes})
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"{len(scenes)} scene interval(s) detected from source media.",
     )
@@ -1465,8 +1465,8 @@ def edit_by_text(payload: EditByTextRequest) -> EditByTextResponse:
         video_path=storage_client.public_url(output_key),
     )
 
-@router.post("/magic-cut", response_model=FeatureStubResponse)
-def magic_cut(project_id: str) -> FeatureStubResponse:
+@router.post("/magic-cut", response_model=FeatureOperationResponse)
+def magic_cut(project_id: str) -> FeatureOperationResponse:
     transcript_path = PROJECTS_DIR / project_id / "video" / "transcript.json"
     transcript = read_json_artifact(transcript_path)
     segments = transcript.get("segments", [])
@@ -1510,17 +1510,17 @@ def magic_cut(project_id: str) -> FeatureStubResponse:
             "duration_seconds_kept": round(output_meta["duration"], 2),
         },
     )
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"Magic Cut media created at {storage_client.public_url(output_key)}",
     )
 
-@router.post("/screen-record", response_model=FeatureStubResponse)
+@router.post("/screen-record", response_model=FeatureOperationResponse)
 async def screen_record(
     project_id: str,
     screen: UploadFile | None = File(default=None),
     webcam: UploadFile | None = File(default=None),
-) -> FeatureStubResponse:
+) -> FeatureOperationResponse:
     if screen is None:
         raise HTTPException(
             status_code=400,
@@ -1595,13 +1595,13 @@ async def screen_record(
             },
         )
 
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"Screen recording created at {storage_client.public_url(output_key)}",
     )
 
-@router.post("/templates", response_model=FeatureStubResponse)
-def templates(project_id: str) -> FeatureStubResponse:
+@router.post("/templates", response_model=FeatureOperationResponse)
+def templates(project_id: str) -> FeatureOperationResponse:
     script_key = project_key(project_id, "script.txt")
     script = storage_client.read_text(script_key).lower()
     if any(token in script for token in ["tutorial", "how to", "walkthrough"]):
@@ -1660,14 +1660,14 @@ def templates(project_id: str) -> FeatureStubResponse:
             "height": height,
         },
     )
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="complete",
         detail=f"Template media created at {storage_client.public_url(output_key)}",
     )
 
 
-@router.post("/export-presets", response_model=FeatureStubResponse)
-def export_presets(project_id: str) -> FeatureStubResponse:
+@router.post("/export-presets", response_model=FeatureOperationResponse)
+def export_presets(project_id: str) -> FeatureOperationResponse:
     presets = [
         {"preset": "youtube", "resolution": "1920x1080", "fps": 30, "audio": "aac"},
         {"preset": "tiktok", "resolution": "1080x1920", "fps": 30, "audio": "aac"},
@@ -1693,7 +1693,7 @@ def export_presets(project_id: str) -> FeatureStubResponse:
             "presets": presets,
         },
     )
-    return FeatureStubResponse(
+    return FeatureOperationResponse(
         status="ready",
         detail=f"Export preset catalog saved to {artifact_path}; use /video/export to render a preset.",
     )
