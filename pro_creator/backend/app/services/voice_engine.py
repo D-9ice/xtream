@@ -71,15 +71,22 @@ def clone_voice_profile(
         raise RuntimeError("XAI_API_KEY is required for custom voice creation")
     if not sample_bytes:
         raise ValueError("Voice reference sample is empty")
-    response = requests.post(
-        f"{XAI_BASE_URL}/custom-voices",
-        headers={"Authorization": f"Bearer {XAI_API_KEY}"},
-        files={"file": (filename or "reference.wav", sample_bytes, content_type or "audio/wav")},
-        data={"name": profile_name},
-        timeout=120,
-    )
-    response.raise_for_status()
-    payload = response.json()
+    try:
+        response = requests.post(
+            f"{XAI_BASE_URL}/custom-voices",
+            headers={"Authorization": f"Bearer {XAI_API_KEY}"},
+            files={"file": (filename or "reference.wav", sample_bytes, content_type or "audio/wav")},
+            data={"name": profile_name},
+            timeout=120,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        detail = ""
+        if getattr(exc, "response", None) is not None:
+            detail = (exc.response.text or "")[:500]
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(f"xAI custom voice creation failed{suffix}") from exc
     voice_id = str(payload.get("voice_id") or "").strip()
     if not voice_id:
         raise RuntimeError("xAI custom voice creation did not return a voice_id")
