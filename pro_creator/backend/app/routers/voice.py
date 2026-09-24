@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlmodel import Session, select
 
 from app.auth import get_current_user
-from app.config import CREDITS_COST_VOICE_GENERATE
+from app.config import CREDITS_COST_VOICE_GENERATE, VOICE_CLONE_MAX_BYTES
 from app.database import get_session
 from app.models import Scene, User
 from app.schemas import (
@@ -220,9 +220,21 @@ async def clone_voice_endpoint(
     current_user: User = Depends(get_current_user),
 ) -> VoiceCloneResponse:
     ensure_project_dirs(project_id)
-    content = await sample.read()
+    content = await sample.read(VOICE_CLONE_MAX_BYTES + 1)
+    if len(content) > VOICE_CLONE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Voice reference sample exceeds the configured upload limit.")
+    if not content:
+        raise HTTPException(status_code=400, detail="Voice reference sample is empty.")
+    try:
+        clone_result = clone_voice_profile(
+            profile_name,
+            content,
+            filename=sample.filename or "reference.wav",
+            content_type=sample.content_type or "audio/wav",
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     profile_path = save_voice_profile(project_id, profile_name, content)
-    clone_result = clone_voice_profile(profile_name, content)
     update_voice_profile_metadata(
         project_id,
         profile_name,
