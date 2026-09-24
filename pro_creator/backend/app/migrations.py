@@ -113,6 +113,8 @@ def upgrade_head(engine: Engine) -> None:
                 "0016_receipt_mode": 16,
                 "0017_visit_analytics": 17,
                 "0018_visit_analytics_breakdowns": 18,
+                "0019_factory_access_credits": 19,
+                "0020_orchestration_schedule_user": 20,
             }
             inferred_rank = revision_order.get(inferred_revision)
             current_rank = revision_order.get(str(current_revision))
