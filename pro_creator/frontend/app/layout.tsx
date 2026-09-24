@@ -4,7 +4,6 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./sidebar-branding.css";
 import AnalyticsTracker from "./AnalyticsTracker";
-import ProCreatorTerminology from "./ProCreatorTerminology";
 import PwaInstallPrompt from "./PwaInstallPrompt";
 import PwaRegister from "./PwaRegister";
 
@@ -49,8 +48,7 @@ export default function RootLayout({
           <AnalyticsTracker />
         </Suspense>
         <PwaInstallPrompt />
-        <ProCreatorTerminology />
-        {children}
+{children}
       </body>
     </html>
   );
